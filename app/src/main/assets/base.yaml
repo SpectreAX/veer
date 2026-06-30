@@ -1,0 +1,64 @@
+# Veer Phase 1.0 base configuration.
+# Routes all traffic via DIRECT so we can verify tun + fake-IP plumbing
+# without depending on a remote proxy. Replace `rules` / `proxies` later.
+
+mixed-port: 7890
+allow-lan: false
+mode: rule
+log-level: info
+ipv6: false
+
+# Phase 1 deliberately avoids GeoIP/geosite features so Mihomo doesn't try
+# to download MMDB files on startup. The only path that triggers a download
+# is `dns.fallback` + fallback-filter.geoip, which we leave unset below.
+geo-auto-update: false
+
+# Local REST API used by MihomoEngine for hot-reload calls.
+external-controller: 127.0.0.1:9090
+secret: ""
+
+dns:
+  enable: true
+  listen: 0.0.0.0:53
+  enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.1/16
+  fake-ip-filter:
+    - "*.lan"
+    - "localhost.ptlogin2.qq.com"
+  # No `fallback:` — that section pulls in fallback-filter which defaults
+  # to GeoIP-based filtering and forces the MMDB download.
+  nameserver:
+    - 1.1.1.1
+    - 8.8.8.8
+
+# tun.enable and tun.device are overridden at runtime by veer_core.Start
+# once the Android VpnService hands us its file descriptor.
+tun:
+  enable: false
+  stack: system
+  device: ""
+  auto-route: false
+  auto-detect-interface: false
+  dns-hijack:
+    - any:53
+  mtu: 9000
+
+proxies: []
+
+proxy-groups:
+  - name: PROXY
+    type: select
+    proxies:
+      - DIRECT
+
+rule-providers:
+  ai_override_provider:
+    type: file
+    behavior: classical
+    format: yaml
+    path: ./ai_override.yaml
+    interval: 0
+
+rules:
+  - RULE-SET,ai_override_provider,DIRECT
+  - MATCH,DIRECT

@@ -1,0 +1,4 @@
+# AI-generated rule overrides land here at runtime.
+# The file must remain a valid classical rule-provider payload even when empty,
+# otherwise Mihomo refuses to start.
+payload: []

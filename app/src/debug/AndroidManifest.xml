@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!--
+            Debug-only Activity — merged by AGP into debug builds only.
+            Launch via ADB:
+              adb shell am start -n com.yamax.veer/.testing.ConnectivityTimelineActivity
+        -->
+        <activity
+            android:name=".testing.ConnectivityTimelineActivity"
+            android:exported="true"
+            android:label="Connectivity Timeline" />
+    </application>
+</manifest>
