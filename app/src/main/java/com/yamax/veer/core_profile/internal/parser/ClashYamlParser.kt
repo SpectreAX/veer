@@ -2,6 +2,7 @@ package com.yamax.veer.core_profile.internal.parser
 
 import com.yamax.veer.core_profile.ImportedProfile
 import com.yamax.veer.core_profile.NormalizedDns
+import com.yamax.veer.core_profile.NormalizedDnsFallbackFilter
 import com.yamax.veer.core_profile.NormalizedProxy
 import com.yamax.veer.core_profile.NormalizedProxyGroup
 import com.yamax.veer.core_profile.NormalizedRule
@@ -174,13 +175,26 @@ internal object ClashYamlParser {
     private fun parseDns(root: Map<String, Any?>): NormalizedDns? {
         val dns = root.map("dns") ?: return null
         val enabled = dns.bool("enable") ?: false
+        val fallbackFilter = dns.map("fallback-filter")
         return NormalizedDns(
             enabled             = enabled,
             ipv6                = dns.bool("ipv6") ?: false,
             enhancedMode        = dns.str("enhanced-mode"),
+            fakeIpRange         = dns.str("fake-ip-range"),
+            useHosts            = dns.bool("use-hosts"),
             fakeDnsFilter       = dns.strList("fake-ip-filter") ?: emptyList(),
+            defaultNameservers  = dns.strList("default-nameserver") ?: emptyList(),
             nameservers         = dns.strList("nameserver") ?: emptyList(),
             fallbackNameservers = dns.strList("fallback")   ?: emptyList(),
+            fallbackFilter      = fallbackFilter?.let {
+                NormalizedDnsFallbackFilter(
+                    geoIp     = it.bool("geoip"),
+                    geoIpCode = it.str("geoip-code"),
+                    ipCidrs   = it.strList("ipcidr") ?: emptyList(),
+                    domains   = it.strList("domain") ?: emptyList(),
+                    geoSites  = it.strList("geosite") ?: emptyList(),
+                )
+            },
         )
     }
 

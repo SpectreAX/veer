@@ -3,6 +3,7 @@ package com.yamax.veer.app_state
 import com.yamax.veer.core_logging.VeerLog
 import com.yamax.veer.core_mihomo.EngineState
 import com.yamax.veer.core_mihomo.MihomoEngine
+import com.yamax.veer.core_mihomo.StartupStage
 import com.yamax.veer.core_profile.ImportState
 import com.yamax.veer.core_profile.ProfileManager
 import kotlinx.coroutines.CoroutineScope
@@ -84,11 +85,12 @@ internal object AppStateRepository {
         scope.launch {
             combine(
                 MihomoEngine.state,
+                MihomoEngine.startupStage,
                 profileFlow,
                 _connectivity,
-            ) { engineState, profile, connectivity ->
+            ) { engineState, startupStage, profile, connectivity ->
                 AppState(
-                    runtime      = buildRuntimeState(engineState),
+                    runtime      = buildRuntimeState(engineState, startupStage),
                     profile      = profile,
                     connectivity = connectivity,
                     ui           = UiState(isReady = true),
@@ -135,6 +137,7 @@ internal object AppStateRepository {
             appendLine()
             appendLine("[runtime]")
             appendLine("  engineState      = ${s.runtime.engineState}")
+            appendLine("  startupStage     = ${s.runtime.startupStage ?: "none"}")
             val sess = s.runtime.sessionStartedMs
             if (sess != null) {
                 val durSec = (System.currentTimeMillis() - sess) / 1_000
@@ -164,14 +167,21 @@ internal object AppStateRepository {
     // Private helpers
     // -------------------------------------------------------------------------
 
-    private fun buildRuntimeState(engineState: EngineState): RuntimeState {
+    private fun buildRuntimeState(
+        engineState: EngineState,
+        startupStage: StartupStage,
+    ): RuntimeState {
         when {
             engineState is EngineState.Running && sessionStartedMs == null ->
                 sessionStartedMs = System.currentTimeMillis()
             engineState !is EngineState.Running ->
                 sessionStartedMs = null
         }
-        return RuntimeState(engineState = engineState, sessionStartedMs = sessionStartedMs)
+        return RuntimeState(
+            engineState = engineState,
+            sessionStartedMs = sessionStartedMs,
+            startupStage = startupStage.takeIf { engineState is EngineState.Starting },
+        )
     }
 
     private fun logTransition(prev: AppState, next: AppState) {
@@ -179,6 +189,12 @@ internal object AppStateRepository {
             VeerLog.core(
                 "[AppStateRepository] engine: ${prev.runtime.engineState} → ${next.runtime.engineState}",
                 VeerLog.Level.INFO,
+            )
+        }
+        if (prev.runtime.startupStage != next.runtime.startupStage) {
+            VeerLog.core(
+                "[AppStateRepository] startup: ${prev.runtime.startupStage ?: "none"}" +
+                    " → ${next.runtime.startupStage ?: "none"}",
             )
         }
         if (prev.profile.profiles.size != next.profile.profiles.size) {

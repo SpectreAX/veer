@@ -13,6 +13,10 @@
 AAR_DIR  := ../app/libs
 GOMOBILE := $(shell which gomobile || echo gomobile)
 GOFLAGS  := -target=android -androidapi 29
+# Match Mihomo's official build feature set. with_gvisor is required for the
+# Android fd-backed TUN to process TCP fully in userspace; cmfa supplies the
+# Android integration patches.
+MOBILE_TAGS := cmfa,with_gvisor
 
 .PHONY: all aar-release aar-debug clean
 
@@ -21,13 +25,13 @@ all: aar-release
 # Production .aar — no fault injection symbols compiled in.
 # Replace the committed app/libs/libveer_core.aar with this output.
 aar-release:
-	$(GOMOBILE) bind $(GOFLAGS) -o $(AAR_DIR)/libveer_core.aar .
+	$(GOMOBILE) bind $(GOFLAGS) -tags=$(MOBILE_TAGS) -o $(AAR_DIR)/libveer_core.aar .
 
 # Debug .aar — includes full fault injection, goroutine snapshots, and call
 # counters. Used exclusively by debug builds; never shipped to users.
 # The Gradle debug variant prefers this file when it exists in app/libs/.
 aar-debug:
-	$(GOMOBILE) bind $(GOFLAGS) -tags=veer_fault_inject -o $(AAR_DIR)/libveer_core_debug.aar .
+	$(GOMOBILE) bind $(GOFLAGS) -tags=$(MOBILE_TAGS),veer_fault_inject -o $(AAR_DIR)/libveer_core_debug.aar .
 
 clean:
 	rm -f $(AAR_DIR)/libveer_core_debug.aar

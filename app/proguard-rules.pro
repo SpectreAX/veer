@@ -1,21 +1,23 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# gomobile's generated Java surface is reached both directly and through
+# reflection (for compatibility across AAR revisions). Renaming or removing a
+# native method breaks JNI symbol lookup even when Kotlin compilation succeeds.
+-keep class veercore.** { *; }
+-keep interface veercore.** { *; }
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Keep useful line numbers for locally exported crash diagnostics while hiding
+# host source paths and original source file names.
+-keepattributes SourceFile,LineNumberTable,Signature,InnerClasses,EnclosingMethod
+-renamesourcefileattribute SourceFile
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# SnakeYAML contains optional JavaBeans introspection support for desktop JVMs.
+# Veer only uses SafeConstructor into maps/lists and never enters that branch;
+# Android intentionally does not ship java.beans.
+-dontwarn java.beans.BeanInfo
+-dontwarn java.beans.FeatureDescriptor
+-dontwarn java.beans.IntrospectionException
+-dontwarn java.beans.Introspector
+-dontwarn java.beans.PropertyDescriptor
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# SafeConstructor still performs reflective class/resource discovery internally.
+# Keeping SnakeYAML avoids release-only parser failures after R8 optimization.
+-keep class org.yaml.snakeyaml.** { *; }

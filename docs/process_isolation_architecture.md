@@ -1,4 +1,69 @@
-# Veer Process Isolation Architecture Analysis
+# Veer Process Isolation Architecture: Analysis and Implementation
+
+## Implemented topology (2026-07-29)
+
+Process isolation is now implemented. The architecture comparison below is
+retained as the decision record; references to “current in-process
+architecture” describe the pre-migration state.
+
+The selected topology is A2 Option 2a:
+
+```text
+com.yamax.veer (UI)                  com.yamax.veer:veercore
+────────────────────────            ─────────────────────────────
+Compose activities                  VeerVpnService
+AI/profile/rule UI                  Android-owned TUN
+CoreStateClient          IPC        SocketProtector / protect(fd)
+UI-side StateFlow mirror  ◄──────►  MihomoEngine + ConnectivityMonitor
+                                      │
+                                      └─ gomobile Veercore / Mihomo
+```
+
+Key implementation decisions:
+
+- `VeerVpnService`, TUN ownership, `protect(fd)` and all Go runtime lifecycle
+  calls live in `:veercore`. No TUN fd transfer and no per-socket Binder call
+  is required.
+- Start, stop, reconnect and profile-switch preparation remain explicit
+  service intents. The user’s desired running state is stored in a
+  cross-process file marker rather than incoherent multi-process
+  `SharedPreferences`.
+- A non-exported, same-UID `ContentProvider` is the bounded IPC surface for
+  engine/startup/connectivity state, traffic counters, route summary, log
+  snapshots and rule hot reload.
+- Runtime state changes call `notifyChange`; the UI mirrors them into its
+  process-local `StateFlow`. High-frequency traffic uses a single bounded IPC
+  call and never transfers the full proxy tree.
+- Rule reload validates that the requested file remains below app-private
+  storage, then executes `Veercore.reloadRules` in `:veercore`. This prevents a
+  second, accidental Go runtime from being addressed in the UI process.
+- UI process death does not affect the VPN. If an observed Running core PID is
+  replaced unexpectedly while the user still expects a connection, the main
+  process restarts the VPN service once for the replacement PID. Explicit stop
+  clears the marker first and is never auto-recovered.
+- Core log IPC is capped at 200 lines and 800 characters per line and is polled
+  only while the diagnostic panel is expanded and the Activity is resumed.
+- Debug fault injection and goroutine inventory have a separate debug-only
+  provider hosted in `:veercore`, so instrumentation mutates the runtime under
+  test rather than the UI process.
+
+Runtime acceptance on the Android 16 arm64 emulator:
+
+- UI PID death: core PID unchanged; controller 200 and proxied HTTPS 204;
+  relaunched UI synchronized to Running.
+- Core PID death: replacement PID launched and real proxy traffic recovered in
+  about 7 seconds.
+- Explicit stop: remained Stopped for the observation window; no false
+  auto-restart.
+- Fast reconnect: same core PID, real proxy traffic recovered in about
+  1.55 seconds.
+- The final device suite passed all 16 instrumentation tests, including
+  cross-process startup-error cleanup, native startup-stage mirroring, fast
+  reconnect, a delayed connectivity callback during shutdown, and the Compose
+  startup-progress contract.
+
+Measured results and raw artifact paths are recorded in
+`PERFORMANCE_BASELINE_2026-07-29.md`.
 
 **Scope:** Evaluates whether Veercore should remain in-process with the Android application or
 move to a separate process. Compares five architectural options across twelve dimensions. Concludes
@@ -671,8 +736,8 @@ goroutine has a `defer recover()`. A nil pointer dereference in any of these gor
 the host process unconditionally. Under A1, that host process is the user's app.
 
 For the Phase 1.1 scope (development, AI feature testing, personal use), the `base.yaml`
-constraints (no `dns.fallback:`, no MMDB download) and the engineMutex + `startAttempted`
-hardening reduce the probability of triggering the panic paths significantly. The architecture
+constraints (bundled/verified GeoIP data before TUN, no MMDB download through TUN) and the
+engineMutex + `startAttempted` hardening reduce the probability of triggering the panic paths significantly. The architecture
 is *stable under normal operation*, not fundamentally safe under all failure modes.
 
 The second critical unsafety is the irrecoverable split-brain from hung goroutines. This becomes

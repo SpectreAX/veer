@@ -14,15 +14,18 @@ func triggerHook(_ string) error { return nil }
 func incrStartCount()            {}
 func incrStopCount()             {}
 
-func SetFaultHangBeforeApplyConfig(_ int64)     {}
-func ReleaseHangBeforeApplyConfig()             {}
-func SetFaultErrorBeforeApplyConfig(_ string)   {}
-func SetFaultPanicBeforeApplyConfig(_ string)   {}
-func SetFaultBackgroundPanic(_ string, _ int64) {}
-func ClearAllFaults()                           {}
-func GetStartCallCount() int32                  { return 0 }
-func GetStopCallCount() int32                   { return 0 }
-func ResetCallCounts()                          {}
+func SetFaultHangBeforeApplyConfig(_ int64)       {}
+func ReleaseHangBeforeApplyConfig()               {}
+func SetFaultHangBeforeShutdown(_ int64)          {}
+func ReleaseHangBeforeShutdown()                  {}
+func SetFaultErrorBeforeApplyConfig(_ string)     {}
+func SetFaultErrorOnceBeforeApplyConfig(_ string) {}
+func SetFaultPanicBeforeApplyConfig(_ string)     {}
+func SetFaultBackgroundPanic(_ string, _ int64)   {}
+func ClearAllFaults()                             {}
+func GetStartCallCount() int32                    { return 0 }
+func GetStopCallCount() int32                     { return 0 }
+func ResetCallCounts()                            {}
 
 // GoroutineSnapshot mirrors the type defined in veer_fault_inject.go so that
 // gomobile produces identical Java bindings in both build variants.

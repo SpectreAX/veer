@@ -10,5 +10,52 @@
             android:name=".testing.ConnectivityTimelineActivity"
             android:exported="true"
             android:label="Connectivity Timeline" />
+
+        <!-- Explicit ADB-only hook used by live AI integration tests. -->
+        <receiver
+            android:name="com.yamax.veer.testing.DebugAiCommandReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
+
+        <receiver
+            android:name="com.yamax.veer.testing.DebugUiProcessReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP">
+            <intent-filter>
+                <action android:name="com.yamax.veer.debug.KILL_UI_PROCESS" />
+                <action android:name="com.yamax.veer.debug.DUMP_LOG_VIEWER" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name="com.yamax.veer.testing.DebugRuntimeReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP"
+            android:process=":veercore">
+            <intent-filter>
+                <action android:name="com.yamax.veer.debug.DUMP_GOROUTINES" />
+                <action android:name="com.yamax.veer.debug.DUMP_ENGINE_STATE" />
+                <action android:name="com.yamax.veer.debug.DUMP_BACKGROUND_RESTRICTIONS" />
+                <action android:name="com.yamax.veer.debug.INJECT_START_ERROR_ONCE" />
+                <action android:name="com.yamax.veer.debug.CLEAR_FAULTS" />
+                <action android:name="com.yamax.veer.debug.ADD_TEST_RULE" />
+                <action android:name="com.yamax.veer.debug.REMOVE_TEST_RULE" />
+                <action android:name="com.yamax.veer.debug.CONFIGURE_AUTO_RECOVERY" />
+                <action android:name="com.yamax.veer.debug.REFRESH_SUBSCRIPTIONS" />
+                <action android:name="com.yamax.veer.debug.VERIFY_REFRESH_FAILURE_SAFETY" />
+                <action android:name="com.yamax.veer.debug.VERIFY_LOG_REDACTION" />
+                <action android:name="com.yamax.veer.debug.START_VPN" />
+                <action android:name="com.yamax.veer.debug.STOP_VPN" />
+                <action android:name="com.yamax.veer.debug.RECONNECT_VPN" />
+                <action android:name="com.yamax.veer.debug.KILL_CORE_PROCESS" />
+            </intent-filter>
+        </receiver>
+
+        <provider
+            android:name="com.yamax.veer.testing.DebugCoreControlProvider"
+            android:authorities="com.yamax.veer.debug.core"
+            android:exported="false"
+            android:grantUriPermissions="false"
+            android:process=":veercore" />
     </application>
 </manifest>

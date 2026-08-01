@@ -42,9 +42,11 @@ responsive. If any subsystem blocks indefinitely (network interface not ready, O
 exhausted, MMDB download routing through the tun it is trying to bring up), `ApplyConfig` never
 returns.
 
-The `base.yaml` constraint (no `dns.fallback:`) eliminates the primary MMDB-via-tun loop, but
-other paths remain: kernel socket operations during listener bind, file descriptor exhaustion,
-or future config changes that reintroduce a blocking subsystem.
+Geo databases are now bundled in the APK and verified before config validation. Startup fails
+before establishing TUN when `geoip.metadb` is unavailable, so imported `dns.fallback:` policies
+can safely use the local GeoIP filter without triggering an MMDB-via-tun download. Other hang
+paths remain: kernel socket operations during listener bind, file descriptor exhaustion, or
+future config changes that introduce another blocking subsystem.
 
 ### State after hang
 

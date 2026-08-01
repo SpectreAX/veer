@@ -1,6 +1,7 @@
 package com.yamax.veer.app_state
 
 import com.yamax.veer.core_mihomo.EngineState
+import com.yamax.veer.core_mihomo.StartupStage
 import com.yamax.veer.core_profile.ActiveProfile
 import com.yamax.veer.core_profile.ImportState
 import com.yamax.veer.core_profile.ProfileId
@@ -37,6 +38,7 @@ internal data class AppState(
 internal data class RuntimeState(
     val engineState:      EngineState = EngineState.Stopped,
     val sessionStartedMs: Long?       = null,
+    val startupStage:     StartupStage? = null,
 )
 
 // ─────────────────────────────────────────────────────────────────────────────

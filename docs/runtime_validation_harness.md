@@ -882,7 +882,7 @@ by execution mode.
 
 | Mode | Execution | Infrastructure |
 |---|---|---|
-| **AUTO** | `./gradlew connectedDebugAndroidTest` | Instrumented on device/emulator |
+| **AUTO** | Disposable emulator: `./gradlew connectedDebugAndroidTest`; shared phone: `tools/run_device_tests_preserving_app.sh` | Instrumented on device/emulator |
 | **SEMI** | Instrumented + explicit external release step | Hang gate or timing dependency |
 | **MANUAL** | `adb shell` script or physical observation | Process death; cannot survive in test runner |
 
@@ -1039,8 +1039,10 @@ current architecture). Release the hang before the next test or the IO thread po
 service transitions to `EngineState.Error` (NOT `Stopped`) per `runtime_invariants.md §3.2 / §3.5`;
 daemon thread orphaned, split-brain risk surfaced to user.
 
-**Precondition:** `veer_fault_inject` .aar with `HookBeforeShutdown` compiled in (SI-08 in
-`runtime_stability_plan.md §6`). Test skips automatically when the hook is absent.
+**Precondition:** the packaged fault-injection debug AAR with
+`HookBeforeShutdown` compiled in. This capability was completed under SI-08;
+the test remains capability-guarded for ad-hoc runs that deliberately load a
+release AAR.
 
 **Procedure:**
 1. Start VPN normally. Await `Running`.
@@ -1638,3 +1640,17 @@ void clearCallMetrics();
 Main process calls `veerCoreService.getCallMetricsJson()`, deserializes, and runs the same
 assertions as the A1 instrumented tests. The test API surface is identical; only the
 transport changes from in-process JNI to Binder.
+
+---
+
+## 11. Shared Physical-Device Safety
+
+Do not run `connectedDebugAndroidTest` against a phone that contains a developer's
+live Veer profiles or credentials. Android Gradle Plugin uninstalls the target APK
+after the connected task, which erases app-private data and VPN consent.
+
+Use `tools/run_device_tests_preserving_app.sh` instead. It builds both APKs,
+updates the target with `adb install -r`, installs the test APK, runs the same
+instrumentation runner, then removes only `com.yamax.veer.test`. The target
+package and its data remain installed. The lifecycle suite intentionally leaves
+the VPN stopped; restore and verify the production runtime after the test.

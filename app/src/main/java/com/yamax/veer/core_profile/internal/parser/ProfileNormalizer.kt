@@ -5,6 +5,7 @@ import com.yamax.veer.core_profile.NormalizedDns
 import com.yamax.veer.core_profile.NormalizedProxy
 import com.yamax.veer.core_profile.NormalizedProxyGroup
 import com.yamax.veer.core_profile.NormalizedRule
+import com.yamax.veer.core_profile.SubscriptionMetadata
 
 /**
  * Produces a clean [ImportedProfile] from a parsed one:
@@ -17,9 +18,14 @@ import com.yamax.veer.core_profile.NormalizedRule
 internal object ProfileNormalizer {
 
     fun normalize(profile: ImportedProfile): ImportedProfile {
-        val proxies     = deduplicateAndNormalizeProxies(profile.proxies)
+        val normalizedProxies = deduplicateAndNormalizeProxies(profile.proxies)
+        val metadataNames = normalizedProxies.asSequence()
+            .map { it.name }
+            .filter(SubscriptionMetadata::isLikelyMetadataName)
+            .toSet()
+        val proxies     = normalizedProxies.filterNot { it.name in metadataNames }
         val proxyNames  = proxies.map { it.name }.toSet()
-        val groups      = normalizeGroups(profile.proxyGroups)
+        val groups      = normalizeGroups(profile.proxyGroups, metadataNames)
         val groupNames  = groups.map { it.name }.toSet()
         val validTargets = proxyNames + groupNames + setOf("DIRECT", "REJECT", "PASS", "COMPATIBLE")
         val rules       = normalizeRules(profile.rules, validTargets)
@@ -40,12 +46,18 @@ internal object ProfileNormalizer {
             .map { it.copy(type = it.type.lowercase(), name = it.name.sanitize()) }
     }
 
-    private fun normalizeGroups(groups: List<NormalizedProxyGroup>): List<NormalizedProxyGroup> =
+    private fun normalizeGroups(
+        groups: List<NormalizedProxyGroup>,
+        metadataNames: Set<String>,
+    ): List<NormalizedProxyGroup> =
         groups.map { g ->
             g.copy(
                 name = g.name.sanitize(),
                 type = g.type.lowercase(),
-                proxies = g.proxies.map { it.sanitize() },
+                proxies = g.proxies
+                    .map { it.sanitize() }
+                    .filterNot { it in metadataNames }
+                    .distinct(),
             )
         }
 
@@ -61,10 +73,17 @@ internal object ProfileNormalizer {
 
     private fun normalizeDns(dns: NormalizedDns?): NormalizedDns? {
         if (dns == null || !dns.enabled) return null
-        // Strip blank entries from nameserver lists
+        // Keep the profile's fallback resolvers: they are commonly the only
+        // unpolluted answers for foreign domains on restricted networks.
         return dns.copy(
+            defaultNameservers  = dns.defaultNameservers.filter { it.isNotBlank() }.distinct(),
             nameservers         = dns.nameservers.filter { it.isNotBlank() },
-            fallbackNameservers = dns.fallbackNameservers.filter { it.isNotBlank() },
+            fallbackNameservers = dns.fallbackNameservers.filter { it.isNotBlank() }.distinct(),
+            fallbackFilter      = dns.fallbackFilter?.copy(
+                ipCidrs  = dns.fallbackFilter.ipCidrs.filter { it.isNotBlank() }.distinct(),
+                domains = dns.fallbackFilter.domains.filter { it.isNotBlank() }.distinct(),
+                geoSites = dns.fallbackFilter.geoSites.filter { it.isNotBlank() }.distinct(),
+            ),
         )
     }
 

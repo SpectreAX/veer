@@ -1,6 +1,7 @@
 package com.yamax.veer.core_profile.internal.parser
 
 import com.yamax.veer.core_logging.VeerLog
+import com.yamax.veer.core_profile.SubscriptionUsageParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Cookie
@@ -11,6 +12,8 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.brotli.BrotliInterceptor
 import java.io.File
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.util.concurrent.TimeUnit
 
 internal object UrlFetcher {
@@ -146,7 +149,12 @@ internal object UrlFetcher {
                     return@use AttemptResult.Fatal(reason)
                 }
 
-                val bytes = response.body?.bytes()
+                val responseBody = response.body
+                val declaredLength = responseBody?.contentLength() ?: -1L
+                if (declaredLength > ProfileImportPolicy.MAX_PROFILE_BYTES) {
+                    return@use AttemptResult.Fatal("response exceeds the 10 MiB profile limit")
+                }
+                val bytes = responseBody?.byteStream()?.readBytesLimited(ProfileImportPolicy.MAX_PROFILE_BYTES)
                 if (bytes == null || bytes.isEmpty()) {
                     VeerLog.profile(
                         "subscription fetch host=$host attempt=$attempt empty body — retry with next UA",
@@ -188,6 +196,9 @@ internal object UrlFetcher {
                         bytes         = bytes,
                         finalHost     = finalHost,
                         redirectCount = redirectInfo.count,
+                        subscriptionUsage = SubscriptionUsageParser.parse(
+                            response.header("Subscription-Userinfo"),
+                        ),
                     )
                 )
             }
@@ -296,14 +307,10 @@ internal object UrlFetcher {
             val capped     = bodyPreview.take(4096)
             val meaningful = capped.lines().filter { it.isNotBlank() }
             VeerLog.profile(
-                "[diag] body preview ${capped.length}/${bodyPreview.length} chars, ${meaningful.size} non-blank lines:",
+                "[diag] HTML body omitted for privacy:" +
+                    " ${bodyPreview.length} chars, ${meaningful.size} non-blank lines in first ${capped.length} chars",
                 VeerLog.Level.WARN,
             )
-            val toLog = if (meaningful.size > 30)
-                meaningful.take(30) + listOf("… (+${meaningful.size - 30} more lines)")
-            else
-                meaningful
-            toLog.forEach { line -> VeerLog.profile("[diag] $line", VeerLog.Level.WARN) }
         }
     }
 
@@ -416,5 +423,19 @@ internal object UrlFetcher {
                 it == '-' || it == '_' || it == '\n' || it == '\r'
         }
         return eligible.toDouble() / t.length > 0.95
+    }
+
+    private fun InputStream.readBytesLimited(maxBytes: Int): ByteArray {
+        val output = ByteArrayOutputStream(minOf(maxBytes, 64 * 1024))
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var total = 0
+        while (true) {
+            val count = read(buffer)
+            if (count < 0) break
+            total += count
+            check(total <= maxBytes) { "response exceeds the 10 MiB profile limit" }
+            output.write(buffer, 0, count)
+        }
+        return output.toByteArray()
     }
 }

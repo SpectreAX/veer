@@ -4,6 +4,7 @@ import com.yamax.veer.core_logging.VeerLog
 import com.yamax.veer.core_profile.ProfileId
 import com.yamax.veer.core_profile.ProfileMetadata
 import com.yamax.veer.core_profile.ProfileSource
+import com.yamax.veer.core_profile.SubscriptionUsage
 import com.yamax.veer.core_profile.internal.generator.RuntimeConfigGenerator
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -33,14 +34,28 @@ internal object ProfileParser {
     ): ImportResult {
         val log = ImportLogBuilder()
 
+        val policyError = when (input) {
+            is ProfileInput.SubscriptionUrl -> ProfileImportPolicy.validateSubscriptionUrl(input.url)
+            is ProfileInput.YamlBytes -> if (input.bytes.size > ProfileImportPolicy.MAX_PROFILE_BYTES) {
+                ValidationError.ProfileTooLarge(ProfileImportPolicy.MAX_PROFILE_BYTES)
+            } else null
+            is ProfileInput.Base64Text -> if (input.encoded.length > ProfileImportPolicy.MAX_PROFILE_BYTES * 2) {
+                ValidationError.ProfileTooLarge(ProfileImportPolicy.MAX_PROFILE_BYTES)
+            } else null
+        }
+        if (policyError != null) {
+            log.log(PipelineStage.FETCH, LogLevel.ERROR, policyError.message())
+            return ImportResult.Failure(listOf(policyError), log.build())
+        }
+
         return withContext(Dispatchers.Default) {
             // Top-level guard: no exception may escape parse(). CancellationException
             // is re-thrown so coroutine cancellation is not accidentally swallowed.
             try {
                 // 1. Fetch / decode
                 log.beginStage(PipelineStage.FETCH)
-                val (rawYaml, source) = when (val r = fetchRawYaml(input, log, cacheDir)) {
-                    is FetchResult.Ok       -> r.yaml to r.source
+                val fetched = when (val r = fetchRawYaml(input, log, cacheDir)) {
+                    is FetchResult.Ok       -> r
                     is FetchResult.AntiBotError -> return@withContext ImportResult.Failure(
                         errors = listOf(
                             ValidationError.AntiBotBlock(
@@ -57,6 +72,8 @@ internal object ProfileParser {
                         log    = log.build(),
                     )
                 }
+                val rawYaml = fetched.yaml
+                val source = fetched.source
                 log.endStage(PipelineStage.FETCH)
 
                 // 2. Parse YAML
@@ -111,7 +128,10 @@ internal object ProfileParser {
 
                 // Stamp hash into metadata
                 val finalProfile = normalized.copy(
-                    metadata = normalized.metadata.copy(configHashSha256 = generated.sha256Hex)
+                    metadata = normalized.metadata.copy(
+                        configHashSha256 = generated.sha256Hex,
+                        subscriptionUsage = fetched.subscriptionUsage,
+                    )
                 )
 
                 ImportResult.Success(
@@ -138,7 +158,11 @@ internal object ProfileParser {
     // -------------------------------------------------------------------------
 
     private sealed class FetchResult {
-        data class Ok(val yaml: String, val source: ProfileSource) : FetchResult()
+        data class Ok(
+            val yaml: String,
+            val source: ProfileSource,
+            val subscriptionUsage: SubscriptionUsage? = null,
+        ) : FetchResult()
         data class AntiBotError(val result: SubscriptionFetchResult.AntiBotDetected) : FetchResult()
         data class Error(val message: String) : FetchResult()
     }
@@ -173,9 +197,13 @@ internal object ProfileParser {
                             log.log(PipelineStage.FETCH, LogLevel.DEBUG, "response appears base64-encoded")
                             Base64Decoder.decode(text).getOrDefault(text)
                         } else text
+                        if (yaml.toByteArray(Charsets.UTF_8).size > ProfileImportPolicy.MAX_PROFILE_BYTES) {
+                            return FetchResult.Error("response exceeds the 10 MiB profile limit")
+                        }
                         FetchResult.Ok(
                             yaml   = yaml,
                             source = ProfileSource.SubscriptionUrl(input.url, System.currentTimeMillis()),
+                            subscriptionUsage = result.subscriptionUsage,
                         )
                     }
                 }
@@ -187,8 +215,12 @@ internal object ProfileParser {
                 if (decoded.isFailure) {
                     return FetchResult.Error("base64 decode failed: ${decoded.exceptionOrNull()?.message}")
                 }
+                val yaml = decoded.getOrThrow()
+                if (yaml.toByteArray(Charsets.UTF_8).size > ProfileImportPolicy.MAX_PROFILE_BYTES) {
+                    return FetchResult.Error("decoded profile exceeds the 10 MiB profile limit")
+                }
                 FetchResult.Ok(
-                    yaml   = decoded.getOrThrow(),
+                    yaml   = yaml,
                     source = ProfileSource.Base64Text(input.encoded.length),
                 )
             }

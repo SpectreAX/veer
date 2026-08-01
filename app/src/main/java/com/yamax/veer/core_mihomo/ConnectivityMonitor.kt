@@ -5,24 +5,28 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import android.os.Build
 import com.yamax.veer.core_logging.VeerLog
 
 /**
  * Returns a "+" separated string of active transport names for this capabilities snapshot.
- * Uses integer literals for transport constants > API 29 to avoid lint warnings.
+ * Newer transports are queried only on the API level that introduced them.
  */
 private fun NetworkCapabilities.transportNames(): String {
     val labels = buildList {
-        if (hasTransport(0)) add("CELL")       // TRANSPORT_CELLULAR
-        if (hasTransport(1)) add("WIFI")       // TRANSPORT_WIFI
-        if (hasTransport(2)) add("BT")         // TRANSPORT_BLUETOOTH
-        if (hasTransport(3)) add("ETH")        // TRANSPORT_ETHERNET
-        if (hasTransport(4)) add("VPN")        // TRANSPORT_VPN
-        if (hasTransport(5)) add("WIFI_AWARE") // TRANSPORT_WIFI_AWARE
-        if (hasTransport(6)) add("LOWPAN")     // TRANSPORT_LOWPAN
-        if (hasTransport(7)) add("USB")        // TRANSPORT_USB  (API 31+)
-        if (hasTransport(8)) add("THREAD")     // TRANSPORT_THREAD (API 34+)
-        if (hasTransport(9)) add("SAT")        // TRANSPORT_SATELLITE (API 34+)
+        if (hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) add("CELL")
+        if (hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) add("WIFI")
+        if (hasTransport(NetworkCapabilities.TRANSPORT_BLUETOOTH)) add("BT")
+        if (hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) add("ETH")
+        if (hasTransport(NetworkCapabilities.TRANSPORT_VPN)) add("VPN")
+        if (hasTransport(NetworkCapabilities.TRANSPORT_WIFI_AWARE)) add("WIFI_AWARE")
+        if (hasTransport(NetworkCapabilities.TRANSPORT_LOWPAN)) add("LOWPAN")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            hasTransport(NetworkCapabilities.TRANSPORT_USB)) add("USB")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
+            hasTransport(NetworkCapabilities.TRANSPORT_THREAD)) add("THREAD")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM &&
+            hasTransport(NetworkCapabilities.TRANSPORT_SATELLITE)) add("SAT")
     }
     return if (labels.isEmpty()) "none" else labels.joinToString("+")
 }

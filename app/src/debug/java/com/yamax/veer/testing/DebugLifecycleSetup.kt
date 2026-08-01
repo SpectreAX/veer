@@ -1,5 +1,6 @@
 package com.yamax.veer.testing
 
+import android.content.Context
 import com.yamax.veer.core_mihomo.ConnectivityMonitor
 import com.yamax.veer.core_mihomo.MihomoEngine
 
@@ -16,7 +17,11 @@ import com.yamax.veer.core_mihomo.MihomoEngine
  */
 object DebugLifecycleSetup {
 
-    fun install() {
+    fun install(context: Context? = null) {
+        context?.let {
+            FaultInjector.install(it)
+            GoroutineInventory.install(it)
+        }
         MihomoEngine.stateObserver = { state -> PhaseTrace.record(state) }
         ConnectivityMonitor.eventObserver = { event -> ConnectivityTrace.record(event) }
     }

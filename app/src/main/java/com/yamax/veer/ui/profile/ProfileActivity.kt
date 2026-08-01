@@ -9,6 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.yamax.veer.core_profile.ProfileId
+import com.yamax.veer.ui.dns.DnsSettingsActivity
 import com.yamax.veer.ui.theme.VeerTheme
 
 class ProfileActivity : ComponentActivity() {
@@ -31,6 +32,9 @@ class ProfileActivity : ComponentActivity() {
                 when (val route = currentRoute) {
                     is ProfileRoute.List   -> ProfileListScreen(
                         onProfileDetail = { id -> currentRoute = ProfileRoute.Detail(id) },
+                        onProfileDns = { id ->
+                            startActivity(DnsSettingsActivity.intent(this, id))
+                        },
                     )
                     is ProfileRoute.Detail -> ProfileDetailScreen(
                         profileId = route.profileId,

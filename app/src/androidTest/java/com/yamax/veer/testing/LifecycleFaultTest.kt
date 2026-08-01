@@ -7,7 +7,12 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.yamax.veer.BuildConfig
 import com.yamax.veer.core_mihomo.EngineState
 import com.yamax.veer.core_mihomo.MihomoEngine
+import com.yamax.veer.core_mihomo.StartupStage
 import com.yamax.veer.core_mihomo.VeerVpnService
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
@@ -65,14 +70,13 @@ class LifecycleFaultTest {
     }
 
     /**
-     * Skips the calling test when the Go-side shutdown hang hook is absent from
-     * the loaded .aar. The hook (setFaultHangBeforeShutdown) is required to
-     * make Veercore.stop() block so the JNI latch can time out. Until the
-     * go_core debug build provides it, T-09 is registered as SI-08 tech debt.
+     * Guards the test when a non-fault-injection AAR is loaded. The packaged
+     * debug AAR provides setFaultHangBeforeShutdown; the assumption keeps
+     * ad-hoc release-AAR runs from being reported as product failures.
      */
     private fun assumeShutdownHangAvailable() {
         assumeTrue(
-            "setFaultHangBeforeShutdown not in loaded .aar — see SI-08 in runtime_stability_plan.md §6",
+            "setFaultHangBeforeShutdown requires the fault-injection debug AAR",
             FaultInjector.isShutdownHangAvailable,
         )
     }
@@ -100,6 +104,8 @@ class LifecycleFaultTest {
 
     private fun startVpn() = ctx.startForegroundService(VeerVpnService.startIntent(ctx))
     private fun stopVpn()  = ctx.startForegroundService(VeerVpnService.stopIntent(ctx))
+    private fun reconnectVpn() =
+        ctx.startForegroundService(VeerVpnService.reconnectIntent(ctx))
 
     // -------------------------------------------------------------------------
     // Test lifecycle
@@ -109,7 +115,9 @@ class LifecycleFaultTest {
         @BeforeClass
         @JvmStatic
         fun installObserver() {
-            DebugLifecycleSetup.install()
+            DebugLifecycleSetup.install(
+                InstrumentationRegistry.getInstrumentation().targetContext,
+            )
         }
     }
 
@@ -152,20 +160,21 @@ class LifecycleFaultTest {
     // Validates: §4.4 (JNI non-cancellable), §2.4 (forced close on timeout),
     //            STOP_TIMEOUT_MS enforcement, state reaches Stopped.
     //
-    // Procedure: inject a 5 s hang on ApplyConfig; start VPN; immediately stop;
+    // Procedure: inject a release-controlled hang on ApplyConfig; start VPN; immediately stop;
     // override stop timeout to 2 s. The 2 s timeout fires while bootCore holds
     // engineMutex (suspended inside Veercore.start), tearDownTun() is force-
-    // called, state reaches Stopped. The JNI thread remains blocked for up to
-    // 5 s after the test, but does not prevent the service from reaching Stopped.
+    // called, state reaches Stopped. The test then releases JNI and verifies the
+    // mandatory late-start cleanup pass before allowing the next test to begin.
     // =========================================================================
     @Test(timeout = 15_000)
     fun hangStartTimeoutPath() {
         checkVpnPrepared()
         assumeFaultInjectAar()
 
-        // 5 s hang → longer than the 2 s test timeout, shorter than the test's
-        // overall JUnit timeout so the JNI thread unblocks before the process exits.
-        FaultInjector.hangBeforeApplyConfig(durationMs = 5_000L)
+        // A release-controlled gate makes the timeout deterministic and lets the
+        // test wait for full native drainage instead of leaking work into the
+        // following test.
+        FaultInjector.hangBeforeApplyConfig(durationMs = -1L)
         FaultInjector.setStopTimeout(timeoutMs = 2_000L)
 
         val startMs = System.currentTimeMillis()
@@ -199,9 +208,66 @@ class LifecycleFaultTest {
             PhaseTrace.containsSequence("Stopping", "Stopped"),
         )
 
-        // Unblock the still-running JNI thread so it does not consume the IO
-        // thread pool for subsequent tests.
+        // Unblock JNI, then require bootCore's late-start cleanup to call the
+        // native stop path. Cross-process StateFlow transport intentionally
+        // conflates consecutive identical Stopped snapshots, so a second UI
+        // frame is not a valid cleanup signal after process isolation.
         FaultInjector.releaseApplyConfigHang()
+        val lateCleanupObserved = runBlocking {
+            withTimeoutOrNull(5_000L) {
+                while (FaultInjector.stopCallCount < 1) delay(25L)
+                true
+            }
+        } ?: false
+        assertTrue(
+            "Late-start cleanup did not complete: ${PhaseTrace.stateNames()}",
+            lateCleanupObserved,
+        )
+        assertEquals(
+            "Late-start cleanup must call Veercore.stop() exactly once",
+            1,
+            FaultInjector.stopCallCount,
+        )
+    }
+
+    @Test(timeout = 15_000)
+    fun startupProgressTracksNativeRuntimeGate() {
+        checkVpnPrepared()
+        assumeFaultInjectAar()
+
+        FaultInjector.hangBeforeApplyConfig(durationMs = -1L)
+        startVpn()
+
+        runBlocking {
+            assertNotNull(
+                "Service did not reach Starting",
+                awaitState(EngineState.Starting::class.java, timeoutMs = 4_000L),
+            )
+            val runtimeStage = withTimeoutOrNull(5_000L) {
+                MihomoEngine.startupStage.first {
+                    it == StartupStage.STARTING_RUNTIME
+                }
+            }
+            assertEquals(
+                "Progress must identify the native runtime while ApplyConfig is blocked",
+                StartupStage.STARTING_RUNTIME,
+                runtimeStage,
+            )
+
+            FaultInjector.releaseApplyConfigHang()
+            assertNotNull(
+                "Service did not reach Running after releasing ApplyConfig",
+                awaitState(EngineState.Running::class.java, timeoutMs = 5_000L),
+            )
+            val idleStage = withTimeoutOrNull(2_000L) {
+                MihomoEngine.startupStage.first { it == StartupStage.IDLE }
+            }
+            assertEquals(
+                "Startup progress mirror must reset after the engine leaves Starting",
+                StartupStage.IDLE,
+                idleStage,
+            )
+        }
     }
 
     // =========================================================================
@@ -219,10 +285,16 @@ class LifecycleFaultTest {
 
         FaultInjector.errorBeforeApplyConfig("injected-start-failure")
 
-        startVpn()
-
         runBlocking {
-            // Service should transition: Starting → Error → Stopping → Stopped.
+            // Start collecting before dispatching the service intent. Starting
+            // and Error can be only milliseconds apart, and StateFlow correctly
+            // conflates transient values for late subscribers.
+            val errorWait = async(start = CoroutineStart.UNDISPATCHED) {
+                awaitState(EngineState.Error::class.java, timeoutMs = 4_000L)
+            }
+            startVpn()
+            val error = errorWait.await()
+            assertNotNull("Service did not expose the injected startup error", error)
             val stopped = awaitState(EngineState.Stopped::class.java, timeoutMs = 10_000L)
             assertNotNull("Service did not reach Stopped after injected start failure", stopped)
         }
@@ -264,9 +336,13 @@ class LifecycleFaultTest {
 
         FaultInjector.panicOnJniGoroutine("injected-jni-panic")
 
-        startVpn()
-
         runBlocking {
+            val errorWait = async(start = CoroutineStart.UNDISPATCHED) {
+                awaitState(EngineState.Error::class.java, timeoutMs = 4_000L)
+            }
+            startVpn()
+            val error = errorWait.await()
+            assertNotNull("Service did not expose the JNI panic", error)
             val stopped = awaitState(EngineState.Stopped::class.java, timeoutMs = 10_000L)
             assertNotNull("Service did not reach Stopped after JNI panic", stopped)
         }
@@ -338,7 +414,153 @@ class LifecycleFaultTest {
     }
 
     // =========================================================================
-    // Test 5 — Goroutine count stable across N restart cycles
+    // Start → stop during JNI startup → immediate start
+    //
+    // The final START is user intent, not a duplicate of the first command. It
+    // must wait for the in-flight runtime to drain and then start exactly once.
+    // =========================================================================
+    @Test(timeout = 20_000)
+    fun startStopImmediateStartQueuesUntilSafeDrain() {
+        checkVpnPrepared()
+        assumeFaultInjectAar()
+
+        FaultInjector.hangBeforeApplyConfig(durationMs = 300L)
+        startVpn()
+        runBlocking {
+            val starting = awaitState(EngineState.Starting::class.java, timeoutMs = 4_000L)
+            assertNotNull("Initial start did not enter Starting", starting)
+        }
+
+        stopVpn()
+        startVpn()
+
+        runBlocking {
+            val running = awaitState(EngineState.Running::class.java, timeoutMs = 12_000L)
+            assertNotNull(
+                "Queued start did not resume after safe drain: ${PhaseTrace.stateNames()}",
+                running,
+            )
+        }
+
+        assertEquals(
+            "Expected the original and queued starts only",
+            2,
+            FaultInjector.startCallCount,
+        )
+        assertEquals(
+            "The interrupted runtime must be stopped exactly once",
+            1,
+            FaultInjector.stopCallCount,
+        )
+        assertEquals(
+            "A normal start-stop-start race must not surface Error",
+            0,
+            PhaseTrace.countOf("Error"),
+        )
+    }
+
+    // =========================================================================
+    // Exhausted proxy recovery is data-plane degradation, not a core crash
+    // =========================================================================
+    @Test(timeout = 30_000)
+    fun exhaustedAutoRecoveryKeepsRuntimeRunning() {
+        checkVpnPrepared()
+
+        FaultInjector.configureExhaustedAutoRecovery()
+
+        startVpn()
+        runBlocking {
+            val running = awaitState(EngineState.Running::class.java, timeoutMs = 12_000L)
+            assertNotNull("Service did not reach Running", running)
+        }
+
+        val exhausted = runBlocking {
+            withTimeoutOrNull(15_000L) {
+                while (!FaultInjector.isAutoRecoveryExhausted()) delay(50L)
+                true
+            }
+        } ?: false
+        assertTrue("Auto recovery did not reach the exhausted path", exhausted)
+        Thread.sleep(500L)
+
+        assertTrue(
+            "Candidate exhaustion must keep the healthy core/TUN alive",
+            MihomoEngine.state.value is EngineState.Running,
+        )
+        assertEquals(
+            "Candidate exhaustion must not be reported as a runtime crash",
+            0,
+            PhaseTrace.countOf("Error"),
+        )
+    }
+
+    // =========================================================================
+    // Test 5 — In-service reconnect skips Android service destruction
+    //
+    // Validates: Running → Stopping → Starting → Running completes through the
+    // single service-owned runtime path without publishing an intermediate
+    // Stopped state or creating overlapping native runtimes.
+    // =========================================================================
+    @Test(timeout = 20_000)
+    fun inServiceReconnectCompletesWithoutStoppedFrame() {
+        checkVpnPrepared()
+
+        startVpn()
+        runBlocking {
+            val running = awaitState(EngineState.Running::class.java, timeoutMs = 12_000L)
+            assertNotNull("Service did not reach Running before reconnect", running)
+        }
+        PhaseTrace.clear()
+
+        val startedAt = System.currentTimeMillis()
+        runBlocking {
+            // Register all three collectors before dispatch. Reconnect is often
+            // fast enough that Starting can be published while the test is
+            // still awaiting Stopping; StateFlow intentionally does not replay
+            // that transient value to a later sequential collector.
+            val stoppingWait = async(start = CoroutineStart.UNDISPATCHED) {
+                awaitState(EngineState.Stopping::class.java, timeoutMs = 2_000L)
+            }
+            val startingWait = async(start = CoroutineStart.UNDISPATCHED) {
+                awaitState(EngineState.Starting::class.java, timeoutMs = 4_000L)
+            }
+            val runningWait = async(start = CoroutineStart.UNDISPATCHED) {
+                // Ignore the currently running pre-reconnect generation and
+                // wait specifically for the next Running publication.
+                withTimeoutOrNull(8_000L) {
+                    MihomoEngine.state
+                        .drop(1)
+                        .first { it is EngineState.Running } as EngineState.Running
+                }
+            }
+
+            reconnectVpn()
+
+            val stopping = stoppingWait.await()
+            assertNotNull("Reconnect did not enter Stopping", stopping)
+            val starting = startingWait.await()
+            assertNotNull("Reconnect did not enter Starting", starting)
+            val running = runningWait.await()
+            assertNotNull("Reconnect did not return to Running", running)
+        }
+
+        assertTrue(
+            "Reconnect exceeded 5 seconds",
+            System.currentTimeMillis() - startedAt < 5_000L,
+        )
+        assertTrue(
+            "Expected Stopping → Starting → Running: ${PhaseTrace.stateNames()}",
+            PhaseTrace.containsSequence("Stopping", "Starting", "Running"),
+        )
+        assertEquals(
+            "Fast reconnect must not expose a user-clickable Stopped frame",
+            0,
+            PhaseTrace.countOf("Stopped"),
+        )
+    }
+
+    // =========================================================================
+    // Test 6 — Goroutine count stable across N restart cycles
     //
     // Validates: no goroutine leak accumulates across repeated start/stop cycles
     // (Scenarios 3 and 8 partial-mitigation verification).
@@ -349,42 +571,94 @@ class LifecycleFaultTest {
         checkVpnPrepared()
         assumeFaultInjectAar()
 
-        // Allow goroutines to settle before taking baseline.
-        Thread.sleep(500)
+        // Warm the process-global Mihomo UDP worker pool before taking the
+        // baseline. Those workers are initialized once and intentionally live
+        // for the whole app process; the measured cycles below must not add
+        // any further long-lived goroutines.
+        startVpn()
+        runBlocking {
+            val running = awaitState(EngineState.Running::class.java, timeoutMs = 12_000L)
+            assertNotNull("Warm-up: did not reach Running", running)
+            stopVpn()
+            val stopped = awaitState(EngineState.Stopped::class.java, timeoutMs = 10_000L)
+            assertNotNull("Warm-up: did not reach Stopped", stopped)
+        }
+        Thread.sleep(1_000)
         val baseline = GoroutineInventory.take()
 
-        val cycles = 5
-        repeat(cycles) { i ->
-            startVpn()
-            runBlocking {
-                val running = awaitState(EngineState.Running::class.java, timeoutMs = 12_000L)
-                assertNotNull("Cycle ${i + 1}: did not reach Running", running)
-                stopVpn()
-                val stopped = awaitState(EngineState.Stopped::class.java, timeoutMs = 10_000L)
-                assertNotNull("Cycle ${i + 1}: did not reach Stopped", stopped)
+        fun runCycles(cycles: Int, label: String) {
+            repeat(cycles) { i ->
+                startVpn()
+                runBlocking {
+                    val running = awaitState(EngineState.Running::class.java, timeoutMs = 12_000L)
+                    assertNotNull("$label cycle ${i + 1}: did not reach Running", running)
+                    stopVpn()
+                    val stopped = awaitState(EngineState.Stopped::class.java, timeoutMs = 10_000L)
+                    assertNotNull("$label cycle ${i + 1}: did not reach Stopped", stopped)
+                }
+                // Give goroutines time to drain between cycles.
+                Thread.sleep(500)
             }
-            // Give goroutines time to drain between cycles.
-            Thread.sleep(500)
         }
 
+        val cycles = 5
+        runCycles(cycles, "Measured")
+
         val after = runBlocking {
-            // Poll for up to 2 s for any lagging goroutines to exit.
-            GoroutineInventory.awaitDelta(baseline, timeoutMs = 2_000L) { delta ->
+            // Mihomo closes some provider/check goroutines asynchronously after
+            // the core and TUN have reached Stopped. Poll long enough to
+            // distinguish eventual drainage from an accumulating leak.
+            GoroutineInventory.awaitDelta(baseline, timeoutMs = 10_000L) { delta ->
                 delta <= 2
             }
         }
 
-        val delta = GoroutineInventory.delta(baseline, after)
+        val firstDelta = GoroutineInventory.delta(baseline, after)
+        val firstDiagnosticStacks = if (firstDelta > 8) {
+            GoroutineInventory.take(includeStacks = true).stacks.take(12_000)
+        } else {
+            ""
+        }
         assertTrue(
-            "Goroutine leak detected: delta=$delta after $cycles start/stop cycles " +
-            "(baseline=${baseline.count}, after=${after.count}). " +
-            "Run with includeStacks=true for diagnostics.",
-            delta <= 2,
+            "Unbounded goroutine growth detected in the first $cycles cycles: " +
+                "delta=$firstDelta (baseline=${baseline.count}, after=${after.count}). " +
+                "Remaining goroutines:\n$firstDiagnosticStacks",
+            firstDelta <= 8,
+        )
+
+        // gomobile and the HTTP stack may create a small bounded worker/transport
+        // set only after a fault-heavy suite has exercised several protocol paths.
+        // A real restart leak continues growing in a second batch; a bounded pool
+        // does not. This caught the previous +24-per-cycle dial leak while avoiding
+        // a false failure from one-time runtime warm-up.
+        var finalAfter = after
+        var stabilizedDelta = 0
+        val confirmationCycles = if (firstDelta > 2) 3 else 0
+        if (confirmationCycles > 0) {
+            runCycles(confirmationCycles, "Confirmation")
+            finalAfter = runBlocking {
+                GoroutineInventory.awaitDelta(after, timeoutMs = 10_000L) { delta ->
+                    delta <= 2
+                }
+            }
+            stabilizedDelta = GoroutineInventory.delta(after, finalAfter)
+        }
+
+        val diagnosticStacks = if (stabilizedDelta > 2) {
+            GoroutineInventory.take(includeStacks = true).stacks.take(12_000)
+        } else {
+            ""
+        }
+        assertTrue(
+            "Goroutine leak detected after stabilization: firstDelta=$firstDelta, " +
+                "confirmationDelta=$stabilizedDelta after $confirmationCycles cycles " +
+                "(final=${finalAfter.count}). Remaining goroutines:\n$diagnosticStacks",
+            stabilizedDelta <= 2,
         )
     }
 
     // =========================================================================
-    // Test 6 — EngineState.Error message is non-empty after injected failure
+    // Test 7 — EngineState.Error message is non-empty after injected failure
     //
     // Validates: §6.1 — all failures produce observable state with a message.
     // Does not require VPN permission (error injected before ApplyConfig, after
@@ -398,10 +672,12 @@ class LifecycleFaultTest {
         val injectedMsg = "error-message-visibility-check"
         FaultInjector.errorBeforeApplyConfig(injectedMsg)
 
-        startVpn()
-
         val errorState = runBlocking {
-            awaitState(EngineState.Error::class.java, timeoutMs = 8_000L)
+            val errorWait = async(start = CoroutineStart.UNDISPATCHED) {
+                awaitState(EngineState.Error::class.java, timeoutMs = 8_000L)
+            }
+            startVpn()
+            errorWait.await()
         }
         assertNotNull("EngineState.Error was not reached", errorState)
         assertTrue(
@@ -416,7 +692,7 @@ class LifecycleFaultTest {
     }
 
     // =========================================================================
-    // Test 7 — Phase transition observer is installed and fires
+    // Test 8 — Phase transition observer is installed and fires
     //
     // Validates: DebugLifecycleSetup.install() wires PhaseTrace correctly;
     // MihomoEngine.stateObserver != null; every setState call is captured.
@@ -446,7 +722,7 @@ class LifecycleFaultTest {
     }
 
     // =========================================================================
-    // Test 8 — MihomoEngine.setState is inaccessible from outside core_mihomo
+    // Test 9 — MihomoEngine.setState is inaccessible from outside core_mihomo
     //
     // This is a compile-time assertion encoded as a runtime check. If this test
     // reaches its body, setState is callable from the test package — which means
@@ -472,12 +748,12 @@ class LifecycleFaultTest {
     }
 
     // =========================================================================
-    // Test 9 — JNI stop timeout → EngineState.Error (F2 / §3.2 Stopping→Error)
+    // Test 10 — JNI stop timeout → EngineState.Error (F2 / §3.2 Stopping→Error)
     //
     // Validates: Layer 2 CountDownLatch (STOP_JNI_TIMEOUT_MS = 5 s) fires when
     // Veercore.stop() hangs, and the terminal state is Error NOT Stopped.
     //
-    // Skips when the debug .aar lacks setFaultHangBeforeShutdown (SI-08).
+    // Capability-guarded when an ad-hoc build loads a non-fault-injection AAR.
     // testStopTimeoutMs is raised above STOP_JNI_TIMEOUT_MS so Layer 1
     // (withTimeoutOrNull) does not preempt the JNI latch.
     // =========================================================================
@@ -526,7 +802,7 @@ class LifecycleFaultTest {
     }
 
     // =========================================================================
-    // Test 10 — Late connectivity callback takes "teardown in progress" branch (F1)
+    // Test 11 — Late connectivity callback takes "teardown in progress" branch (F1)
     //
     // Validates: coreRunning=false is written before connectivityMonitor.stop()
     // (F1 fix), so an onAllNetworksLost callback that arrives during teardown

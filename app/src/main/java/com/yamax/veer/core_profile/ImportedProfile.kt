@@ -63,7 +63,19 @@ internal data class NormalizedDns(
     val enabled: Boolean,
     val ipv6: Boolean,
     val enhancedMode: String?,          // "fake-ip" | "redir-host" | null
+    val fakeIpRange: String?,
+    val useHosts: Boolean?,
     val fakeDnsFilter: List<String>,
+    val defaultNameservers: List<String>,
     val nameservers: List<String>,
     val fallbackNameservers: List<String>,
+    val fallbackFilter: NormalizedDnsFallbackFilter?,
+)
+
+internal data class NormalizedDnsFallbackFilter(
+    val geoIp: Boolean?,
+    val geoIpCode: String?,
+    val ipCidrs: List<String>,
+    val domains: List<String>,
+    val geoSites: List<String>,
 )

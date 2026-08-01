@@ -190,20 +190,38 @@ Rationale for each ordering:
 ### Transfer mechanism
 
 `Start(homeDir, configName, tunFd int32)` passes the tun fd as a 32-bit integer.
-When `tunFd >= 0`, the Go side sets:
+When `tunFd >= 0`, the Go side first duplicates it and sets:
 
 ```go
-cfg.General.Tun.Device = "fd://" + strconv.Itoa(int(tunFd))
+dupFd, err := syscall.Dup(int(tunFd))
+cfg.General.Tun.FileDescriptor = dupFd
+cfg.General.Tun.Inet4Address = []netip.Prefix{netip.MustParsePrefix("172.19.0.1/30")}
+cfg.General.Tun.Inet6Address = []netip.Prefix{netip.MustParsePrefix("fdfe:dcba:9876::1/126")}
 ```
 
-Mihomo's sing-tun inbound handler interprets `fd://N` by calling Go's
-`os.NewFile(uintptr(N), "tun")` and then `dup`-ing the resulting `*os.File`.
-After `executor.ApplyConfig` returns:
+The Android builder assigns the same interface addresses. Veer uses Mihomo's
+`gvisor` TUN stack so TCP and UDP are processed fully in userspace; the AAR must
+therefore be built with both `cmfa` and `with_gvisor`. A `cmfa`-only build
+silently leaves only the `system` stack available, whose kernel TCP forwarder
+is unreliable with this Android-owned fd even though UDP appears healthy.
+
+**Verified correction (2026-06-30):** mihomo v1.18.10 does not parse a
+`device: fd://N` value. Its sing-tun listener consumes the explicit
+`FileDescriptor` field and wraps that descriptor with `os.NewFile`. The prior
+contract text and bridge implementation conflicted with the pinned source and
+caused sing-tun to attempt creating its own TUN, which failed with `permission denied`.
+After `hub.ApplyConfig` returns:
 
 - **Go holds a dup of fd N.** The integer `N` in Go's dup table is independent
   of the JVM's `ParcelFileDescriptor`.
 - **The JVM-side `ParcelFileDescriptor` remains valid** and may be closed
   independently.
+
+The bridge calls `hub.ApplyConfig(cfg)`, not `executor.ApplyConfig(cfg, true)`.
+The latter explicitly excludes the external controller in mihomo v1.18.10 and
+would leave `127.0.0.1:9090` unavailable while the Android state incorrectly
+reported `Running`. `Stop()` pairs `executor.Shutdown()` with an empty
+`route.ReCreateServer` call to close the controller listener as well.
 
 ### Post-transfer semantics
 
@@ -504,8 +522,11 @@ and cancels the scope. The JNI thread continues running in the destroyed
 service's context until `ApplyConfig` completes or panics.
 
 **Current mitigations:**
-- `dns.fallback:` is excluded from `base.yaml` — removes the MMDB-download
-  deadlock path entirely (see `runtime_invariants.md` §7.4 / YAML gotcha).
+- Imported `dns.fallback:` and `fallback-filter` are preserved so polluted
+  primary DNS answers can be rejected. `GeoDatabaseManager` installs and
+  verifies bundled `geoip.metadb` before config validation; startup fails
+  before TUN establishment if it is unavailable. This removes the
+  MMDB-download-through-TUN deadlock while retaining correct DNS behavior.
 - `SetProtector` is installed before `Start`, so any outbound sockets created
   during `ApplyConfig` bypass the tun and cannot form a routing loop.
 - The MMDB download, if triggered by a `geoip` rule, goes through the protected

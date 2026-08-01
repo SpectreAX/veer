@@ -1,6 +1,8 @@
 package com.yamax.veer.core_profile.internal.parser
 
 import com.yamax.veer.core_profile.ImportedProfile
+import com.yamax.veer.core_profile.SubscriptionUsage
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 // ---------------------------------------------------------------------------
 // Input types
@@ -51,6 +53,9 @@ internal sealed class ValidationError {
     data class BrokenGroupReference(val groupName: String, val missingProxy: String) : ValidationError()
     object NoProxies : ValidationError()
     object NoProxyGroups : ValidationError()
+    data class InvalidSubscriptionUrl(val detail: String) : ValidationError()
+    data class ProfileTooLarge(val maxBytes: Int) : ValidationError()
+    object RuntimeMustBeStopped : ValidationError()
     data class AntiBotBlock(
         val category: HtmlCategory,
         val statusCode: Int,
@@ -69,9 +74,28 @@ internal fun ValidationError.message(): String = when (this) {
     is ValidationError.BrokenGroupReference   -> "Group \"$groupName\" references unknown proxy \"$missingProxy\""
     is ValidationError.NoProxies              -> "Profile contains no proxies"
     is ValidationError.NoProxyGroups          -> "Profile contains no proxy groups"
+    is ValidationError.InvalidSubscriptionUrl -> "Invalid subscription URL: $detail"
+    is ValidationError.ProfileTooLarge        -> "Profile exceeds the ${maxBytes / 1024 / 1024} MiB limit"
+    is ValidationError.RuntimeMustBeStopped   -> "Stop the VPN before changing the active profile"
     is ValidationError.AntiBotBlock           ->
         "${category.displayName()} at $finalHost (HTTP $statusCode" +
             (if (redirectCount > 0) ", $redirectCount redirect(s)" else "") + ")"
+}
+
+internal object ProfileImportPolicy {
+    const val MAX_PROFILE_BYTES: Int = 10 * 1024 * 1024
+
+    fun validateSubscriptionUrl(value: String): ValidationError.InvalidSubscriptionUrl? {
+        val parsed = value.trim().toHttpUrlOrNull()
+            ?: return ValidationError.InvalidSubscriptionUrl("not a valid URL")
+        if (parsed.scheme != "https") {
+            return ValidationError.InvalidSubscriptionUrl("HTTPS is required")
+        }
+        if (parsed.host.isBlank()) {
+            return ValidationError.InvalidSubscriptionUrl("host is missing")
+        }
+        return null
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -151,6 +175,7 @@ internal sealed class SubscriptionFetchResult {
         val bytes: ByteArray,
         val finalHost: String,
         val redirectCount: Int,
+        val subscriptionUsage: SubscriptionUsage? = null,
     ) : SubscriptionFetchResult()
 
     data class AntiBotDetected(
