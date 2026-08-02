@@ -289,12 +289,8 @@ condition. Validate that the watchdog's 30-second poll interval provides adequat
 (a single `null` response during handoff should NOT fire the watchdog because the
 next poll succeeds).
 
-**Current watchdog limitation:** The watchdog fires on the FIRST null response. There is no
-retry/debounce. During a network handoff, the Mihomo REST server remains on loopback (should
-be reachable), but if there is any brief period where the Kotlin HTTP client's socket is
-on the old interface and fails, the watchdog may false-positive.
-
-**Mitigation to implement (Phase 1.2 candidate):** Add a 2-retry debounce to the watchdog:
+**Implemented mitigation (Phase 1.2 SI-01):** The watchdog uses a 2-retry
+debounce (three consecutive failures total):
 ```kotlin
 // In launchWatchdog():
 var consecutiveFailures = 0
@@ -305,7 +301,7 @@ while (isActive && coreRunning) {
         if (consecutiveFailures >= 3) {  // 3 consecutive failures before triggering
             MihomoEngine.publishLifecycleLog("watchdog: 3 consecutive API failures — stopping")
             MihomoEngine.setState(EngineState.Error("watchdog: core API unreachable"))
-            stopSelf()
+            requestShutdown("watchdog failure")
             break
         }
     } else {
@@ -595,32 +591,38 @@ requests are retried without a backoff cap. Monitor goroutine count during capti
 NAT64/DNS64.
 
 **Architecture analysis:**
-- VeerVpnService establishes the tun with both IPv4 (`172.19.0.1/30`) and IPv6
-  (`fdfe:dcba:9876::1/126`) addresses. Route installation is governed by the
+- VeerVpnService establishes the TUN with IPv4 (`172.19.0.1/30`) and IPv6
+  (`fdfe:dcba:9876::1/126`) addresses. Mihomo uses the fd-backed `gvisor` stack
+  (AAR tags `cmfa,with_gvisor`) for userspace TCP/UDP. Route installation is governed by the
   `BYPASS_LAN` flag (`VeerVpnService` companion, compile-time constant, currently `true`):
-    - **IPv4, `BYPASS_LAN = true`** — default route *minus the three RFC1918 blocks*.
-      Two implementations gated on `Build.VERSION.SDK_INT` because
+    - **`BYPASS_LAN = true`** — both address families use a default route minus
+      local ranges: IPv4 RFC1918 (`10/8`, `172.16/12`, `192.168/16`), IPv4
+      link-local (`169.254/16`), IPv4 multicast (`224/4`), IPv6 ULA
+      (`fc00::/7`) and IPv6 link-local (`fe80::/10`). Two implementations are
+      gated on `Build.VERSION.SDK_INT` because
       `VpnService.Builder.excludeRoute()` is API 33 (`TIRAMISU`):
-        - **API 33+** (`applyRoutes`, excludeRoute branch): install `0.0.0.0/0`, then
-          `excludeRoute()` each of `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`
-          (`RFC1918_BLOCKS`).
-        - **API 29–32** (`applyRoutes`, split-route branch): `excludeRoute()` does not
-          exist, so install the explicit CIDR complement of those three blocks —
-          31 routes (`IPV4_BYPASS_LAN_ROUTES`): `0.0.0.0/5`, `8.0.0.0/7`, `11.0.0.0/8`,
+        - **API 33+**: install `0.0.0.0/0` and `::/0`, then `excludeRoute()` the
+          seven local prefixes.
+        - **API 29–32**: install exact CIDR complements. IPv4 uses 40 routes:
+          `0.0.0.0/5`, `8.0.0.0/7`, `11.0.0.0/8`,
           `12.0.0.0/6`, `16.0.0.0/4`, `32.0.0.0/3`, `64.0.0.0/2`, `128.0.0.0/3`,
-          `160.0.0.0/5`, `168.0.0.0/6`, `172.0.0.0/12`, `172.32.0.0/11`, `172.64.0.0/10`,
+          `160.0.0.0/5`, `168.0.0.0/8`, `169.0.0.0/9`, `169.128.0.0/10`,
+          `169.192.0.0/11`, `169.224.0.0/12`, `169.240.0.0/13`,
+          `169.248.0.0/14`, `169.252.0.0/15`, `169.255.0.0/16`,
+          `170.0.0.0/7`, `172.0.0.0/12`, `172.32.0.0/11`, `172.64.0.0/10`,
           `172.128.0.0/9`, `173.0.0.0/8`, `174.0.0.0/7`, `176.0.0.0/4`, `192.0.0.0/9`,
           `192.128.0.0/11`, `192.160.0.0/13`, `192.169.0.0/16`, `192.170.0.0/15`,
           `192.172.0.0/14`, `192.176.0.0/12`, `192.192.0.0/10`, `193.0.0.0/8`,
-          `194.0.0.0/7`, `196.0.0.0/6`, `200.0.0.0/5`, `208.0.0.0/4`, `224.0.0.0/3`.
-          The three RFC1918 blocks are never routed into the tun and fall through to
-          the underlying network.
-    - **IPv4, `BYPASS_LAN = false`** — a single `0.0.0.0/0` default route, no exclusions.
-    - **IPv6** — a single `::/0` default route in **both** flag states. IPv6 has no LAN
-      bypass: ULA (`fc00::/7`) and link-local (`fe80::/10`) are *not* excluded. This is
-      not yet implemented, not a deliberate end-state — tracked as **SI-09**.
-- **Exactly three IPv4 ranges bypass the tun under `BYPASS_LAN`: `10.0.0.0/8`,
-  `172.16.0.0/12`, `192.168.0.0/16`.** Other special-use ranges are handled as follows
+          `194.0.0.0/7`, `196.0.0.0/6`, `200.0.0.0/5`, `208.0.0.0/4`,
+          `240.0.0.0/4`.
+          IPv6 uses 9 routes: `::/1`, `8000::/2`, `c000::/3`, `e000::/4`,
+          `f000::/5`, `f800::/6`, `fe00::/9`, `fec0::/10`, `ff00::/8`.
+          Neither fallback adds a family default route.
+    - **`BYPASS_LAN = false`** — plain `0.0.0.0/0` and `::/0` defaults with no
+      exclusions.
+- **Exactly five IPv4 ranges bypass the tun under `BYPASS_LAN`: `10.0.0.0/8`,
+  `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16` and `224.0.0.0/4`.**
+  Other special-use ranges are handled as follows
   (each is a verifiable fact about the route table above, not an assumption):
     - `127.0.0.0/8` (loopback) — **not excluded; routed into the tun like any other
       non-excluded range** (via the `64.0.0.0/2` split route on 29–32, or the 33+ default).
@@ -628,11 +630,8 @@ NAT64/DNS64.
       carrier-assigned *source* address (e.g. China Mobile), not the destinations the
       device talks to; tunneling it is correct, and excluding it would risk leaking
       traffic meant for the proxy. It is not a LAN the device owns.
-    - `169.254.0.0/16` (link-local) and `224.0.0.0/4` (multicast) — **routed into the tun
-      today** (169.254/16 via the `168.0.0.0/6` split route or the 33+ default; 224/4 via
-      the `224.0.0.0/3` split route or the 33+ default). Consequence: link-local reach and
-      LAN multicast discovery (mDNS, SSDP) are captured by the VPN while connected. This is
-      a **known limitation, not an intentional policy** — tracked as **SI-10**.
+    - `169.254.0.0/16` (link-local) and `224.0.0.0/4` (multicast) — bypass the
+      TUN so local discovery such as mDNS/SSDP can remain on the physical LAN.
 - On an IPv6-only network, the underlying physical network has no IPv4 connectivity.
 - Mihomo's proxy chain needs to reach proxy servers: if proxy servers have only IPv4 addresses,
   NAT64 is required. Android's DNS64 (built into the resolver) handles this transparently for
@@ -815,23 +814,21 @@ tracked:
 
 | ID | Issue | Scenario | Priority |
 |---|---|---|---|
-| SI-01 | Watchdog fires on single null response; no debounce | S2, S3, S4 | High |
+| SI-01 | **Completed 2026-06-30:** watchdog requires 3 consecutive null responses; a successful probe resets the streak | S2, S3, S4 | High |
 | SI-02 | Mihomo DNS engine does not use DNS64; IPv6-only proxy failures | S10 | Medium |
 | SI-03 | Rule provider fetch goroutines may accumulate during captive portal | S9 | Medium |
 | SI-04 | No app-level guidance for OEM battery optimization exemption | S6 | High |
 | SI-05 | No VPN coverage gap metric exposed to UI (user unaware of reconnect) | S6, S12 | Medium |
 | SI-06 | Log file cap not enforced per-line (a single long log line can exceed PIPE_BUF atomicity guarantee) | S1 | Low |
 | SI-07 | Watchdog uses fixed poll interval; should back off on repeated failures | S2, S3 | Medium |
-| SI-08 | Go-side `HookBeforeShutdown` absent from debug .aar — Test 9 (T-06 / F2) skips at runtime; `Stopping→Error` path unautomatable without it. **Fix:** add `setFaultHangBeforeShutdown` / `releaseHangBeforeShutdown` to `veer_core.go` debug build and rebuild `.aar`. | F2, T-06 | **Highest** |
-| SI-09 | IPv6 LAN bypass not implemented — tun installs `::/0` regardless of `BYPASS_LAN`; IPv6 ULA (`fc00::/7`) and link-local (`fe80::/10`) are not excluded, so IPv6 LAN traffic is tunneled even when IPv4 LAN bypass is on. **Fix:** mirror `applyRoutes()` for IPv6 (excludeRoute `fc00::/7` + `fe80::/10` on 33+, split-route complement on 29–32). | S10 | Medium |
-| SI-10 | IPv4 multicast (`224.0.0.0/4`) and link-local (`169.254.0.0/16`) route into the tun under `BYPASS_LAN`, so LAN multicast/mDNS/SSDP discovery is captured while connected. **Fix (if desired):** add both to the exclusion set (extra `excludeRoute()` on 33+; recompute the split-route complement on 29–32). | S10 | Low |
+| SI-08 | **Completed 2026-07-28:** debug AAR includes `setFaultHangBeforeShutdown` / `releaseHangBeforeShutdown`; T-06 verifies the 5 s JNI stop latch preserves `Stopping → Error`. | F2, T-06 | Complete |
+| SI-09 | **Completed 2026-07-29:** LAN bypass now excludes IPv6 ULA (`fc00::/7`) and link-local (`fe80::/10`) with `excludeRoute()` on API 33+ and an exact 9-prefix complement on API 29–32. Pure route-plan tests prove coverage and non-overlap; Android 16 LinkProperties showed both throw routes while VPN validation and proxy HTTP 204 remained healthy. | S10 | Complete |
+| SI-10 | **Completed 2026-07-29:** IPv4 link-local (`169.254.0.0/16`) and multicast (`224.0.0.0/4`) now bypass the TUN. API 29–32 uses an exact 40-prefix complement; Android 16 exposed both throw routes and retained healthy proxy traffic. | S10 | Complete |
 
-**SI-01 (watchdog debounce) is the highest-priority Phase 1.2 item.** SI-08 is the highest-priority
-test-infrastructure item — without it, the `Stopping→Error` path (§3.2) has no automated coverage. Every real-world
-network scenario produces at least a brief window where the underlying network is unavailable.
-A single-probe watchdog with no debounce will generate false EngineState.Error transitions
-on any device that experiences transient network blips, which is every device in every
-real-world deployment.
+**SI-01, SI-08, SI-09 and SI-10 are complete.** The full Android instrumentation suite
+passed on the Android 16 arm64 emulator with 16 tests, 0 failures and 0 skips.
+The remaining acceptance work is to run the stability scenarios on the minimum
+physical-device matrix in §5.13.
 
 ---
 

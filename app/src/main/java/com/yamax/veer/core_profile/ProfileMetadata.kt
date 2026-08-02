@@ -15,4 +15,6 @@ internal data class ProfileMetadata(
     val rawSizeBytes: Long,
     /** SHA-256 hex of the generated Mihomo runtime config produced at import. */
     val configHashSha256: String,
+    /** Provider quota/expiry response metadata; null when the provider omits it. */
+    val subscriptionUsage: SubscriptionUsage? = null,
 )

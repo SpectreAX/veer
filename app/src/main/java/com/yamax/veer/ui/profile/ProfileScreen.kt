@@ -19,6 +19,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -43,13 +45,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.yamax.veer.R
 import com.yamax.veer.core_profile.ImportState
 import com.yamax.veer.core_profile.ProfileId
 import com.yamax.veer.core_profile.ProfileMetadata
 import com.yamax.veer.core_profile.ProfileSource
+import com.yamax.veer.core_profile.SubscriptionRefreshOutcome
+import com.yamax.veer.core_profile.internal.parser.PipelineStage
 import com.yamax.veer.core_profile.internal.parser.message
+import com.yamax.veer.ui.resolve
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -57,27 +64,37 @@ import java.util.Locale
 @Composable
 internal fun ProfileListScreen(
     onProfileDetail: (ProfileId) -> Unit,
+    onProfileDns: (ProfileId) -> Unit,
     viewModel: ProfileListViewModel = viewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
     val importing = state.importState is ImportState.Running
+    val profileOperationInProgress = state.switchingProfileId != null
 
     var urlInput  by remember { mutableStateOf("") }
     var yamlInput by remember { mutableStateOf("") }
+    val yamlFilePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) viewModel.importDocument(uri)
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title   = { Text("Profiles") },
+                title = { Text(stringResource(R.string.profile_title)) },
                 actions = {
                     IconButton(
                         onClick  = { viewModel.refreshAll() },
-                        enabled  = !state.isRefreshingAll,
+                        enabled  = !state.isRefreshingAll && !profileOperationInProgress,
                     ) {
                         if (state.isRefreshingAll) {
                             CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                         } else {
-                            Icon(Icons.Default.Refresh, contentDescription = "Refresh all subscriptions")
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = stringResource(R.string.profile_refresh_all),
+                            )
                         }
                     }
                 },
@@ -112,21 +129,57 @@ internal fun ProfileListScreen(
                                 verticalAlignment     = Alignment.CenterVertically,
                             ) {
                                 Text(
-                                    text     = msg,
+                                    text = msg.resolve(),
                                     style    = MaterialTheme.typography.bodySmall,
                                     color    = MaterialTheme.colorScheme.onErrorContainer,
                                     modifier = Modifier.weight(1f),
                                 )
                                 TextButton(onClick = { viewModel.dismissErrorBanner() }) {
-                                    Text("Dismiss")
+                                    Text(stringResource(R.string.common_close))
                                 }
                             }
                         }
                     }
                 }
 
+                state.switchStatus?.let { msg ->
+                    item {
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            ),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .padding(12.dp)
+                                    .fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                if (profileOperationInProgress) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp,
+                                    )
+                                }
+                                Text(
+                                    text = msg.resolve(),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                )
+                            }
+                        }
+                    }
+                }
+
                 // Subscription URL input
-                item { Text("Subscription URL", style = MaterialTheme.typography.titleSmall) }
+                item {
+                    Text(
+                        stringResource(R.string.profile_subscription_url),
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                }
                 item {
                     OutlinedTextField(
                         value         = urlInput,
@@ -139,16 +192,43 @@ internal fun ProfileListScreen(
                 }
                 item {
                     Button(
-                        onClick  = { viewModel.importUrl(urlInput); urlInput = "" },
-                        enabled  = urlInput.isNotBlank() && !importing,
+                        onClick  = { viewModel.importUrl(urlInput) },
+                        enabled  = urlInput.isNotBlank() && !importing && !profileOperationInProgress,
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Import URL") }
+                    ) {
+                        Text(
+                            stringResource(
+                                if (importing) R.string.profile_importing
+                                else R.string.profile_import_subscription,
+                            ),
+                        )
+                    }
                 }
 
                 // Paste YAML input
                 item {
                     Spacer(Modifier.height(2.dp))
-                    Text("Paste Clash YAML", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        stringResource(R.string.profile_local_yaml),
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                }
+                item {
+                    OutlinedButton(
+                        onClick = {
+                            yamlFilePicker.launch(
+                                arrayOf(
+                                    "application/yaml",
+                                    "text/yaml",
+                                    "text/x-yaml",
+                                    "text/plain",
+                                    "application/octet-stream",
+                                )
+                            )
+                        },
+                        enabled = !importing && !profileOperationInProgress,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(stringResource(R.string.profile_select_yaml)) }
                 }
                 item {
                     OutlinedTextField(
@@ -163,10 +243,17 @@ internal fun ProfileListScreen(
                 }
                 item {
                     Button(
-                        onClick  = { viewModel.importYaml(yamlInput); yamlInput = "" },
-                        enabled  = yamlInput.isNotBlank() && !importing,
+                        onClick  = { viewModel.importYaml(yamlInput) },
+                        enabled  = yamlInput.isNotBlank() && !importing && !profileOperationInProgress,
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Import YAML") }
+                    ) {
+                        Text(
+                            stringResource(
+                                if (importing) R.string.profile_importing
+                                else R.string.profile_import_pasted,
+                            ),
+                        )
+                    }
                 }
 
                 // Import status row
@@ -177,14 +264,78 @@ internal fun ProfileListScreen(
                     )
                 }
 
+                if (state.refreshHistory.isNotEmpty()) {
+                    item {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            stringResource(R.string.profile_refresh_history),
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                    }
+                    items(state.refreshHistory, key = { it.id }) { record ->
+                        val status = when (record.outcome) {
+                            SubscriptionRefreshOutcome.UPDATED ->
+                                stringResource(R.string.profile_refresh_updated)
+                            SubscriptionRefreshOutcome.UNCHANGED ->
+                                stringResource(R.string.profile_refresh_unchanged)
+                            SubscriptionRefreshOutcome.FAILED ->
+                                stringResource(R.string.profile_refresh_failed)
+                        }
+                        val diff = record.diff?.let {
+                            stringResource(
+                                R.string.profile_refresh_diff,
+                                it.proxiesAdded,
+                                it.proxiesRemoved,
+                                it.groupsAdded,
+                                it.groupsRemoved,
+                                it.rulesAdded,
+                                it.rulesRemoved,
+                            )
+                        }.orEmpty()
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(3.dp),
+                            ) {
+                                Text(
+                                    stringResource(
+                                        R.string.profile_refresh_record,
+                                        record.displayName,
+                                        status,
+                                    ),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                Text(
+                                    SimpleDateFormat(
+                                        "yyyy-MM-dd HH:mm",
+                                        Locale.getDefault(),
+                                    ).format(Date(record.completedAtMs)) + diff,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                record.error?.let {
+                                    Text(
+                                        it,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.error,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Profile list header
                 item {
                     Spacer(Modifier.height(4.dp))
                     HorizontalDivider()
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        text  = if (state.profiles.isEmpty()) "Saved Profiles"
-                                else "Saved Profiles (${state.profiles.size})",
+                        text = if (state.profiles.isEmpty()) {
+                            stringResource(R.string.profile_saved)
+                        } else {
+                            stringResource(R.string.profile_saved_count, state.profiles.size)
+                        },
                         style = MaterialTheme.typography.titleSmall,
                     )
                 }
@@ -192,7 +343,7 @@ internal fun ProfileListScreen(
                 if (state.profiles.isEmpty()) {
                     item {
                         Text(
-                            text  = "No profiles yet.",
+                            text = stringResource(R.string.profile_empty),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -203,8 +354,13 @@ internal fun ProfileListScreen(
                             meta         = meta,
                             isActive     = state.activeProfileId == meta.id,
                             isRefreshing = meta.id.value in state.refreshingIds,
+                            runtimeStopped = state.runtimeStopped,
+                            profileSwitchAllowed = state.profileSwitchAllowed,
+                            operationInProgress = profileOperationInProgress,
+                            isSwitching = state.switchingProfileId == meta.id,
                             onActivate   = { viewModel.activate(meta.id) },
                             onDetails    = { onProfileDetail(meta.id) },
+                            onDns        = { onProfileDns(meta.id) },
                             onRefresh    = { viewModel.refresh(meta.id) },
                             onEdit       = { viewModel.startEdit(meta.id) },
                             onDelete     = { viewModel.requestDelete(meta.id) },
@@ -219,12 +375,12 @@ internal fun ProfileListScreen(
     state.editDialog?.let { dialog ->
         AlertDialog(
             onDismissRequest = { viewModel.dismissEdit() },
-            title            = { Text("Rename Profile") },
+            title = { Text(stringResource(R.string.profile_rename_title)) },
             text             = {
                 OutlinedTextField(
                     value         = dialog.editedName,
                     onValueChange = { viewModel.updateEditName(it) },
-                    label         = { Text("Name") },
+                    label = { Text(stringResource(R.string.profile_name)) },
                     singleLine    = true,
                     modifier      = Modifier.fillMaxWidth(),
                 )
@@ -233,10 +389,12 @@ internal fun ProfileListScreen(
                 TextButton(
                     onClick  = { viewModel.submitEdit() },
                     enabled  = dialog.editedName.isNotBlank(),
-                ) { Text("Save") }
+                ) { Text(stringResource(R.string.common_save)) }
             },
             dismissButton = {
-                TextButton(onClick = { viewModel.dismissEdit() }) { Text("Cancel") }
+                TextButton(onClick = { viewModel.dismissEdit() }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
             },
         )
     }
@@ -246,13 +404,17 @@ internal fun ProfileListScreen(
         val name = state.profiles.find { it.id == id }?.displayName ?: id.value
         AlertDialog(
             onDismissRequest = { viewModel.dismissDelete() },
-            title            = { Text("Delete \"$name\"?") },
-            text             = { Text("This profile will be permanently removed.") },
+            title = { Text(stringResource(R.string.profile_delete_title, name)) },
+            text = { Text(stringResource(R.string.profile_delete_body)) },
             confirmButton    = {
-                TextButton(onClick = { viewModel.confirmDelete() }) { Text("Delete") }
+                TextButton(onClick = { viewModel.confirmDelete() }) {
+                    Text(stringResource(R.string.common_delete))
+                }
             },
             dismissButton    = {
-                TextButton(onClick = { viewModel.dismissDelete() }) { Text("Cancel") }
+                TextButton(onClick = { viewModel.dismissDelete() }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
             },
         )
     }
@@ -270,7 +432,15 @@ private fun ImportStatusRow(state: ImportState, onDismiss: () -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-            Text(state.message, style = MaterialTheme.typography.bodySmall)
+            Text(
+                stringResource(
+                    when (state.stage) {
+                        PipelineStage.PERSIST -> R.string.profile_import_saving
+                        else -> R.string.profile_import_starting
+                    },
+                ),
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
 
         is ImportState.Success -> Row(
@@ -279,11 +449,11 @@ private fun ImportStatusRow(state: ImportState, onDismiss: () -> Unit) {
             verticalAlignment     = Alignment.CenterVertically,
         ) {
             Text(
-                text  = "✓ Imported \"${state.profileName}\"",
+                text = stringResource(R.string.profile_import_success, state.profileName),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.primary,
             )
-            TextButton(onClick = onDismiss) { Text("Dismiss") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) }
         }
 
         is ImportState.Failure -> Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -293,15 +463,15 @@ private fun ImportStatusRow(state: ImportState, onDismiss: () -> Unit) {
                 verticalAlignment     = Alignment.CenterVertically,
             ) {
                 Text(
-                    text  = "Import failed:",
+                    text = stringResource(R.string.profile_import_failure),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )
-                TextButton(onClick = onDismiss) { Text("Dismiss") }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) }
             }
             state.errors.forEach { err ->
                 Text(
-                    text  = "• ${err.message()}",
+                    text = stringResource(R.string.profile_import_error_bullet, err.message()),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )
@@ -317,8 +487,13 @@ private fun ProfileCard(
     meta: ProfileMetadata,
     isActive: Boolean,
     isRefreshing: Boolean,
+    runtimeStopped: Boolean,
+    profileSwitchAllowed: Boolean,
+    operationInProgress: Boolean,
+    isSwitching: Boolean,
     onActivate: () -> Unit,
     onDetails: () -> Unit,
+    onDns: () -> Unit,
     onRefresh: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
@@ -353,7 +528,7 @@ private fun ProfileCard(
                 ) {
                     if (isActive) {
                         Text(
-                            text  = "ACTIVE",
+                            text = stringResource(R.string.profile_current),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary,
                         )
@@ -362,7 +537,7 @@ private fun ProfileCard(
                     IconButton(onClick = onEdit, modifier = Modifier.size(28.dp)) {
                         Icon(
                             imageVector        = Icons.Default.Edit,
-                            contentDescription = "Rename",
+                            contentDescription = stringResource(R.string.profile_rename_description),
                             modifier           = Modifier.size(16.dp),
                         )
                     }
@@ -372,18 +547,24 @@ private fun ProfileCard(
             // Source info
             when (val src = meta.source) {
                 is ProfileSource.SubscriptionUrl -> Text(
-                    text     = src.url,
+                    text = stringResource(
+                        R.string.profile_source_subscription,
+                        runCatching { java.net.URI(src.url).host }
+                            .getOrNull()
+                            .orEmpty()
+                            .ifBlank { "HTTPS URL" },
+                    ),
                     style    = MaterialTheme.typography.bodySmall,
                     color    = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                 )
                 is ProfileSource.ClashFile -> Text(
-                    text  = "File: ${src.originalFileName}",
+                    text = stringResource(R.string.profile_source_file, src.originalFileName),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 is ProfileSource.Base64Text -> Text(
-                    text  = "Base64 import",
+                    text = stringResource(R.string.profile_source_base64),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -391,15 +572,55 @@ private fun ProfileCard(
 
             // Stats
             Text(
-                text  = "${meta.proxyCount} proxies · ${meta.groupCount} groups · ${meta.ruleCount} rules",
+                text = stringResource(
+                    R.string.profile_stats,
+                    meta.proxyCount,
+                    meta.groupCount,
+                    meta.ruleCount,
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-                text  = "Updated: ${dateFmt.format(Date(meta.lastUpdatedMs))}",
+                text = stringResource(
+                    R.string.profile_updated_at,
+                    dateFmt.format(Date(meta.lastUpdatedMs)),
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            meta.subscriptionUsage?.let { usage ->
+                if (usage.totalBytes > 0) {
+                    Text(
+                        text = stringResource(
+                            R.string.profile_traffic,
+                            formatBytes(usage.usedBytes),
+                            formatBytes(usage.totalBytes),
+                            formatBytes(usage.remainingBytes),
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (usage.remainingBytes == 0L) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                }
+                usage.expireAtMs?.let { expireAt ->
+                    Text(
+                        text = stringResource(
+                            R.string.profile_expires,
+                            dateFmt.format(Date(expireAt)),
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (expireAt <= System.currentTimeMillis()) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                }
+            }
 
             Spacer(Modifier.height(4.dp))
             Row(
@@ -409,28 +630,66 @@ private fun ProfileCard(
                 if (!isActive) {
                     Button(
                         onClick  = onActivate,
+                        enabled  = profileSwitchAllowed && !operationInProgress,
                         modifier = Modifier.weight(1f),
-                    ) { Text("Activate") }
+                    ) {
+                        if (isSwitching) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                            )
+                            Spacer(Modifier.width(6.dp))
+                        }
+                        Text(
+                            stringResource(
+                                if (isSwitching) R.string.profile_switching
+                                else R.string.profile_activate,
+                            ),
+                        )
+                    }
                 }
                 OutlinedButton(
                     onClick  = onDetails,
                     modifier = if (isActive) Modifier.weight(1f) else Modifier,
-                ) { Text("Details") }
+                ) { Text(stringResource(R.string.profile_details)) }
+                OutlinedButton(onClick = onDns) { Text("DNS") }
                 if (isUrlSource) {
                     IconButton(
                         onClick  = onRefresh,
-                        enabled  = !isRefreshing,
+                        enabled  = !operationInProgress &&
+                            !isRefreshing &&
+                            (runtimeStopped || !isActive),
                         modifier = Modifier.size(36.dp),
                     ) {
                         if (isRefreshing) {
                             CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                         } else {
-                            Icon(Icons.Default.Refresh, contentDescription = "Refresh subscription")
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = stringResource(
+                                    R.string.profile_refresh_subscription,
+                                ),
+                            )
                         }
                     }
                 }
-                OutlinedButton(onClick = onDelete) { Text("Delete") }
+                OutlinedButton(
+                    onClick = onDelete,
+                    enabled = !operationInProgress && (runtimeStopped || !isActive),
+                ) { Text(stringResource(R.string.common_delete)) }
             }
         }
     }
+}
+
+private fun formatBytes(bytes: Long): String {
+    if (bytes < 1_024) return "$bytes B"
+    val units = arrayOf("KB", "MB", "GB", "TB", "PB")
+    var value = bytes.toDouble()
+    var unit = -1
+    while (value >= 1_024 && unit < units.lastIndex) {
+        value /= 1_024
+        unit += 1
+    }
+    return String.format(Locale.US, "%.1f %s", value, units[unit])
 }

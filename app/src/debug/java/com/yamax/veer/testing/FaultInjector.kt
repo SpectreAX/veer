@@ -1,5 +1,8 @@
 package com.yamax.veer.testing
 
+import android.content.Context
+import android.os.Bundle
+import com.yamax.veer.core_mihomo.ipc.ProcessRole
 import com.yamax.veer.core_mihomo.VeerVpnService
 import veercore.Veercore
 
@@ -13,6 +16,11 @@ import veercore.Veercore
  * code never references it.
  */
 internal object FaultInjector {
+    @Volatile private var appContext: Context? = null
+
+    fun install(context: Context) {
+        appContext = context.applicationContext
+    }
 
     // -------------------------------------------------------------------------
     // Go-side ApplyConfig fault hooks
@@ -89,7 +97,7 @@ internal object FaultInjector {
         goVoid("releaseHangBeforeShutdown")
     }
 
-    /** True only when the loaded .aar contains the setFaultHangBeforeShutdown hook (SI-08). */
+    /** True only when the loaded AAR contains the shutdown-hang fault hook. */
     val isShutdownHangAvailable: Boolean
         get() = Veercore::class.java.methods.any { it.name == "setFaultHangBeforeShutdown" }
 
@@ -104,7 +112,11 @@ internal object FaultInjector {
      * service has already nulled the callback in tearDownCore.
      */
     fun fireAllNetworksLostCallback() {
-        VeerVpnService.debugAllNetworksLostCallback?.invoke()
+        if (useRemoteControl()) {
+            remoteCall(DebugCoreControlProtocol.METHOD_FIRE_ALL_NETWORKS_LOST)
+        } else {
+            VeerVpnService.debugAllNetworksLostCallback?.invoke()
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -116,19 +128,74 @@ internal object FaultInjector {
      * Call [resetTimings] in @After to restore defaults.
      */
     fun setWatchdogTimings(initialDelayMs: Long, intervalMs: Long) {
-        VeerVpnService.testWatchdogInitialDelayMs = initialDelayMs
-        VeerVpnService.testWatchdogIntervalMs     = intervalMs
+        if (useRemoteControl()) {
+            remoteCall(
+                DebugCoreControlProtocol.METHOD_SET_WATCHDOG_TIMINGS,
+                Bundle().apply {
+                    putLong(DebugCoreControlProtocol.KEY_INITIAL_DELAY_MS, initialDelayMs)
+                    putLong(DebugCoreControlProtocol.KEY_INTERVAL_MS, intervalMs)
+                },
+            )
+        } else {
+            VeerVpnService.testWatchdogInitialDelayMs = initialDelayMs
+            VeerVpnService.testWatchdogIntervalMs = intervalMs
+        }
     }
 
     /** Overrides the onDestroy stop timeout. Call [resetTimings] in @After. */
     fun setStopTimeout(timeoutMs: Long) {
-        VeerVpnService.testStopTimeoutMs = timeoutMs
+        if (useRemoteControl()) {
+            remoteCall(
+                DebugCoreControlProtocol.METHOD_SET_STOP_TIMEOUT,
+                Bundle().apply {
+                    putLong(DebugCoreControlProtocol.KEY_TIMEOUT_MS, timeoutMs)
+                },
+            )
+        } else {
+            VeerVpnService.testStopTimeoutMs = timeoutMs
+        }
     }
 
     fun resetTimings() {
+        if (useRemoteControl()) {
+            remoteCall(DebugCoreControlProtocol.METHOD_RESET_TIMINGS)
+            return
+        }
         VeerVpnService.testWatchdogInitialDelayMs = -1L
         VeerVpnService.testWatchdogIntervalMs     = -1L
         VeerVpnService.testStopTimeoutMs          = -1L
+        VeerVpnService.testAutoRecoveryInitialDelayMs = -1L
+        VeerVpnService.testAutoRecoveryIntervalMs = -1L
+        VeerVpnService.testAutoRecoveryFailureThreshold = -1
+        VeerVpnService.testAutoRecoveryMaxCandidates = -1
+        VeerVpnService.testAutoRecoveryInternetProbe = null
+        VeerVpnService.testAutoRecoveryExhaustedCallback = null
+        directRecoveryExhausted = false
+    }
+
+    fun configureExhaustedAutoRecovery() {
+        if (useRemoteControl()) {
+            remoteCall(DebugCoreControlProtocol.METHOD_CONFIGURE_EXHAUSTED_RECOVERY)
+            return
+        }
+        VeerVpnService.testAutoRecoveryInitialDelayMs = 200L
+        VeerVpnService.testAutoRecoveryIntervalMs = 300L
+        VeerVpnService.testAutoRecoveryFailureThreshold = 2
+        VeerVpnService.testAutoRecoveryMaxCandidates = 1
+        VeerVpnService.testAutoRecoveryInternetProbe = { false }
+        directRecoveryExhausted = false
+        VeerVpnService.testAutoRecoveryExhaustedCallback = {
+            directRecoveryExhausted = true
+        }
+    }
+
+    fun isAutoRecoveryExhausted(): Boolean {
+        if (useRemoteControl()) {
+            return remoteCall(DebugCoreControlProtocol.METHOD_RECOVERY_STATUS)
+                ?.getBoolean(DebugCoreControlProtocol.KEY_RECOVERY_EXHAUSTED)
+                ?: false
+        }
+        return directRecoveryExhausted
     }
 
     // -------------------------------------------------------------------------
@@ -152,6 +219,19 @@ internal object FaultInjector {
     // -------------------------------------------------------------------------
 
     private fun goVoid(name: String, vararg args: Any) {
+        if (useRemoteControl()) {
+            remoteCall(
+                DebugCoreControlProtocol.METHOD_NATIVE,
+                Bundle().apply {
+                    putString(DebugCoreControlProtocol.KEY_NATIVE_METHOD, name)
+                    putStringArrayList(
+                        DebugCoreControlProtocol.KEY_NATIVE_ARGUMENTS,
+                        ArrayList(args.map(Any::toString)),
+                    )
+                },
+            )
+            return
+        }
         runCatching {
             Veercore::class.java.methods
                 .firstOrNull { it.name == name && it.parameterCount == args.size }
@@ -159,7 +239,34 @@ internal object FaultInjector {
         }
     }
 
-    private fun goLong(name: String): Long = runCatching {
-        Veercore::class.java.getMethod(name).invoke(null) as? Long
-    }.getOrNull() ?: 0L
+    private fun goLong(name: String): Long {
+        if (useRemoteControl()) {
+            val bundle = remoteCall(DebugCoreControlProtocol.METHOD_COUNTERS)
+            return when (name) {
+                "getStartCallCount" ->
+                    bundle?.getInt(DebugCoreControlProtocol.KEY_START_CALL_COUNT)?.toLong()
+                "getStopCallCount" ->
+                    bundle?.getInt(DebugCoreControlProtocol.KEY_STOP_CALL_COUNT)?.toLong()
+                else -> null
+            } ?: 0L
+        }
+        return runCatching {
+            (Veercore::class.java.getMethod(name).invoke(null) as? Number)?.toLong()
+        }.getOrNull() ?: 0L
+    }
+
+    private fun useRemoteControl(): Boolean =
+        appContext != null && !ProcessRole.isCoreProcess()
+
+    private fun remoteCall(method: String, extras: Bundle? = null): Bundle? =
+        runCatching {
+            appContext?.contentResolver?.call(
+                DebugCoreControlProtocol.URI,
+                method,
+                null,
+                extras,
+            )
+        }.getOrNull()
+
+    @Volatile private var directRecoveryExhausted = false
 }

@@ -19,6 +19,7 @@ var (
 	hangGates = map[string]chan struct{}{} // closed by release call
 	hangDurs  = map[string]time.Duration{} // finite hang durations
 	errorMsgs = map[string]string{}
+	errorOnce = map[string]string{}
 	panicMsgs = map[string]string{}
 
 	bgPanicMu  sync.Mutex
@@ -33,12 +34,16 @@ var (
 // Called unconditionally from veer_core.go; the production build uses a
 // zero-cost no-op stub from veer_noop_stubs.go.
 func triggerHook(hookName string) error {
-	hooksMu.RLock()
+	hooksMu.Lock()
 	gate, hasGate := hangGates[hookName]
 	dur, hasDur := hangDurs[hookName]
 	errMsg := errorMsgs[hookName]
+	if onceMsg := errorOnce[hookName]; onceMsg != "" {
+		errMsg = onceMsg
+		delete(errorOnce, hookName)
+	}
 	panicMsg := panicMsgs[hookName]
-	hooksMu.RUnlock()
+	hooksMu.Unlock()
 
 	if hasGate {
 		<-gate // blocks until ReleaseHang* closes the channel
@@ -89,6 +94,33 @@ func ReleaseHangBeforeApplyConfig() {
 	}
 }
 
+// SetFaultHangBeforeShutdown installs a hang immediately before
+// executor.Shutdown() inside Stop(). It exercises the Android JNI stop timeout.
+// durationMs follows the same contract as SetFaultHangBeforeApplyConfig.
+func SetFaultHangBeforeShutdown(durationMs int64) {
+	hooksMu.Lock()
+	defer hooksMu.Unlock()
+	delete(hangGates, "before_shutdown")
+	delete(hangDurs, "before_shutdown")
+	if durationMs < 0 {
+		hangGates["before_shutdown"] = make(chan struct{})
+	} else if durationMs > 0 {
+		hangDurs["before_shutdown"] = time.Duration(durationMs) * time.Millisecond
+	}
+}
+
+// ReleaseHangBeforeShutdown unblocks a Stop() waiting at the shutdown hook.
+// Safe to call even when no goroutine is waiting.
+func ReleaseHangBeforeShutdown() {
+	hooksMu.Lock()
+	ch := hangGates["before_shutdown"]
+	delete(hangGates, "before_shutdown")
+	hooksMu.Unlock()
+	if ch != nil {
+		close(ch)
+	}
+}
+
 // SetFaultErrorBeforeApplyConfig makes Start() return an error at the
 // ApplyConfig hook without calling executor.ApplyConfig. Pass "" to clear.
 func SetFaultErrorBeforeApplyConfig(msg string) {
@@ -98,6 +130,19 @@ func SetFaultErrorBeforeApplyConfig(msg string) {
 		delete(errorMsgs, "before_apply_config")
 	} else {
 		errorMsgs["before_apply_config"] = msg
+	}
+}
+
+// SetFaultErrorOnceBeforeApplyConfig fails exactly the next Start() call at
+// the ApplyConfig hook. It is intended for rollback tests where the restored
+// last-known-good profile must be allowed to start immediately afterward.
+func SetFaultErrorOnceBeforeApplyConfig(msg string) {
+	hooksMu.Lock()
+	defer hooksMu.Unlock()
+	if msg == "" {
+		delete(errorOnce, "before_apply_config")
+	} else {
+		errorOnce["before_apply_config"] = msg
 	}
 }
 
@@ -159,6 +204,7 @@ func ClearAllFaults() {
 	hangGates = map[string]chan struct{}{}
 	hangDurs = map[string]time.Duration{}
 	errorMsgs = map[string]string{}
+	errorOnce = map[string]string{}
 	panicMsgs = map[string]string{}
 	hooksMu.Unlock()
 

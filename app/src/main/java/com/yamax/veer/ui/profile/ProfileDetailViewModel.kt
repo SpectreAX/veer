@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.yamax.veer.app_state.AppStateRepository
+import com.yamax.veer.R
 import com.yamax.veer.core_logging.VeerLog
 import com.yamax.veer.core_mihomo.EngineState
 import com.yamax.veer.core_mihomo.MihomoRepository
@@ -14,6 +15,8 @@ import com.yamax.veer.core_profile.ProfileId
 import com.yamax.veer.core_profile.ProfileMetadata
 import com.yamax.veer.core_profile.internal.parser.ClashYamlParser
 import com.yamax.veer.core_profile.internal.storage.ProfileStore
+import com.yamax.veer.ui.UiText
+import com.yamax.veer.ui.uiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,7 +43,7 @@ internal class ProfileDetailViewModel(
         val metadata: ProfileMetadata? = null,
         val proxyGroups: List<ProxyGroupUi> = emptyList(),
         val isLoading: Boolean = true,
-        val error: String? = null,
+        val error: UiText? = null,
         val switchingGroup: String? = null,
         val vpnRunning: Boolean = false,
     )
@@ -60,7 +63,9 @@ internal class ProfileDetailViewModel(
             val ctx = getApplication<Application>()
             val meta = AppStateRepository.appState.value.profile.profiles.find { it.id == profileId }
             if (meta == null) {
-                _uiState.update { it.copy(isLoading = false, error = "Profile not found") }
+                _uiState.update {
+                    it.copy(isLoading = false, error = uiText(R.string.profile_not_found))
+                }
                 return@launch
             }
 
@@ -68,7 +73,13 @@ internal class ProfileDetailViewModel(
                 ProfileStore.readRawYaml(ctx, profileId)
             }
             if (rawYaml == null) {
-                _uiState.update { it.copy(isLoading = false, error = "Profile data not found on disk", metadata = meta) }
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        error = uiText(R.string.profile_data_not_found),
+                        metadata = meta,
+                    )
+                }
                 return@launch
             }
 
@@ -78,7 +89,13 @@ internal class ProfileDetailViewModel(
             if (parseResult.isFailure) {
                 val msg = parseResult.exceptionOrNull()?.message ?: "parse error"
                 VeerLog.profile("ProfileDetailViewModel parse failed: $msg", VeerLog.Level.ERROR)
-                _uiState.update { it.copy(isLoading = false, error = "Failed to read profile: $msg", metadata = meta) }
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        error = uiText(R.string.profile_read_failed, msg),
+                        metadata = meta,
+                    )
+                }
                 return@launch
             }
 

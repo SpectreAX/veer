@@ -32,16 +32,23 @@ a fd the service does not know about (can never be torn down cleanly).
 
 `Veercore.stop()` **must only be called from `VeerVpnService.tearDownCore()`.**
 
-`tearDownCore` is itself called exclusively from `onDestroy` via:
+`tearDownCore` is reached only from service-owned lifecycle paths:
 
 ```kotlin
-runBlocking { withTimeoutOrNull(STOP_TIMEOUT_MS) { tearDownCore() } }
+requestShutdown(...)       // explicit STOP/watchdog/revoke/error path
+requestReconnect()         // same-instance user fast reconnect
+prepareForProfileSwitch()  // retained-service config switch boundary
+onDestroy()                // Android lifecycle fallback
 ```
 
 All stop paths — `ACTION_STOP` intent, watchdog-detected failure,
-`onRevoke()`, system kill — converge on `stopSelf()`, which triggers
-`onDestroy()`, which calls `tearDownCore()`. There is exactly one shutdown
-path.
+and `onRevoke()` — converge on `requestShutdown()`. It atomically admits one
+shutdown request, sets `Stopping`, calls `tearDownCore()`, then calls
+`stopSelf()`. Android may keep an active `VpnService` bound while its tun is
+open, so relying on `stopSelf()` to trigger `onDestroy()` creates a lifecycle
+cycle. A direct system destroy uses the same `tearDownCore()` as a fallback.
+There is still exactly one native shutdown function and `engineMutex` makes
+repeat teardown calls idempotent.
 
 **Rationale.** If `Veercore.stop` is called from two places concurrently, the
 Go runtime can be double-freed. If it is called before `onDestroy` (e.g., from a
@@ -96,7 +103,7 @@ tun device. It is:
 
 - Written once inside `bootCore`, immediately after `Builder.establish()` succeeds.
 - Nulled in `tearDownTun()`, which is called from `tearDownCore()` and from
-  error paths inside `bootCore` before they call `stopSelf()`.
+  forced-cleanup fallbacks.
 - Never returned, passed, or published to any caller outside `VeerVpnService`.
 - Declared `@Volatile` so the watchdog's non-mutex read of `tunInterface` sees
   the most recent write without acquiring the mutex.
@@ -128,7 +135,7 @@ reclaims it (EBADF or, worse, writing into a fd reused for a different purpose).
 | Call site | Condition |
 |-----------|-----------|
 | `tearDownCore()` | Normal shutdown path, inside mutex |
-| `bootCore()` error paths | Before `stopSelf()`, inside mutex |
+| `requestShutdown()` catch | Force-close if `tearDownCore` throws |
 | `onDestroy()` timeout handler | Force-close if `tearDownCore` mutex-wait exceeds `STOP_TIMEOUT_MS` |
 
 `tearDownTun()` is idempotent: it wraps `tunInterface?.close()` in
@@ -173,13 +180,37 @@ The Go runtime may still be running after either timeout fires, but:
 
 ### 2.5 No fd reuse after teardown begins
 
-Once `MihomoEngine.setState(EngineState.Stopping)` is called in `onDestroy`,
-the service will not accept a new `ACTION_START`. This is because `onDestroy`
-and `onStartCommand` run on the Android main thread's message queue: they cannot
-interleave. A `bootCore` already in-flight inside `serviceScope` will serialize
-against `tearDownCore` at the mutex and find `coreRunning == false` once
-`tearDownCore` has finished — at which point the service is destroyed and the
-new `bootCore` call's own `stopSelf()` is a no-op.
+Once permanent shutdown begins, `shutdownStarted` prevents a new runtime from
+starting until `tearDownCore` has fully drained the old runtime. An ACTION_START
+received during active teardown is recorded as `restartAfterShutdownRequested`;
+it is resumed only after state is truthfully `Stopped`, `coreRunning` and
+`startAttempted` are false, and no JNI stop timeout occurred. A user fast
+reconnect follows the same safety boundary without the intermediate Stopped
+frame: `requestReconnect()` first completes `tearDownCore(finalizeState=false)`
+and only then calls `bootCore()`. Both paths serialize through `engineMutex`, so
+the new `Builder.establish()` and `Veercore.start()` cannot reuse or overlap the
+old tun fd/runtime.
+
+### 2.6 LAN bypass is symmetric across address families
+
+With `BYPASS_LAN` enabled, the Android-owned route table leaves these
+destinations on the underlying network:
+
+- IPv4 RFC1918: `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`
+- IPv4 link-local and multicast: `169.254.0.0/16`, `224.0.0.0/4`
+- IPv6 ULA: `fc00::/7`
+- IPv6 link-local: `fe80::/10`
+
+On API 33+, `VpnService.Builder.excludeRoute()` installs throw routes for those
+seven prefixes over the IPv4 and IPv6 defaults. On API 29–32,
+`VpnRoutePolicy` installs exact, non-overlapping CIDR complements because
+`excludeRoute()` is unavailable. The fallback must never also add `0.0.0.0/0`
+or `::/0`, because either default would recapture the ranges being bypassed.
+
+The TUN's own `fdfe:dcba:9876::/126` connected route is more specific than the
+ULA throw route and remains attached to the TUN. IPv6 multicast `ff00::/8` and
+deprecated site-local `fec0::/10` remain tunneled unless a separate routing
+policy changes them.
 
 ---
 
@@ -202,7 +233,7 @@ new `bootCore` call's own `stopSelf()` is a no-op.
        ▼                    ▼                       │
  ┌──────────┐         ┌──────────┐                  │
  │  Running │         │  Error   │──────────────────┤
- └────┬─────┘         └──────────┘  (→ stopSelf)    │
+ └────┬─────┘         └──────────┘  (→ shutdown)    │
       │                                             │
       │ onDestroy / watchdog failure → Error         │
       ▼                                             │
@@ -220,9 +251,10 @@ new `bootCore` call's own `stopSelf()` is a no-op.
 | `Starting` | `Running` | `Veercore.start` returns without exception, `coreRunning = true` |
 | `Starting` | `Error` | tun establish null, config prepare failure, `Veercore.start` exception |
 | `Running` | `Error` | watchdog detects API unreachable; `CoroutineExceptionHandler` fires |
-| `Running` | `Stopping` | `onDestroy` called (from any `stopSelf()` call or system kill) |
-| `Error` | `Stopping` | `stopSelf()` → `onDestroy` (watchdog calls `stopSelf` after setting Error) |
-| `Stopping` | `Stopped` | `tearDownCore` completes normally; or force-close path in `onDestroy` |
+| `Running` | `Stopping` | shutdown, profile switch, fast reconnect, or system `onDestroy()` begins teardown |
+| `Error` | `Stopping` | an error path calls `requestShutdown()` |
+| `Stopping` | `Stopped` | explicit shutdown/profile preparation completes; `onDestroy` finishes; or a force-close path runs |
+| `Stopping` | `Starting` | fast reconnect has completely drained the old runtime and immediately calls `bootCore()` |
 | `Stopping` | `Error` | `Veercore.stop()` JNI call times out (`STOP_JNI_TIMEOUT_MS`); daemon thread orphaned; reconnect unsafe (see §2.4 and runtime_nonrecoverable_states.md §8) |
 
 ### 3.3 Forbidden transitions
@@ -238,7 +270,7 @@ new `bootCore` call's own `stopSelf()` is a no-op.
 `EngineState.Error(message: String)` means:
 
 1. An unrecoverable fault has been detected.
-2. `stopSelf()` has been or will be called shortly after.
+2. `requestShutdown()` has been or will be called shortly after.
 3. **The Go runtime may still be running.** `Error` is not a guarantee of
    shutdown — `Stopping` and `Stopped` are.
 4. The `message` field is the first available cause string: `t.cause?.message`,
@@ -251,8 +283,8 @@ necessarily after `Error` without diagnosing the cause).
 
 ### 3.5 Stopping semantics
 
-`EngineState.Stopping` is set as the first action of `onDestroy`, before
-`runBlocking`. It means:
+`EngineState.Stopping` is set when `requestShutdown()` wins its atomic gate, or
+by `onDestroy()` for a system-initiated destroy. It means:
 
 1. The service has received a definitive shutdown signal.
 2. `tearDownCore` will be attempted.
@@ -326,7 +358,28 @@ If the scope were `Dispatchers.Main`, `bootCore`'s continuations after
 
 ### 4.5 Teardown synchronization
 
-The full teardown sequence in `onDestroy` is:
+The normal explicit teardown sequence is:
+
+```
+(service IO scope)
+  requestShutdown() atomic gate
+  setState(Stopping)
+  tearDownCore(finalizeState=false) under engineMutex
+  setState(Stopped) // after normal, recoverable teardown
+  if ACTION_START was queued:
+    reopen shutdown gate
+    bootCore()
+  else after SHUTDOWN_DESTROY_GRACE_MS:
+    stopForeground(...)
+    stopSelf()
+(main thread)
+  onDestroy()
+  tearDownCore(finalizeState=true) // idempotent fallback
+```
+
+`onDestroy()` then runs the idempotent fallback below. If explicit teardown
+already completed, it observes no live runtime and returns quickly. For a
+system-initiated destroy, it performs the real teardown:
 
 ```
 (main thread)
@@ -367,12 +420,12 @@ mid-execution by the scope cancellation.
 The watchdog **never calls `Veercore.stop()` directly.** It may only:
 
 1. Set `EngineState.Error`.
-2. Call `stopSelf()`.
+2. Call `requestShutdown()`.
 
-`stopSelf()` enqueues an `onDestroy` call on the main thread's message queue.
-`onDestroy` then calls `tearDownCore()` which calls `Veercore.stop()` under the
-mutex. This preserves invariant 1.2 (sole caller) and invariant 1.4 (mutex
-serialization).
+`requestShutdown()` calls `tearDownCore()` under the mutex and only calls
+`stopSelf()` after the runtime and tun are down. This preserves invariant 1.2
+(sole native-stop caller) and invariant 1.4 (mutex serialization), without
+depending on Android to destroy a still-bound active VPN service.
 
 If the watchdog called `Veercore.stop()` directly, it would bypass the mutex,
 race `bootCore`, and potentially double-free the Go runtime.
@@ -388,8 +441,9 @@ return means either:
   15-second initial delay).
 - An Android ROM is blocking localhost traffic (MIUI, HyperOS).
 
-The watchdog does not distinguish these cases. Any `null` response after the
-grace period is treated as a fatal fault.
+The watchdog does not distinguish these cases. It therefore requires three
+consecutive `null` responses after the grace period before treating the fault
+as fatal. Any successful response resets the failure count to zero.
 
 ### 5.3 Initial delay rationale
 
@@ -402,12 +456,10 @@ positive that forces an immediate teardown.
 If the grace period proves too short for a specific device, increase it in the
 companion object. Do not remove it.
 
-**Phase 1.2 backlog (SI-01):** The watchdog currently fires on the first `null`
-response with no debounce. Any brief network handoff (Wi-Fi → cellular) that
-transiently makes the Kotlin HTTP client fail will trigger a spurious
-`EngineState.Error`. `runtime_stability_plan.md §6` tracks this as the
-highest-priority Phase 1.2 item. Do not remove the single-probe behaviour before
-that fix is in place, as it remains the only liveness detection we have.
+**Phase 1.2 SI-01 implemented:** `WatchdogFailureTracker` requires three
+consecutive failed probes (the initial failure plus two retries). A healthy
+probe between failures resets the streak. With the default 30-second interval,
+this preserves liveness detection while tolerating brief network handoffs.
 
 ### 5.4 Watchdog lifecycle
 
@@ -483,12 +535,18 @@ To reload the Mihomo config without restarting the VPN:
 
 ### 7.2 Reconnect / profile switch
 
-A profile switch (changing proxy server, subscription URL, or `base.yaml`)
-requires a full stop → start cycle:
+A same-config user reconnect uses a retained service:
 
-1. `ACTION_STOP` → `onDestroy` → `tearDownCore` → `Stopped`.
-2. Update config files via `ConfigManager`.
-3. `ACTION_START` → `bootCore` → `Running`.
+1. `ACTION_RECONNECT` → `requestReconnect` → `Stopping`.
+2. `tearDownCore(finalizeState=false)` fully drains Mihomo and closes the old tun.
+3. `bootCore` establishes a new tun and publishes `Starting → Running`.
+
+A profile switch (changing subscription/config selection) uses the separate
+retained-service transaction:
+
+1. `ACTION_PREPARE_PROFILE_SWITCH` drains the old runtime and publishes `Stopped`.
+2. Update/activate the validated config via `ProfileManager`.
+3. `ACTION_START` reuses the retained service and reaches `Running`.
 
 There is no in-place config swap. `Veercore.start` establishes the fd-to-config
 binding at runtime start; it cannot be changed while running.

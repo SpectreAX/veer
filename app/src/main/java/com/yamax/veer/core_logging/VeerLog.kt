@@ -31,6 +31,7 @@ object VeerLog {
     // -------------------------------------------------------------------------
 
     enum class Cat(val key: String) {
+        UI("ui"),
         CORE("core"),
         VPN("vpn"),
         CONNECTIVITY("connectivity"),
@@ -99,6 +100,7 @@ object VeerLog {
     // -------------------------------------------------------------------------
 
     fun core(msg: String,         level: Level = Level.DEBUG) = log(Cat.CORE,         msg, level)
+    fun ui(msg: String,           level: Level = Level.DEBUG) = log(Cat.UI,           msg, level)
     fun vpn(msg: String,          level: Level = Level.DEBUG) = log(Cat.VPN,          msg, level)
     fun connectivity(msg: String, level: Level = Level.DEBUG) = log(Cat.CONNECTIVITY, msg, level)
     fun profile(msg: String,      level: Level = Level.DEBUG) = log(Cat.PROFILE,      msg, level)
@@ -113,7 +115,8 @@ object VeerLog {
     fun log(cat: Cat, msg: String, level: Level = Level.DEBUG) {
         val now    = System.currentTimeMillis()
         val thread = Thread.currentThread().name
-        val entry  = Entry(now, thread, cat, level, msg)
+        val safeMessage = redact(msg)
+        val entry  = Entry(now, thread, cat, level, safeMessage)
 
         // 1. Ring buffer
         synchronized(ringLock) {
@@ -127,7 +130,7 @@ object VeerLog {
         }
 
         // 2. Logcat — tag "Veer" keeps `adb logcat -v time Veer:D *:S` working
-        val logcatMsg = "[${cat.key}][$thread] $msg"
+        val logcatMsg = "[${cat.key}][$thread] $safeMessage"
         when (level) {
             Level.DEBUG -> Log.d(LOGCAT_TAG, logcatMsg)
             Level.INFO  -> Log.i(LOGCAT_TAG, logcatMsg)
@@ -139,12 +142,12 @@ object VeerLog {
         logDir?.let { dir ->
             runCatching {
                 File(dir, "veer_$dateStr.log")
-                    .appendText("$timeStr ${level.letter} [${cat.key}][$thread] $msg\n")
+                    .appendText("$timeStr ${level.letter} [${cat.key}][$thread] $safeMessage\n")
             }
         }
 
         // 4. SharedFlow for the UI log panel
-        _flow.tryEmit("$timeStr  [${cat.key}]  $msg")
+        _flow.tryEmit("$timeStr  [${cat.key}]  $safeMessage")
     }
 
     // -------------------------------------------------------------------------
@@ -189,6 +192,32 @@ object VeerLog {
 
     fun ringSnapshot(): List<Entry> = synchronized(ringLock) { ring.toList() }
 
+    /**
+     * Bounded, already-redacted representation suitable for diagnostics IPC.
+     * Limits keep the ContentProvider response comfortably below Binder's
+     * transaction ceiling even when native log messages are unusually long.
+     */
+    fun formattedRingSnapshot(limit: Int): List<String> {
+        val boundedLimit = limit.coerceIn(1, MAX_IPC_LOG_LINES)
+        val snapshot = synchronized(ringLock) { ring.takeLast(boundedLimit) }
+        return snapshot.map { entry ->
+            val time = synchronized(fmtLock) {
+                timeFmt.format(Date(entry.timestampMs))
+            }
+            "$time  ${entry.level.letter}  [${entry.cat.key}]  ${entry.message}"
+                .take(MAX_IPC_LOG_LINE_CHARS)
+        }
+    }
+
+    /**
+     * Defense-in-depth for every output target, including Go/Mihomo messages.
+     * Call sites should still avoid logging secrets in the first place.
+     */
+    internal fun redact(value: String): String =
+        REDACTION_PATTERNS.fold(value) { current, (pattern, replacement) ->
+            current.replace(pattern, replacement)
+        }
+
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
@@ -200,4 +229,15 @@ object VeerLog {
             ?.filter { it.lastModified() < cutoff }
             ?.forEach { it.delete() }
     }
+
+    private const val MAX_IPC_LOG_LINES = 200
+    private const val MAX_IPC_LOG_LINE_CHARS = 800
+
+    private val REDACTION_PATTERNS = listOf(
+        Regex("""(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+""") to "Bearer [redacted]",
+        Regex("""\bsk-[A-Za-z0-9_-]{12,}\b""") to "[redacted-api-key]",
+        Regex("""(?i)\b(token|key|api[_-]?key|secret|password)\s*[:=]\s*["']?[^,\s"'&}]+""") to
+            "$1=[redacted]",
+        Regex("""https?://[^\s"'<>]+""") to "[redacted-url]",
+    )
 }

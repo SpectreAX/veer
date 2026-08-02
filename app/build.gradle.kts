@@ -1,24 +1,55 @@
-import java.util.Properties
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
 }
 
-// Read DEEPSEEK_API_KEY from local.properties (preferred) or env so the key
-// never lands in version control. Empty string is a valid build — the UI will
-// surface a clear "API key missing" error at runtime instead of crashing.
-val deepseekApiKey: String = run {
-    val local = rootProject.file("local.properties")
-    val fromProps = if (local.exists()) {
-        Properties().apply { local.inputStream().use { load(it) } }.getProperty("deepseek.api.key").orEmpty()
-    } else ""
-    fromProps.ifEmpty { System.getenv("DEEPSEEK_API_KEY").orEmpty() }
+val veerAbiSplitsEnabled = providers.gradleProperty("veer.abiSplits")
+    .map(String::toBoolean)
+    .orElse(false)
+
+fun releaseSigningValue(propertyName: String, environmentName: String): String? =
+    providers.gradleProperty(propertyName)
+        .orElse(providers.environmentVariable(environmentName))
+        .orNull
+        ?.trim()
+        ?.takeIf(String::isNotEmpty)
+
+val releaseStoreFile = releaseSigningValue(
+    "veer.release.storeFile",
+    "VEER_RELEASE_STORE_FILE",
+)
+val releaseStorePassword = releaseSigningValue(
+    "veer.release.storePassword",
+    "VEER_RELEASE_STORE_PASSWORD",
+)
+val releaseKeyAlias = releaseSigningValue(
+    "veer.release.keyAlias",
+    "VEER_RELEASE_KEY_ALIAS",
+)
+val releaseKeyPassword = releaseSigningValue(
+    "veer.release.keyPassword",
+    "VEER_RELEASE_KEY_PASSWORD",
+)
+val releaseSigningValues = listOf(
+    releaseStoreFile,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+)
+val releaseSigningConfigured = releaseSigningValues.all { it != null }
+
+if (releaseSigningValues.any { it != null } && !releaseSigningConfigured) {
+    throw GradleException(
+        "Incomplete Veer release signing configuration. Supply all four " +
+            "veer.release.* Gradle properties (prefer ~/.gradle/gradle.properties) " +
+            "or VEER_RELEASE_* environment variables.",
+    )
 }
 
 android {
     namespace = "com.yamax.veer"
+    buildToolsVersion = "36.1.0"
     compileSdk {
         version = release(36) {
             minorApiLevel = 1
@@ -39,7 +70,17 @@ android {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
 
-        buildConfigField("String", "DEEPSEEK_API_KEY", "\"$deepseekApiKey\"")
+    }
+
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            create("release") {
+                storeFile = rootProject.file(requireNotNull(releaseStoreFile))
+                storePassword = requireNotNull(releaseStorePassword)
+                keyAlias = requireNotNull(releaseKeyAlias)
+                keyPassword = requireNotNull(releaseKeyPassword)
+            }
+        }
     }
 
     buildTypes {
@@ -49,12 +90,19 @@ android {
             buildConfigField("boolean", "FAULT_INJECT", "true")
         }
         release {
-            isMinifyEnabled = false
+            // Release must exercise the same optimized shape delivered to users.
+            // gomobile bindings and reflection entry points are protected by
+            // app/proguard-rules.pro.
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
             buildConfigField("boolean", "FAULT_INJECT", "false")
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
     compileOptions {
@@ -64,6 +112,21 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
+
+    // Keep normal Debug builds as one installable APK. Release automation opts
+    // into ABI splits with `-Pveer.abiSplits=true`, producing three lean APKs
+    // plus a Universal fallback from the same variant and source revision.
+    splits {
+        abi {
+            isEnable = veerAbiSplitsEnabled.get()
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86_64")
+            isUniversalApk = true
+        }
     }
 
     packaging {
@@ -155,10 +218,10 @@ dependencies {
     // `make aar-debug` in go_core/); fall back to the production .aar so the
     // project compiles even without a debug .aar present.
     val debugAar = file("libs/libveer_core_debug.aar")
-    releaseImplementation(fileTree("libs") { include("libveer_core.aar", "*.jar") })
+    releaseImplementation(files("libs/libveer_core.aar"))
     debugImplementation(
-        if (debugAar.exists()) files(debugAar) + fileTree("libs") { include("*.jar") }
-        else fileTree("libs") { include("libveer_core.aar", "*.jar") }
+        if (debugAar.exists()) files(debugAar)
+        else files("libs/libveer_core.aar")
     )
 
     implementation(platform(libs.androidx.compose.bom))
@@ -171,12 +234,14 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.okhttp)
     implementation(libs.okhttp.brotli)
     implementation(libs.snakeyaml)
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)

@@ -24,10 +24,18 @@ go mod tidy
 gomobile bind \
   -target=android \
   -androidapi 29 \
+  -tags=cmfa,with_gvisor \
   -ldflags="-s -w" \
   -o ../app/libs/libveer_core.aar \
   .
 ```
+
+The `cmfa` build tag is mandatory for Android app clients. Without it, mihomo
+uses server-side Android package inspection (`/data/system/packages.xml`) and
+TUN startup fails under an ordinary application UID.
+
+`with_gvisor` is also mandatory for Veer's fd-backed TUN. It provides the
+userspace TCP/IP stack used by the generated Android runtime configuration.
 
 The Android module already declares `implementation(fileTree("libs"))`, so the
 generated `.aar` is picked up automatically on the next Gradle sync.

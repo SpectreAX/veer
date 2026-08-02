@@ -22,15 +22,27 @@ object MihomoEngine {
     private val _state = MutableStateFlow<EngineState>(EngineState.Stopped)
     val state: StateFlow<EngineState> = _state.asStateFlow()
 
+    private val _startupStage = MutableStateFlow(StartupStage.IDLE)
+    internal val startupStage: StateFlow<StartupStage> = _startupStage.asStateFlow()
+
     /** Live log stream backed by [VeerLog.flow]. Collected by the UI log panel. */
     val logs: SharedFlow<String> get() = VeerLog.flow
 
     // Settable from the debug source set (DebugLifecycleSetup). Null in release.
     @Volatile internal var stateObserver: ((EngineState) -> Unit)? = null
+    @Volatile internal var startupStageObserver: ((StartupStage) -> Unit)? = null
 
     internal fun setState(next: EngineState) {
         stateObserver?.invoke(next)
         _state.value = next
+        if (next !is EngineState.Starting) {
+            setStartupStage(StartupStage.IDLE)
+        }
+    }
+
+    internal fun setStartupStage(next: StartupStage) {
+        startupStageObserver?.invoke(next)
+        _startupStage.value = next
     }
 
     /**
@@ -66,4 +78,21 @@ sealed interface EngineState {
     data object Running  : EngineState
     data object Stopping : EngineState
     data class Error(val message: String) : EngineState
+}
+
+/**
+ * Real startup boundaries published by [VeerVpnService].
+ *
+ * These values describe completed/active work, not elapsed time. Keeping them
+ * beside [EngineState] makes the service the sole lifecycle writer while the UI
+ * remains a passive observer.
+ */
+internal enum class StartupStage {
+    IDLE,
+    PREPARING_CONFIG,
+    ENSURING_GEO_DATA,
+    VALIDATING_CONFIG,
+    ESTABLISHING_TUNNEL,
+    STARTING_RUNTIME,
+    READY,
 }

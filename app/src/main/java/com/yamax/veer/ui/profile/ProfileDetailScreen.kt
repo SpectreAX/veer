@@ -39,9 +39,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.yamax.veer.R
 import com.yamax.veer.core_profile.ProfileId
+import com.yamax.veer.ui.resolve
 
 @Composable
 internal fun ProfileDetailScreen(
@@ -56,10 +59,18 @@ internal fun ProfileDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title          = { Text(state.metadata?.displayName ?: "Profile") },
+                title = {
+                    Text(
+                        state.metadata?.displayName
+                            ?: stringResource(R.string.profile_fallback_title),
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.common_back),
+                        )
                     }
                 },
             )
@@ -82,11 +93,11 @@ internal fun ProfileDetailScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Text(
-                        text  = state.error!!,
+                        text = state.error!!.resolve(),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error,
                     )
-                    TextButton(onClick = onBack) { Text("Go Back") }
+                    TextButton(onClick = onBack) { Text(stringResource(R.string.common_back)) }
                 }
 
                 else -> LazyColumn(
@@ -103,7 +114,7 @@ internal fun ProfileDetailScreen(
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
                                 Text(
-                                    text     = "VPN is not running — proxy selections show the last known state and cannot be changed.",
+                                    text = stringResource(R.string.profile_vpn_stopped_detail),
                                     style    = MaterialTheme.typography.bodySmall,
                                     color    = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(12.dp),
@@ -199,7 +210,7 @@ private fun ProxyGroupCard(
                     if (isSelected) {
                         Icon(
                             imageVector        = Icons.Default.Check,
-                            contentDescription = "Selected",
+                            contentDescription = stringResource(R.string.profile_selected),
                             tint               = MaterialTheme.colorScheme.primary,
                             modifier           = Modifier.size(16.dp),
                         )

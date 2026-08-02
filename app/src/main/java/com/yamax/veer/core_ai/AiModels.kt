@@ -14,14 +14,24 @@ data class AiIntent(
     val target: String,
     @SerialName("match_type") val matchType: MatchType,
     @SerialName("proxy_group") val proxyGroup: String,
+    @SerialName("selection_mode") val selectionMode: SelectionMode = SelectionMode.NONE,
     @SerialName("reply_message") val replyMessage: String,
 ) {
 
     @Serializable
     enum class Action {
         @SerialName("add_rule") ADD_RULE,
+        @SerialName("switch_proxy") SWITCH_PROXY,
         @SerialName("dns_change") DNS_CHANGE,
         @SerialName("diagnose") DIAGNOSE,
+        @SerialName("clarify") CLARIFY,
+    }
+
+    @Serializable
+    enum class SelectionMode {
+        @SerialName("specified") SPECIFIED,
+        @SerialName("lowest_latency") LOWEST_LATENCY,
+        @SerialName("none") NONE,
     }
 
     @Serializable
@@ -44,6 +54,28 @@ data class AiIntent(
             IP_CIDR -> "IP-CIDR"
             NONE -> "NONE"
         }
+    }
+}
+
+/**
+ * Versioned execution plan returned by the LLM. A plan can contain one or
+ * several ordered operations; schema changes must increment [schemaVersion].
+ */
+@Serializable
+data class AiPlan(
+    @SerialName("schema_version") val schemaVersion: Int,
+    val operations: List<AiIntent>,
+    @SerialName("reply_message") val replyMessage: String,
+) {
+    companion object {
+        const val CURRENT_SCHEMA_VERSION = 1
+        const val MAX_OPERATIONS = 8
+
+        fun single(intent: AiIntent) = AiPlan(
+            schemaVersion = CURRENT_SCHEMA_VERSION,
+            operations = listOf(intent),
+            replyMessage = intent.replyMessage,
+        )
     }
 }
 

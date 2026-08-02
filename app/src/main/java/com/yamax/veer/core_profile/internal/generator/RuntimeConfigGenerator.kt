@@ -1,6 +1,10 @@
 package com.yamax.veer.core_profile.internal.generator
 
 import com.yamax.veer.core_logging.VeerLog
+import com.yamax.veer.core_profile.DnsEnhancedMode
+import com.yamax.veer.core_profile.DnsOverrideMode
+import com.yamax.veer.core_profile.DnsOverridePolicy
+import com.yamax.veer.core_profile.DnsOverrideValidator
 import com.yamax.veer.core_profile.ImportedProfile
 import com.yamax.veer.core_profile.NormalizedDns
 import com.yamax.veer.core_profile.NormalizedProxy
@@ -45,6 +49,60 @@ internal object RuntimeConfigGenerator {
         GeneratedConfig(yaml = yamlText, sha256Hex = hash)
     }
 
+    /**
+     * Applies a validated per-profile DNS overlay to an already generated safe
+     * config. INHERIT returns the base bytes unchanged so restoring the
+     * provider DNS is exact.
+     */
+    fun applyDnsOverride(
+        baseYaml: String,
+        policy: DnsOverridePolicy,
+    ): Result<GeneratedConfig> = runCatching {
+        val normalized = policy.normalized()
+        val issues = DnsOverrideValidator.validate(normalized)
+        require(issues.isEmpty()) {
+            issues.joinToString("; ") { it.diagnosticMessage() }
+        }
+        if (normalized.mode == DnsOverrideMode.INHERIT) {
+            return@runCatching GeneratedConfig(
+                yaml = baseYaml,
+                sha256Hex = sha256Hex(baseYaml),
+            )
+        }
+
+        val loaded = Yaml(SafeConstructor(LoaderOptions())).load<Any>(baseYaml)
+        val root = loaded.asStringKeyMap("runtime config").toMutableMap()
+        val dns = (root["dns"] as? Map<*, *>)
+            ?.asStringKeyMap("dns")
+            ?.toMutableMap()
+            ?: linkedMapOf()
+
+        dns["enable"] = true
+        dns["ipv6"] = normalized.ipv6
+        dns["enhanced-mode"] = normalized.enhancedMode.wireValue
+        dns["default-nameserver"] = normalized.defaultNameservers
+        dns["nameserver"] = normalized.nameservers
+        if (normalized.fallbackNameservers.isEmpty()) {
+            dns.remove("fallback")
+            dns.remove("fallback-filter")
+        } else {
+            dns["fallback"] = normalized.fallbackNameservers
+        }
+        if (normalized.enhancedMode == DnsEnhancedMode.FAKE_IP) {
+            dns.putIfAbsent("fake-ip-range", "198.18.0.1/16")
+            dns.putIfAbsent(
+                "fake-ip-filter",
+                listOf("*.lan", "*.local", "localhost.ptlogin2.qq.com"),
+            )
+        } else {
+            dns.remove("fake-ip-range")
+        }
+        root["dns"] = dns
+
+        val yamlText = LinkedHashMap(root).dumpToYaml()
+        GeneratedConfig(yaml = yamlText, sha256Hex = sha256Hex(yamlText))
+    }
+
     // -------------------------------------------------------------------------
     // Object tree construction
     // -------------------------------------------------------------------------
@@ -71,6 +129,29 @@ internal object RuntimeConfigGenerator {
             "geosite" to "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geosite.dat",
         )
 
+        // Android owns routes and passes an already-established VPN fd to Veercore.
+        // Mihomo defaults both auto-route and auto-detect-interface to true; omitting
+        // this block starts a netlink NetworkUpdateMonitor that Android 14+ forbids.
+        config["tun"] = linkedMapOf(
+            "enable"                to false,
+            // gVisor handles TCP and UDP fully in userspace. The system stack's
+            // kernel TCP forwarder is unreliable with Android-owned TUN fds.
+            "stack"                 to "gvisor",
+            "device"                to "",
+            "auto-route"            to false,
+            "auto-detect-interface" to false,
+            "inet4-address"          to listOf("172.19.0.1/30"),
+            "inet6-address"          to listOf("fdfe:dcba:9876::1/126"),
+            "dns-hijack"            to listOf("any:53"),
+            "mtu"                   to 9000,
+        )
+
+        // Some Android apps resolve through their own DoH stack and therefore
+        // connect to a real IP instead of Mihomo's fake-IP range. Recovering the
+        // HTTP host / TLS SNI / QUIC SNI is required for domain and GEOSITE rules
+        // (including AI-created OpenAI/Netflix routes) to keep working.
+        config["sniffer"] = defaultSnifferConfig()
+
         config["dns"] = if (profile.dns != null) buildDnsMap(profile.dns)
                         else buildDefaultDnsMap()
 
@@ -80,6 +161,25 @@ internal object RuntimeConfigGenerator {
 
         return config
     }
+
+    private fun defaultSnifferConfig(): LinkedHashMap<String, Any> = linkedMapOf(
+        "enable" to true,
+        "force-dns-mapping" to true,
+        "parse-pure-ip" to true,
+        "override-destination" to true,
+        "sniff" to linkedMapOf(
+            "HTTP" to linkedMapOf(
+                "ports" to listOf(80, "8080-8880"),
+                "override-destination" to true,
+            ),
+            "TLS" to linkedMapOf(
+                "ports" to listOf(443, 8443),
+            ),
+            "QUIC" to linkedMapOf(
+                "ports" to listOf(443, 8443),
+            ),
+        ),
+    )
 
     // -------------------------------------------------------------------------
     // SnakeYAML dump + round-trip validation
@@ -116,6 +216,16 @@ internal object RuntimeConfigGenerator {
         return yamlText
     }
 
+    private fun Any?.asStringKeyMap(label: String): LinkedHashMap<String, Any> {
+        val source = this as? Map<*, *> ?: error("$label is not a YAML mapping")
+        val result = linkedMapOf<String, Any>()
+        source.forEach { (key, value) ->
+            val stringKey = key as? String ?: error("$label contains a non-string key")
+            if (value != null) result[stringKey] = value
+        }
+        return result
+    }
+
     // -------------------------------------------------------------------------
     // Map builders — all return plain Map/List, never raw YAML text
     // -------------------------------------------------------------------------
@@ -148,12 +258,27 @@ internal object RuntimeConfigGenerator {
 
     private fun buildDnsMap(dns: NormalizedDns): Map<String, Any> {
         val m = linkedMapOf<String, Any>()
+        val hardenProviderDns = dns.nameservers.none { it.isEncryptedDnsEndpoint() }
         m["enable"] = dns.enabled
         m["ipv6"]   = dns.ipv6
         dns.enhancedMode?.let       { m["enhanced-mode"]  = it }
+        dns.fakeIpRange?.let        { m["fake-ip-range"]  = it }
+        dns.useHosts?.let           { m["use-hosts"]      = it }
         if (dns.fakeDnsFilter.isNotEmpty())    m["fake-ip-filter"] = dns.fakeDnsFilter
-        if (dns.nameservers.isNotEmpty())      m["nameserver"]     = dns.nameservers
-        if (dns.fallbackNameservers.isNotEmpty()) m["fallback"]    = dns.fallbackNameservers
+        if (dns.defaultNameservers.isNotEmpty()) m["default-nameserver"] = dns.defaultNameservers
+        m["nameserver"] = securePrimaryNameservers(dns)
+        if (!hardenProviderDns && dns.fallbackNameservers.isNotEmpty()) {
+            m["fallback"] = dns.fallbackNameservers
+        }
+        dns.fallbackFilter?.takeUnless { hardenProviderDns }?.let { filter ->
+            val fm = linkedMapOf<String, Any>()
+            filter.geoIp?.let { fm["geoip"] = it }
+            filter.geoIpCode?.let { fm["geoip-code"] = it }
+            if (filter.ipCidrs.isNotEmpty()) fm["ipcidr"] = filter.ipCidrs
+            if (filter.domains.isNotEmpty()) fm["domain"] = filter.domains
+            if (filter.geoSites.isNotEmpty()) fm["geosite"] = filter.geoSites
+            if (fm.isNotEmpty()) m["fallback-filter"] = fm
+        }
         return m
     }
 
@@ -162,9 +287,32 @@ internal object RuntimeConfigGenerator {
         "ipv6"           to false,
         "enhanced-mode"  to "fake-ip",
         "fake-ip-filter" to listOf("*.lan", "*.local", "localhost.ptlogin2.qq.com"),
-        "nameserver"     to listOf("223.5.5.5", "119.29.29.29"),
-        "fallback"       to listOf("tls://1.1.1.1:853", "https://8.8.8.8/dns-query"),
+        "default-nameserver" to listOf("223.5.5.5", "1.1.1.1"),
+        "nameserver"     to BUILT_IN_SECURE_NAMESERVERS,
     )
+
+    /**
+     * Plain UDP/TCP resolvers can be transparently forged by the access network.
+     * A poisoned answer may still look like a valid foreign address and therefore
+     * evade geoip-based fallback filters, resulting in a TLS hostname mismatch.
+     *
+     * Custom DNS overrides remain fully user-controlled. For inherited provider
+     * profiles, prefer an encrypted primary resolver supplied by the provider. If
+     * none exists, use Veer's encrypted defaults; [buildDnsMap] also suppresses the
+     * provider fallback/filter so it cannot re-select a censored answer. Plain
+     * resolvers are retained as bootstrap servers only, where a forged answer
+     * cannot bypass DoH certificate validation.
+     */
+    private fun securePrimaryNameservers(dns: NormalizedDns): List<String> {
+        val encryptedPrimary = dns.nameservers.filter { it.isEncryptedDnsEndpoint() }
+        if (encryptedPrimary.isNotEmpty()) return encryptedPrimary.distinct()
+        return BUILT_IN_SECURE_NAMESERVERS
+    }
+
+    private fun String.isEncryptedDnsEndpoint(): Boolean {
+        val scheme = substringBefore("://", missingDelimiterValue = "").lowercase()
+        return scheme in setOf("https", "tls", "quic", "h3")
+    }
 
     // -------------------------------------------------------------------------
     // SHA-256
@@ -174,4 +322,9 @@ internal object RuntimeConfigGenerator {
         val digest = MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8))
         return digest.joinToString("") { "%02x".format(it) }
     }
+
+    private val BUILT_IN_SECURE_NAMESERVERS = listOf(
+        "https://1.1.1.1/dns-query",
+        "https://cloudflare-dns.com/dns-query",
+    )
 }
