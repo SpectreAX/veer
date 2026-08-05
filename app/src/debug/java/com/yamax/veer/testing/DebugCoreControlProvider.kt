@@ -58,6 +58,21 @@ class DebugCoreControlProvider : ContentProvider() {
             VeerVpnService.debugAllNetworksLostCallback?.invoke()
             Bundle.EMPTY
         }
+        DebugCoreControlProtocol.METHOD_ARM_TEARDOWN_CONNECTIVITY_PROBE -> {
+            teardownConnectivityProbeFired.set(false)
+            VeerVpnService.testBeforeConnectivityMonitorStop = {
+                val callback = VeerVpnService.debugAllNetworksLostCallback
+                callback?.invoke()
+                teardownConnectivityProbeFired.set(callback != null)
+            }
+            Bundle.EMPTY
+        }
+        DebugCoreControlProtocol.METHOD_TEARDOWN_CONNECTIVITY_PROBE_STATUS -> Bundle().apply {
+            putBoolean(
+                DebugCoreControlProtocol.KEY_TEARDOWN_CONNECTIVITY_PROBE_FIRED,
+                teardownConnectivityProbeFired.get(),
+            )
+        }
         DebugCoreControlProtocol.METHOD_SET_WATCHDOG_TIMINGS -> {
             VeerVpnService.testWatchdogInitialDelayMs = extras?.getLong(
                 DebugCoreControlProtocol.KEY_INITIAL_DELAY_MS,
@@ -127,6 +142,7 @@ class DebugCoreControlProvider : ContentProvider() {
 
     private fun resetTimings() {
         recoveryExhausted.set(false)
+        teardownConnectivityProbeFired.set(false)
         VeerVpnService.testWatchdogInitialDelayMs = -1L
         VeerVpnService.testWatchdogIntervalMs = -1L
         VeerVpnService.testStopTimeoutMs = -1L
@@ -136,6 +152,7 @@ class DebugCoreControlProvider : ContentProvider() {
         VeerVpnService.testAutoRecoveryMaxCandidates = -1
         VeerVpnService.testAutoRecoveryInternetProbe = null
         VeerVpnService.testAutoRecoveryExhaustedCallback = null
+        VeerVpnService.testBeforeConnectivityMonitorStop = null
     }
 
     override fun query(
@@ -159,6 +176,7 @@ class DebugCoreControlProvider : ContentProvider() {
     companion object {
         private const val MAX_REMOTE_STACK_CHARS = 256_000
         private val recoveryExhausted = AtomicBoolean()
+        private val teardownConnectivityProbeFired = AtomicBoolean()
         private val ALLOWED_NATIVE_METHODS = setOf(
             "setFaultHangBeforeApplyConfig",
             "releaseHangBeforeApplyConfig",

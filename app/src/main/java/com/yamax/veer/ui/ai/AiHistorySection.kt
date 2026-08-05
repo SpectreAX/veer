@@ -8,25 +8,32 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Card
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import androidx.annotation.StringRes
 import com.yamax.veer.R
 import com.yamax.veer.data.AiHistoryEntry
+import com.yamax.veer.data.AiHistoryMutation
+import com.yamax.veer.data.AiHistoryRuleStore
 import com.yamax.veer.data.AiHistorySource
 import com.yamax.veer.data.AiHistoryStatus
+import com.yamax.veer.ui.designsystem.components.VeerCard
+import com.yamax.veer.ui.designsystem.components.VeerSecondaryButton
+import com.yamax.veer.ui.designsystem.components.VeerStatus
+import com.yamax.veer.ui.designsystem.components.VeerStatusBadge
+import com.yamax.veer.ui.designsystem.preview.VeerPreview
+import com.yamax.veer.ui.designsystem.preview.VeerResponsivePreviews
+import com.yamax.veer.ui.designsystem.preview.VeerThemePreviews
+import com.yamax.veer.ui.designsystem.theme.VeerSpacing
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -65,7 +72,7 @@ internal fun AiQuickTemplateRow(
     enabled: Boolean,
     onSelect: (String) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(VeerSpacing.sm)) {
         Text(
             stringResource(R.string.ai_templates_title),
             style = MaterialTheme.typography.labelLarge,
@@ -76,7 +83,7 @@ internal fun AiQuickTemplateRow(
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
                 .testTag("ai_quick_templates"),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(VeerSpacing.sm),
         ) {
             AI_PROMPT_TEMPLATES.forEach { template ->
                 val title = stringResource(template.titleRes)
@@ -99,41 +106,45 @@ internal fun AiHistorySection(
     busy: Boolean,
     onReplay: (AiHistoryEntry) -> Unit,
     onUndo: (AiHistoryEntry) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val visible = entries.take(if (expanded) 10 else 3)
 
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .testTag("ai_history"),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(VeerSpacing.sm),
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(VeerSpacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Text(
                 stringResource(R.string.ai_history_title),
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.weight(1f),
             )
             if (entries.size > 3) {
-                TextButton(onClick = { expanded = !expanded }) {
-                    Text(
-                        stringResource(
-                            if (expanded) R.string.common_collapse else R.string.common_view_all,
-                        ),
-                    )
-                }
+                VeerSecondaryButton(
+                    text = stringResource(
+                        if (expanded) R.string.common_collapse else R.string.common_view_all,
+                    ),
+                    onClick = { expanded = !expanded },
+                )
             }
         }
         if (entries.isEmpty()) {
-            Text(
-                stringResource(R.string.ai_history_empty),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            VeerCard(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    stringResource(R.string.ai_history_empty),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         } else {
-            visible.forEachIndexed { index, entry ->
-                if (index > 0) HorizontalDivider()
+            visible.forEach { entry ->
                 AiHistoryCard(
                     entry = entry,
                     isActiveProfile = entry.profileId == activeProfileId,
@@ -154,17 +165,25 @@ private fun AiHistoryCard(
     onReplay: (AiHistoryEntry) -> Unit,
     onUndo: (AiHistoryEntry) -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(
-                entry.prompt,
-                style = MaterialTheme.typography.titleSmall,
-            )
+    VeerCard(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            entry.prompt,
+            style = MaterialTheme.typography.titleMedium,
+        )
+        VeerStatusBadge(
+            status = when {
+                entry.undoneAtMs != null -> VeerStatus.Unavailable
+                entry.status == AiHistoryStatus.SUCCESS -> VeerStatus.Connected
+                else -> VeerStatus.Warning
+            },
+            label = stringResource(
+                when {
+                    entry.undoneAtMs != null -> R.string.ai_history_undone
+                    entry.status == AiHistoryStatus.SUCCESS -> R.string.ai_history_success
+                    else -> R.string.ai_history_failure
+                },
+            ),
+        )
             val source = stringResource(when (entry.source) {
                 AiHistorySource.LOCAL -> R.string.ai_history_source_local
                 AiHistorySource.LLM -> R.string.ai_history_source_llm
@@ -189,7 +208,7 @@ private fun AiHistoryCard(
                     MaterialTheme.colorScheme.onSurfaceVariant
                 },
             )
-            Text(entry.summary, style = MaterialTheme.typography.bodySmall)
+            Text(entry.summary, style = MaterialTheme.typography.bodyMedium)
             entry.generatedRules.takeIf { it.isNotEmpty() }?.let { rules ->
                 Text(
                     rules.joinToString("\n"),
@@ -197,38 +216,100 @@ private fun AiHistoryCard(
                     color = MaterialTheme.colorScheme.primary,
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(VeerSpacing.sm),
+            ) {
+                VeerSecondaryButton(
+                    text = stringResource(R.string.ai_history_replay),
                     onClick = { onReplay(entry) },
                     enabled = !busy && isActiveProfile,
-                ) {
-                    Text(stringResource(R.string.ai_history_replay))
-                }
+                    modifier = Modifier.weight(1f),
+                )
                 if (entry.mutation?.isReversible == true) {
-                    TextButton(
+                    VeerSecondaryButton(
+                        text = stringResource(
+                            if (entry.undoneAtMs == null) R.string.ai_history_undo
+                            else R.string.ai_history_undone,
+                        ),
                         onClick = { onUndo(entry) },
                         enabled = !busy && isActiveProfile && entry.canUndo,
-                        modifier = Modifier.testTag("ai_history_undo"),
-                    ) {
-                        Text(
-                            stringResource(
-                                if (entry.undoneAtMs == null) R.string.ai_history_undo
-                                else R.string.ai_history_undone,
-                            ),
-                        )
-                    }
-                }
-                if (!isActiveProfile) {
-                    Text(
-                        stringResource(R.string.ai_history_switch_profile),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("ai_history_undo"),
                     )
                 }
             }
+            if (!isActiveProfile) {
+                Text(
+                    stringResource(R.string.ai_history_switch_profile),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
-    }
 }
 
 internal fun formatHistoryTime(timestampMs: Long): String =
     SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(timestampMs))
+
+private fun previewHistoryEntries(): List<AiHistoryEntry> = listOf(
+    AiHistoryEntry(
+        id = "success",
+        profileId = "active",
+        prompt = "Route Netflix and other Japanese streaming traffic through the lowest-latency Japan node",
+        source = AiHistorySource.LOCAL,
+        status = AiHistoryStatus.SUCCESS,
+        timestampMs = 1_700_000_000_000,
+        summary = "Netflix now exits through Japan Tokyo premium streaming and AI route.",
+        generatedRules = listOf("GEOSITE,netflix,Japan Tokyo premium streaming and AI route"),
+        mutation = AiHistoryMutation(
+            rulesBefore = AiHistoryRuleStore(emptyList(), emptyList()),
+            rulesAfter = AiHistoryRuleStore(
+                enabled = listOf("GEOSITE,netflix,Japan Tokyo premium streaming and AI route"),
+                disabled = emptyList(),
+            ),
+        ),
+    ),
+    AiHistoryEntry(
+        id = "failed",
+        profileId = "other",
+        prompt = "ChatGPT go us",
+        source = AiHistorySource.LLM,
+        status = AiHistoryStatus.FAILURE,
+        timestampMs = 1_700_000_060_000,
+        summary = "No available United States route was found. Existing traffic was unchanged.",
+    ),
+)
+
+@VeerThemePreviews
+@Composable
+private fun AiHistoryThemePreview() {
+    VeerPreview {
+        Column(modifier = Modifier.padding(VeerSpacing.lg)) {
+            AiHistorySection(
+                entries = previewHistoryEntries(),
+                activeProfileId = "active",
+                busy = false,
+                onReplay = {},
+                onUndo = {},
+            )
+        }
+    }
+}
+
+@VeerResponsivePreviews
+@Composable
+private fun AiHistoryResponsivePreview() {
+    VeerPreview {
+        Column(modifier = Modifier.padding(VeerSpacing.lg)) {
+            AiHistorySection(
+                entries = previewHistoryEntries(),
+                activeProfileId = "active",
+                busy = false,
+                onReplay = {},
+                onUndo = {},
+            )
+        }
+    }
+}

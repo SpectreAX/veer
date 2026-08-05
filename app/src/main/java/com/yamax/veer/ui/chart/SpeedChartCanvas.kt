@@ -22,8 +22,13 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import com.yamax.veer.R
 import com.yamax.veer.data.SpeedSample
+import com.yamax.veer.ui.designsystem.preview.VeerPreview
+import com.yamax.veer.ui.designsystem.preview.VeerThemePreviews
+import com.yamax.veer.ui.designsystem.theme.VeerDimensions
+import com.yamax.veer.ui.designsystem.theme.VeerSpacing
 import java.util.Locale
 
 internal const val SPEED_CHART_MAX_POINTS = 60
@@ -52,33 +57,37 @@ fun SpeedChart(
     val downloadColor = MaterialTheme.colorScheme.tertiary
     val guideColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.30f)
     val statusText = when {
-        !connected -> "未连接"
-        visibleHistory.isEmpty() -> "等待流量样本"
+        !connected -> stringResource(R.string.speed_chart_disconnected)
+        visibleHistory.isEmpty() -> stringResource(R.string.speed_chart_waiting)
         else -> null
     }
     val accessibilityDescription = if (connected) {
-        "实时流量图，上传 ${formatSpeed(currentUp)}，下载 ${formatSpeed(currentDown)}"
+        stringResource(
+            R.string.speed_chart_accessibility_connected,
+            formatSpeed(currentUp),
+            formatSpeed(currentDown),
+        )
     } else {
-        "实时流量图，未连接"
+        stringResource(R.string.speed_chart_accessibility_disconnected)
     }
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(120.dp)
+            .height(VeerDimensions.speedChartHeight)
             .testTag("speed_chart")
             .semantics { contentDescription = accessibilityDescription },
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val dataTop = 28.dp.toPx()
-            val dataBottom = size.height - 22.dp.toPx()
+            val dataTop = VeerSpacing.xl.toPx()
+            val dataBottom = size.height - VeerSpacing.xl.toPx()
             val dataHeight = (dataBottom - dataTop).coerceAtLeast(1f)
 
             drawLine(
                 color = guideColor,
                 start = Offset(0f, dataBottom),
                 end = Offset(size.width, dataBottom),
-                strokeWidth = 2.dp.toPx(),
+                strokeWidth = VeerDimensions.progressStroke.toPx(),
                 cap = StrokeCap.Round,
             )
 
@@ -131,9 +140,16 @@ fun SpeedChart(
                 drawPath(
                     path = linePath,
                     color = color,
-                    style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round),
+                    style = Stroke(
+                        width = VeerDimensions.progressStroke.toPx(),
+                        cap = StrokeCap.Round,
+                    ),
                 )
-                drawCircle(color = color, radius = 2.5.dp.toPx(), center = last)
+                drawCircle(
+                    color = color,
+                    radius = VeerDimensions.chartPointRadius.toPx(),
+                    center = last,
+                )
             }
 
             drawSeries(visibleHistory.map(SpeedSample::uploadSpeed), uploadColor)
@@ -149,12 +165,16 @@ fun SpeedChart(
             )
         } else {
             Text(
-                text = "↑ ${formatSpeed(currentUp)}  ↓ ${formatSpeed(currentDown)}",
+                text = stringResource(
+                    R.string.speed_chart_current,
+                    formatSpeed(currentUp),
+                    formatSpeed(currentDown),
+                ),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                    .padding(horizontal = VeerSpacing.sm, vertical = VeerSpacing.xs),
             )
         }
 
@@ -162,14 +182,31 @@ fun SpeedChart(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 2.dp),
+                .padding(horizontal = VeerSpacing.sm, vertical = VeerSpacing.xxs),
         ) {
-            TimeAxisLabel("60s")
+            TimeAxisLabel(stringResource(R.string.speed_chart_60_seconds))
             Spacer(modifier = Modifier.weight(1f))
-            TimeAxisLabel("30s")
+            TimeAxisLabel(stringResource(R.string.speed_chart_30_seconds))
             Spacer(modifier = Modifier.weight(1f))
-            TimeAxisLabel("现在")
+            TimeAxisLabel(stringResource(R.string.speed_chart_now))
         }
+    }
+}
+
+@VeerThemePreviews
+@Composable
+private fun SpeedChartPreview() {
+    VeerPreview {
+        SpeedChart(
+            history = listOf(
+                SpeedSample(timestamp = 1, uploadSpeed = 32_768, downloadSpeed = 120_000),
+                SpeedSample(timestamp = 2, uploadSpeed = 64_000, downloadSpeed = 800_000),
+                SpeedSample(timestamp = 3, uploadSpeed = 48_000, downloadSpeed = 360_000),
+                SpeedSample(timestamp = 4, uploadSpeed = 96_000, downloadSpeed = 1_200_000),
+            ),
+            connected = true,
+            modifier = Modifier.padding(VeerSpacing.lg),
+        )
     }
 }
 

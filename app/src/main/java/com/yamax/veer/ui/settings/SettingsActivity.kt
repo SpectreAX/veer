@@ -74,6 +74,9 @@ import com.yamax.veer.ui.perapp.PerAppProxyActivity
 import com.yamax.veer.ui.theme.ThemeMode
 import com.yamax.veer.ui.theme.ThemePreference
 import com.yamax.veer.ui.theme.VeerTheme
+import com.yamax.veer.ui.navigation.VeerBottomBar
+import com.yamax.veer.ui.navigation.VeerTopLevelDestination
+import com.yamax.veer.ui.navigation.navigateToTopLevel
 
 class SettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -90,8 +93,15 @@ class SettingsActivity : ComponentActivity() {
                     activeProfileId = activeProfileId,
                     activeProfileName = activeProfileName,
                     themeMode = themeMode,
-                    onBack = ::finish,
+                    onBack = { navigateToTopLevel(VeerTopLevelDestination.HOME) },
                     onThemeModeChange = { ThemePreference.set(this, it) },
+                    showBackNavigation = false,
+                    bottomBar = {
+                        VeerBottomBar(
+                            selected = VeerTopLevelDestination.SETTINGS,
+                            onSelect = ::navigateToTopLevel,
+                        )
+                    },
                 )
             }
         }
@@ -105,6 +115,8 @@ private fun SettingsRoute(
     themeMode: ThemeMode,
     onBack: () -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
+    showBackNavigation: Boolean,
+    bottomBar: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -157,6 +169,8 @@ private fun SettingsRoute(
         onOpenApplicationDetails = {
             BackgroundSettingsNavigator.openApplicationDetails(context)
         },
+        showBackNavigation = showBackNavigation,
+        bottomBar = bottomBar,
     )
 }
 
@@ -176,6 +190,8 @@ internal fun SettingsScreen(
     onOpenBatterySettings: () -> Unit,
     onOpenAutoStartSettings: () -> Unit,
     onOpenApplicationDetails: () -> Unit,
+    showBackNavigation: Boolean = true,
+    bottomBar: @Composable () -> Unit = {},
 ) {
     var apiKeyInput by remember { mutableStateOf("") }
     var apiMessage by remember { mutableStateOf<Int?>(null) }
@@ -188,10 +204,11 @@ internal fun SettingsScreen(
         topBar = {
             VeerTopAppBar(
                 title = stringResource(R.string.settings_title),
-                onBack = onBack,
+                onBack = if (showBackNavigation) onBack else null,
                 backContentDescription = stringResource(R.string.common_back),
             )
         },
+        bottomBar = bottomBar,
     ) { padding ->
         Column(
             modifier = Modifier

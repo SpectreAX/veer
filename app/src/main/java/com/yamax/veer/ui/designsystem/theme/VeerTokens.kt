@@ -42,13 +42,18 @@ object VeerDimensions {
     val iconSmall = 16.dp
     val iconMedium = 24.dp
     val iconLarge = 32.dp
+    val appIcon = 40.dp
     val stateIcon = 48.dp
     val contentMaxWidth = 720.dp
     val formMaxWidth = 560.dp
     val diagnosticPanelHeight = 320.dp
+    val speedChartHeight = 120.dp
+    val dialogListMaxHeight = 420.dp
     val compactContentBreakpoint = 320.dp
+    val compactContentHeight = 640.dp
     val divider = 1.dp
     val progressStroke = 2.dp
+    val chartPointRadius = 2.dp
 }
 
 object VeerAlpha {

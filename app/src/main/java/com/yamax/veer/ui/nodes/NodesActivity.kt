@@ -56,6 +56,9 @@ import com.yamax.veer.ui.designsystem.theme.VeerShapes
 import com.yamax.veer.ui.designsystem.theme.VeerSpacing
 import com.yamax.veer.ui.designsystem.theme.veerColors
 import com.yamax.veer.ui.resolve
+import com.yamax.veer.ui.navigation.VeerBottomBar
+import com.yamax.veer.ui.navigation.VeerTopLevelDestination
+import com.yamax.veer.ui.navigation.navigateToTopLevel
 import com.yamax.veer.ui.theme.VeerTheme
 
 class NodesActivity : ComponentActivity() {
@@ -75,7 +78,7 @@ class NodesActivity : ComponentActivity() {
                     filter = filter,
                     availableRegions = availableRegions,
                     filteredGroups = filteredGroups,
-                    onBack = ::finish,
+                    onBack = { navigateToTopLevel(VeerTopLevelDestination.HOME) },
                     onRefresh = viewModel::refresh,
                     onProbeAll = viewModel::probeAll,
                     onSelect = viewModel::select,
@@ -86,6 +89,13 @@ class NodesActivity : ComponentActivity() {
                     onUpdateRegionFilter = viewModel::updateRegionFilter,
                     onToggleHideUnavailable = viewModel::toggleHideUnavailable,
                     onClearFilters = viewModel::clearFilters,
+                    showBackNavigation = false,
+                    bottomBar = {
+                        VeerBottomBar(
+                            selected = VeerTopLevelDestination.NODES,
+                            onSelect = ::navigateToTopLevel,
+                        )
+                    },
                 )
             }
         }
@@ -114,16 +124,19 @@ internal fun NodesScreen(
     onUpdateRegionFilter: (String?) -> Unit,
     onToggleHideUnavailable: () -> Unit,
     onClearFilters: () -> Unit,
+    showBackNavigation: Boolean = true,
+    bottomBar: @Composable () -> Unit = {},
 ) {
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         topBar = {
             VeerTopAppBar(
                 title = stringResource(R.string.nodes_title),
-                onBack = onBack,
+                onBack = if (showBackNavigation) onBack else null,
                 backContentDescription = stringResource(R.string.common_back),
             )
         },
+        bottomBar = bottomBar,
     ) { padding ->
         Column(
             modifier = Modifier
@@ -212,6 +225,9 @@ internal fun NodesScreen(
                 filter = filter,
                 filteredGroups = filteredGroups,
                 onBack = onBack,
+                backLabel = stringResource(
+                    if (showBackNavigation) R.string.common_back else R.string.bottom_nav_home,
+                ),
                 onRefresh = onRefresh,
                 onClearFilters = onClearFilters,
                 onSelect = onSelect,
@@ -378,6 +394,7 @@ private fun NodesContent(
     filter: NodeFilter,
     filteredGroups: List<ProxyGroupUi>,
     onBack: () -> Unit,
+    backLabel: String,
     onRefresh: () -> Unit,
     onClearFilters: () -> Unit,
     onSelect: (String, String) -> Unit,
@@ -390,7 +407,7 @@ private fun NodesContent(
             icon = Icons.Default.Info,
             title = stringResource(R.string.nodes_vpn_disconnected),
             description = stringResource(R.string.nodes_start_vpn),
-            actionText = stringResource(R.string.common_back),
+            actionText = backLabel,
             onAction = onBack,
             modifier = modifier,
         )

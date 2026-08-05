@@ -8,26 +8,22 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -35,15 +31,32 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.yamax.veer.R
+import com.yamax.veer.core_mihomo.EngineState
 import com.yamax.veer.core_profile.DnsEnhancedMode
 import com.yamax.veer.core_profile.DnsOverrideMode
+import com.yamax.veer.core_profile.DnsOverridePolicy
+import com.yamax.veer.core_profile.DnsOverrideValidator
 import com.yamax.veer.core_profile.DnsSettingField
 import com.yamax.veer.core_profile.DnsValidationIssue
 import com.yamax.veer.core_profile.DnsValidationProblem
 import com.yamax.veer.core_profile.ProfileId
+import com.yamax.veer.ui.UiText
+import com.yamax.veer.ui.designsystem.components.VeerCard
+import com.yamax.veer.ui.designsystem.components.VeerPrimaryButton
+import com.yamax.veer.ui.designsystem.components.VeerSecondaryButton
+import com.yamax.veer.ui.designsystem.components.VeerSettingsRow
+import com.yamax.veer.ui.designsystem.components.VeerStateView
+import com.yamax.veer.ui.designsystem.components.VeerStatus
+import com.yamax.veer.ui.designsystem.components.VeerStatusBadge
+import com.yamax.veer.ui.designsystem.components.VeerTextField
+import com.yamax.veer.ui.designsystem.components.VeerTopAppBar
+import com.yamax.veer.ui.designsystem.preview.VeerPreview
+import com.yamax.veer.ui.designsystem.preview.VeerResponsivePreviews
+import com.yamax.veer.ui.designsystem.preview.VeerThemePreviews
+import com.yamax.veer.ui.designsystem.theme.VeerDimensions
+import com.yamax.veer.ui.designsystem.theme.VeerSpacing
 import com.yamax.veer.ui.resolve
 import com.yamax.veer.ui.theme.VeerTheme
 
@@ -105,266 +118,274 @@ internal fun DnsSettingsScreen(
         modifier = Modifier
             .fillMaxSize()
             .testTag("dns_settings_screen"),
+        topBar = {
+            VeerTopAppBar(
+                title = stringResource(R.string.dns_title),
+                onBack = onBack,
+                backContentDescription = stringResource(R.string.common_back),
+            )
+        },
     ) { padding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+                .padding(padding),
+            contentAlignment = Alignment.TopCenter,
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(onClick = onBack) { Text(stringResource(R.string.common_back)) }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.dns_title), style = MaterialTheme.typography.headlineSmall)
-                    Text(
-                        state.profileName.ifBlank {
-                            stringResource(R.string.dns_no_profile_selected)
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-
-            if (state.loading) {
-                Row(
+            when {
+                state.loading -> VeerStateView(
+                    title = stringResource(R.string.dns_loading),
+                    description = stringResource(R.string.dns_loading_description),
+                    loading = true,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 32.dp),
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    CircularProgressIndicator()
-                }
-                return@Column
-            }
-
-            Text(
-                stringResource(
-                    when {
-                        !state.isActiveProfile -> R.string.dns_context_inactive
-                        state.reconnectRequired -> R.string.dns_context_running
-                        else -> R.string.dns_context_stopped
-                    },
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            DnsModeCard(
-                selected = state.policy.mode,
-                enabled = !state.saving,
-                onModeChange = onModeChange,
-            )
-
-            if (state.policy.mode == DnsOverrideMode.CUSTOM) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                    ),
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        Text(
-                            stringResource(R.string.dns_resolution_mode),
-                            style = MaterialTheme.typography.titleSmall,
-                        )
-                        EnhancedModeRow(
-                            title = "Fake IP",
-                            description = stringResource(R.string.dns_fake_ip_description),
-                            mode = DnsEnhancedMode.FAKE_IP,
-                            selected = state.policy.enhancedMode,
-                            enabled = !state.saving,
-                            onChange = onEnhancedModeChange,
-                        )
-                        EnhancedModeRow(
-                            title = "Redir Host",
-                            description = stringResource(R.string.dns_redir_host_description),
-                            mode = DnsEnhancedMode.REDIR_HOST,
-                            selected = state.policy.enhancedMode,
-                            enabled = !state.saving,
-                            onChange = onEnhancedModeChange,
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(stringResource(R.string.dns_ipv6_response))
-                                Text(
-                                    stringResource(R.string.dns_ipv6_description),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            Switch(
-                                checked = state.policy.ipv6,
-                                onCheckedChange = onIpv6Change,
-                                enabled = !state.saving,
-                            )
-                        }
-                    }
-                }
-
-                DnsEndpointField(
-                    label = stringResource(R.string.dns_bootstrap_label),
-                    description = stringResource(R.string.dns_bootstrap_description),
-                    value = state.policy.defaultNameservers.joinToString("\n"),
-                    enabled = !state.saving,
-                    testTag = "dns_bootstrap_input",
-                    onValueChange = onDefaultNameserversChange,
+                        .widthIn(max = VeerDimensions.formMaxWidth),
                 )
-                DnsEndpointField(
-                    label = stringResource(R.string.dns_primary_label),
-                    description = stringResource(R.string.dns_primary_description),
-                    value = state.policy.nameservers.joinToString("\n"),
-                    enabled = !state.saving,
-                    testTag = "dns_primary_input",
-                    onValueChange = onNameserversChange,
-                )
-                DnsEndpointField(
-                    label = stringResource(R.string.dns_fallback_label),
-                    description = stringResource(R.string.dns_fallback_description),
-                    value = state.policy.fallbackNameservers.joinToString("\n"),
-                    enabled = !state.saving,
-                    testTag = "dns_fallback_input",
-                    onValueChange = onFallbackNameserversChange,
-                )
-            } else {
-                Text(
-                    stringResource(R.string.dns_inherit_notice),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
 
-            if (state.validationIssues.isNotEmpty()) {
-                Card(
+                state.profileId == null -> VeerStateView(
+                    icon = Icons.Default.Warning,
+                    iconContentDescription = null,
+                    title = stringResource(R.string.dns_no_profile_title),
+                    description = state.message?.resolve()
+                        ?: stringResource(R.string.dns_no_profile_error),
+                    actionText = stringResource(R.string.common_back),
+                    onAction = onBack,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag("dns_validation_errors"),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                    ),
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(3.dp),
-                    ) {
-                        Text(
-                            stringResource(R.string.dns_validation_title),
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                        )
-                        state.validationIssues.forEach { issue ->
-                            val field = stringResource(
-                                when (issue.field) {
-                                    DnsSettingField.DEFAULT_NAMESERVERS ->
-                                        R.string.dns_validation_field_bootstrap
-                                    DnsSettingField.NAMESERVERS ->
-                                        R.string.dns_validation_field_primary
-                                    DnsSettingField.FALLBACK_NAMESERVERS ->
-                                        R.string.dns_validation_field_fallback
-                                },
-                            )
-                            val index = issue.index?.let {
-                                stringResource(R.string.dns_validation_line, it + 1)
-                            }.orEmpty()
-                            Text(
-                                stringResource(
-                                    R.string.dns_validation_bullet,
-                                    field,
-                                    index,
-                                    issue.localizedMessage(),
-                                ),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onErrorContainer,
-                            )
-                        }
-                    }
-                }
-            }
+                        .widthIn(max = VeerDimensions.formMaxWidth),
+                )
 
-            state.message?.let { message ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        message.resolve(),
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (state.messageIsError) {
-                            MaterialTheme.colorScheme.error
-                        } else {
-                            MaterialTheme.colorScheme.primary
-                        },
-                    )
-                    TextButton(onClick = onDismissMessage) {
-                        Text(stringResource(R.string.common_close))
-                    }
-                }
-            }
-
-            Button(
-                onClick = onSave,
-                enabled = state.canSave,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("save_dns_settings"),
-            ) {
-                Text(
-                    when {
-                        state.saving -> stringResource(R.string.dns_applying)
-                        state.reconnectRequired -> stringResource(R.string.dns_save_reconnect)
-                        else -> stringResource(R.string.common_save)
-                    },
+                else -> DnsSettingsForm(
+                    state = state,
+                    onModeChange = onModeChange,
+                    onIpv6Change = onIpv6Change,
+                    onEnhancedModeChange = onEnhancedModeChange,
+                    onDefaultNameserversChange = onDefaultNameserversChange,
+                    onNameserversChange = onNameserversChange,
+                    onFallbackNameserversChange = onFallbackNameserversChange,
+                    onSave = onSave,
+                    onDismissMessage = onDismissMessage,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .widthIn(max = VeerDimensions.formMaxWidth),
                 )
             }
-            Spacer(Modifier.height(16.dp))
         }
     }
 }
 
 @Composable
-private fun DnsModeCard(
-    selected: DnsOverrideMode,
-    enabled: Boolean,
+private fun DnsSettingsForm(
+    state: DnsSettingsUiState,
     onModeChange: (DnsOverrideMode) -> Unit,
+    onIpv6Change: (Boolean) -> Unit,
+    onEnhancedModeChange: (DnsEnhancedMode) -> Unit,
+    onDefaultNameserversChange: (String) -> Unit,
+    onNameserversChange: (String) -> Unit,
+    onFallbackNameserversChange: (String) -> Unit,
+    onSave: () -> Unit,
+    onDismissMessage: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer,
-        ),
+    Column(
+        modifier = modifier
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = VeerSpacing.lg, vertical = VeerSpacing.md),
+        verticalArrangement = Arrangement.spacedBy(VeerSpacing.md),
     ) {
-        Column(modifier = Modifier.padding(vertical = 4.dp)) {
+        DnsContextCard(state = state)
+
+        DnsSection(title = stringResource(R.string.dns_section_source)) {
             DnsModeRow(
                 title = stringResource(R.string.dns_mode_inherit),
                 description = stringResource(R.string.dns_mode_inherit_description),
                 mode = DnsOverrideMode.INHERIT,
-                selected = selected,
-                enabled = enabled,
+                selected = state.policy.mode,
+                enabled = !state.saving,
                 onChange = onModeChange,
             )
             DnsModeRow(
                 title = stringResource(R.string.dns_mode_custom),
                 description = stringResource(R.string.dns_mode_custom_description),
                 mode = DnsOverrideMode.CUSTOM,
-                selected = selected,
-                enabled = enabled,
+                selected = state.policy.mode,
+                enabled = !state.saving,
                 onChange = onModeChange,
             )
         }
+
+        if (state.policy.mode == DnsOverrideMode.CUSTOM) {
+            DnsSection(title = stringResource(R.string.dns_resolution_mode)) {
+                EnhancedModeRow(
+                    title = stringResource(R.string.dns_fake_ip_title),
+                    description = stringResource(R.string.dns_fake_ip_description),
+                    mode = DnsEnhancedMode.FAKE_IP,
+                    selected = state.policy.enhancedMode,
+                    enabled = !state.saving,
+                    onChange = onEnhancedModeChange,
+                )
+                EnhancedModeRow(
+                    title = stringResource(R.string.dns_redir_host_title),
+                    description = stringResource(R.string.dns_redir_host_description),
+                    mode = DnsEnhancedMode.REDIR_HOST,
+                    selected = state.policy.enhancedMode,
+                    enabled = !state.saving,
+                    onChange = onEnhancedModeChange,
+                )
+                VeerSettingsRow(
+                    title = stringResource(R.string.dns_ipv6_response),
+                    description = stringResource(R.string.dns_ipv6_description),
+                    enabled = !state.saving,
+                    onClick = { onIpv6Change(!state.policy.ipv6) },
+                    trailingContent = {
+                        Switch(
+                            checked = state.policy.ipv6,
+                            onCheckedChange = onIpv6Change,
+                            enabled = !state.saving,
+                        )
+                    },
+                )
+            }
+
+            Text(
+                text = stringResource(R.string.dns_section_servers),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            DnsEndpointField(
+                label = stringResource(R.string.dns_bootstrap_label),
+                description = stringResource(R.string.dns_bootstrap_description),
+                value = state.policy.defaultNameservers.joinToString("\n"),
+                enabled = !state.saving,
+                testTag = "dns_bootstrap_input",
+                issue = state.validationIssues.firstFor(DnsSettingField.DEFAULT_NAMESERVERS),
+                onValueChange = onDefaultNameserversChange,
+            )
+            DnsEndpointField(
+                label = stringResource(R.string.dns_primary_label),
+                description = stringResource(R.string.dns_primary_description),
+                value = state.policy.nameservers.joinToString("\n"),
+                enabled = !state.saving,
+                testTag = "dns_primary_input",
+                issue = state.validationIssues.firstFor(DnsSettingField.NAMESERVERS),
+                onValueChange = onNameserversChange,
+            )
+            DnsEndpointField(
+                label = stringResource(R.string.dns_fallback_label),
+                description = stringResource(R.string.dns_fallback_description),
+                value = state.policy.fallbackNameservers.joinToString("\n"),
+                enabled = !state.saving,
+                testTag = "dns_fallback_input",
+                issue = state.validationIssues.firstFor(DnsSettingField.FALLBACK_NAMESERVERS),
+                onValueChange = onFallbackNameserversChange,
+            )
+        } else {
+            VeerCard(
+                modifier = Modifier.fillMaxWidth(),
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ) {
+                Text(
+                    text = stringResource(R.string.dns_inherit_notice),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+
+        if (state.validationIssues.isNotEmpty()) {
+            DnsValidationSummary(issues = state.validationIssues)
+        }
+
+        state.message?.let { message ->
+            VeerCard(
+                modifier = Modifier.fillMaxWidth(),
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(VeerSpacing.sm),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    VeerStatusBadge(
+                        status = if (state.messageIsError) VeerStatus.Warning
+                        else VeerStatus.Connected,
+                        label = stringResource(
+                            if (state.messageIsError) R.string.dns_message_attention
+                            else R.string.dns_message_saved,
+                        ),
+                    )
+                    Text(
+                        text = message.resolve(),
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1f),
+                    )
+                    VeerSecondaryButton(
+                        text = stringResource(R.string.common_close),
+                        onClick = onDismissMessage,
+                    )
+                }
+            }
+        }
+
+        VeerPrimaryButton(
+            text = when {
+                state.saving -> stringResource(R.string.dns_applying)
+                state.reconnectRequired -> stringResource(R.string.dns_save_reconnect)
+                else -> stringResource(R.string.common_save)
+            },
+            onClick = onSave,
+            enabled = state.canSave,
+            loading = state.saving,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("save_dns_settings"),
+        )
+    }
+}
+
+@Composable
+private fun DnsContextCard(state: DnsSettingsUiState) {
+    VeerCard(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = state.profileName.ifBlank {
+                stringResource(R.string.dns_no_profile_selected)
+            },
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(VeerSpacing.md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            VeerStatusBadge(
+                status = if (state.isActiveProfile) VeerStatus.Connected
+                else VeerStatus.Unavailable,
+                label = stringResource(
+                    if (state.isActiveProfile) R.string.dns_profile_active
+                    else R.string.dns_profile_inactive,
+                ),
+            )
+            Text(
+                text = stringResource(
+                    when {
+                        !state.isActiveProfile -> R.string.dns_context_inactive
+                        state.reconnectRequired -> R.string.dns_context_running
+                        else -> R.string.dns_context_stopped
+                    },
+                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun DnsSection(
+    title: String,
+    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(VeerSpacing.sm)) {
+        Text(text = title, style = MaterialTheme.typography.titleMedium)
+        VeerCard(modifier = Modifier.fillMaxWidth(), content = content)
     }
 }
 
@@ -377,30 +398,23 @@ private fun DnsModeRow(
     enabled: Boolean,
     onChange: (DnsOverrideMode) -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        RadioButton(
-            selected = selected == mode,
-            onClick = { onChange(mode) },
-            enabled = enabled,
-            modifier = Modifier.testTag(
-                if (mode == DnsOverrideMode.CUSTOM) "dns_custom_mode"
-                else "dns_inherit_mode",
-            ),
-        )
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title)
-            Text(
-                description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+    VeerSettingsRow(
+        title = title,
+        description = description,
+        enabled = enabled,
+        onClick = { onChange(mode) },
+        trailingContent = {
+            RadioButton(
+                selected = selected == mode,
+                onClick = { onChange(mode) },
+                enabled = enabled,
+                modifier = Modifier.testTag(
+                    if (mode == DnsOverrideMode.CUSTOM) "dns_custom_mode"
+                    else "dns_inherit_mode",
+                ),
             )
-        }
-    }
+        },
+    )
 }
 
 @Composable
@@ -412,28 +426,23 @@ private fun EnhancedModeRow(
     enabled: Boolean,
     onChange: (DnsEnhancedMode) -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        RadioButton(
-            selected = selected == mode,
-            onClick = { onChange(mode) },
-            enabled = enabled,
-            modifier = Modifier.testTag(
-                if (mode == DnsEnhancedMode.REDIR_HOST) "dns_redir_host_mode"
-                else "dns_fake_ip_mode",
-            ),
-        )
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title)
-            Text(
-                description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+    VeerSettingsRow(
+        title = title,
+        description = description,
+        enabled = enabled,
+        onClick = { onChange(mode) },
+        trailingContent = {
+            RadioButton(
+                selected = selected == mode,
+                onClick = { onChange(mode) },
+                enabled = enabled,
+                modifier = Modifier.testTag(
+                    if (mode == DnsEnhancedMode.REDIR_HOST) "dns_redir_host_mode"
+                    else "dns_fake_ip_mode",
+                ),
             )
-        }
-    }
+        },
+    )
 }
 
 @Composable
@@ -443,32 +452,77 @@ private fun DnsEndpointField(
     value: String,
     enabled: Boolean,
     testTag: String,
+    issue: DnsValidationIssue?,
     onValueChange: (String) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        OutlinedTextField(
-            value = value,
-            onValueChange = onValueChange,
-            label = { Text(label) },
-            minLines = 2,
-            maxLines = 5,
-            enabled = enabled,
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag(testTag),
-        )
+    VeerTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = label,
+        supportingText = description,
+        errorText = issue?.displayMessage(),
+        enabled = enabled,
+        minLines = 2,
+        maxLines = 5,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(testTag),
+    )
+}
+
+@Composable
+private fun DnsValidationSummary(issues: List<DnsValidationIssue>) {
+    VeerCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("dns_validation_errors"),
+        containerColor = MaterialTheme.colorScheme.errorContainer,
+    ) {
         Text(
-            description,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            text = stringResource(R.string.dns_validation_title),
+            color = MaterialTheme.colorScheme.onErrorContainer,
+            style = MaterialTheme.typography.titleSmall,
         )
+        issues.forEach { issue ->
+            Text(
+                text = issue.summaryLine(),
+                color = MaterialTheme.colorScheme.onErrorContainer,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
     }
+}
+
+private fun List<DnsValidationIssue>.firstFor(field: DnsSettingField): DnsValidationIssue? =
+    firstOrNull { it.field == field }
+
+@Composable
+private fun DnsValidationIssue.displayMessage(): String {
+    val line = index?.let { stringResource(R.string.dns_validation_line, it + 1) }.orEmpty()
+    return "$line${if (line.isEmpty()) "" else " "}${localizedMessage()}".trim()
+}
+
+@Composable
+private fun DnsValidationIssue.summaryLine(): String {
+    val fieldName = stringResource(
+        when (field) {
+            DnsSettingField.DEFAULT_NAMESERVERS -> R.string.dns_validation_field_bootstrap
+            DnsSettingField.NAMESERVERS -> R.string.dns_validation_field_primary
+            DnsSettingField.FALLBACK_NAMESERVERS -> R.string.dns_validation_field_fallback
+        },
+    )
+    val line = index?.let { stringResource(R.string.dns_validation_line, it + 1) }.orEmpty()
+    return stringResource(
+        R.string.dns_validation_bullet,
+        fieldName,
+        line,
+        localizedMessage(),
+    )
 }
 
 @Composable
 private fun DnsValidationIssue.localizedMessage(): String = when (problem) {
-    DnsValidationProblem.REQUIRED ->
-        stringResource(R.string.dns_validation_required)
+    DnsValidationProblem.REQUIRED -> stringResource(R.string.dns_validation_required)
     DnsValidationProblem.TOO_MANY ->
         stringResource(R.string.dns_validation_too_many, argument.orEmpty())
     DnsValidationProblem.TOO_LONG ->
@@ -483,14 +537,88 @@ private fun DnsValidationIssue.localizedMessage(): String = when (problem) {
         stringResource(R.string.dns_validation_unsupported_scheme, argument.orEmpty())
     DnsValidationProblem.CREDENTIALS_NOT_ALLOWED ->
         stringResource(R.string.dns_validation_credentials)
-    DnsValidationProblem.MISSING_HOST ->
-        stringResource(R.string.dns_validation_missing_host)
-    DnsValidationProblem.INVALID_PORT ->
-        stringResource(R.string.dns_validation_invalid_port)
+    DnsValidationProblem.MISSING_HOST -> stringResource(R.string.dns_validation_missing_host)
+    DnsValidationProblem.INVALID_PORT -> stringResource(R.string.dns_validation_invalid_port)
     DnsValidationProblem.FRAGMENT_NOT_ALLOWED ->
         stringResource(R.string.dns_validation_fragment)
-    DnsValidationProblem.DOH_PATH_REQUIRED ->
-        stringResource(R.string.dns_validation_doh_path)
+    DnsValidationProblem.DOH_PATH_REQUIRED -> stringResource(R.string.dns_validation_doh_path)
     DnsValidationProblem.PATH_NOT_ALLOWED ->
         stringResource(R.string.dns_validation_path_not_allowed, argument.orEmpty())
+}
+
+private val PreviewDnsPolicy = DnsOverridePolicy(
+    mode = DnsOverrideMode.CUSTOM,
+    ipv6 = true,
+    enhancedMode = DnsEnhancedMode.FAKE_IP,
+    defaultNameservers = listOf("223.5.5.5", "1.1.1.1"),
+    nameservers = listOf(
+        "https://1.1.1.1/dns-query",
+        "https://cloudflare-dns.com/dns-query",
+    ),
+    fallbackNameservers = listOf("tls://dns.google"),
+)
+
+@VeerThemePreviews
+@Composable
+private fun DnsSettingsNormalPreview() {
+    VeerPreview {
+        DnsSettingsScreen(
+            state = DnsSettingsUiState(
+                loading = false,
+                profileId = ProfileId("preview"),
+                profileName = "Work, streaming and AI subscription",
+                isActiveProfile = true,
+                runtimeState = EngineState.Running,
+                policy = PreviewDnsPolicy,
+            ),
+            onBack = {}, onModeChange = {}, onIpv6Change = {},
+            onEnhancedModeChange = {}, onDefaultNameserversChange = {},
+            onNameserversChange = {}, onFallbackNameserversChange = {},
+            onSave = {}, onDismissMessage = {},
+        )
+    }
+}
+
+@VeerResponsivePreviews
+@Composable
+private fun DnsSettingsResponsivePreview() {
+    VeerPreview {
+        DnsSettingsScreen(
+            state = DnsSettingsUiState(
+                loading = false,
+                profileId = ProfileId("preview"),
+                profileName = "Work, streaming and AI subscription with a long name",
+                isActiveProfile = true,
+                runtimeState = EngineState.Running,
+                policy = PreviewDnsPolicy,
+            ),
+            onBack = {}, onModeChange = {}, onIpv6Change = {},
+            onEnhancedModeChange = {}, onDefaultNameserversChange = {},
+            onNameserversChange = {}, onFallbackNameserversChange = {},
+            onSave = {}, onDismissMessage = {},
+        )
+    }
+}
+
+@VeerThemePreviews
+@Composable
+private fun DnsSettingsValidationPreview() {
+    val invalid = DnsOverridePolicy(mode = DnsOverrideMode.CUSTOM)
+    VeerPreview {
+        DnsSettingsScreen(
+            state = DnsSettingsUiState(
+                loading = false,
+                profileId = ProfileId("preview"),
+                profileName = "Validation preview",
+                policy = invalid,
+                validationIssues = DnsOverrideValidator.validate(invalid),
+                message = UiText.Verbatim("DNS settings need attention."),
+                messageIsError = true,
+            ),
+            onBack = {}, onModeChange = {}, onIpv6Change = {},
+            onEnhancedModeChange = {}, onDefaultNameserversChange = {},
+            onNameserversChange = {}, onFallbackNameserversChange = {},
+            onSave = {}, onDismissMessage = {},
+        )
+    }
 }

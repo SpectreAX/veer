@@ -5,11 +5,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -24,7 +22,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
@@ -55,9 +52,6 @@ internal data class HomeScreenState(
     val aiReadiness: AiExecutionReadiness,
     val aiFeedback: String?,
     val aiFeedbackIsError: Boolean,
-    val showLogs: Boolean,
-    val coreLogLines: List<String>,
-    val uiLogLines: List<String>,
 )
 
 @Composable
@@ -67,16 +61,11 @@ internal fun HomeScreen(
     primaryActionEnabled: Boolean,
     onPrimaryAction: () -> Unit,
     onQuickReconnect: () -> Unit,
-    onProfiles: () -> Unit,
-    onRules: () -> Unit,
-    onNodes: () -> Unit,
     onConnections: () -> Unit,
     onLogs: () -> Unit,
-    onSettings: () -> Unit,
     onPromptChange: (TextFieldValue) -> Unit,
     onSubmitPrompt: () -> Unit,
     onDismissFeedback: () -> Unit,
-    onToggleLogs: () -> Unit,
     modifier: Modifier = Modifier,
     startupContent: @Composable () -> Unit = {},
     connectionContent: @Composable () -> Unit,
@@ -114,12 +103,8 @@ internal fun HomeScreen(
 
             QuickActionsSection(
                 runtimeConnected = state.engineState is EngineState.Running,
-                onProfiles = onProfiles,
-                onRules = onRules,
-                onNodes = onNodes,
                 onConnections = onConnections,
                 onLogs = onLogs,
-                onSettings = onSettings,
             )
 
             AiCommandSection(
@@ -132,12 +117,6 @@ internal fun HomeScreen(
 
             historyContent()
 
-            RuntimeLogsSection(
-                showLogs = state.showLogs,
-                coreLogLines = state.coreLogLines,
-                uiLogLines = state.uiLogLines,
-                onToggleLogs = onToggleLogs,
-            )
         }
     }
 }
@@ -217,40 +196,22 @@ private fun RuntimeSection(
 @Composable
 private fun QuickActionsSection(
     runtimeConnected: Boolean,
-    onProfiles: () -> Unit,
-    onRules: () -> Unit,
-    onNodes: () -> Unit,
     onConnections: () -> Unit,
     onLogs: () -> Unit,
-    onSettings: () -> Unit,
 ) {
     Column(
-        modifier = Modifier.selectableGroup(),
         verticalArrangement = Arrangement.spacedBy(VeerSpacing.md),
     ) {
         Text(
-            text = stringResource(R.string.home_quick_actions),
+            text = stringResource(R.string.home_diagnostics),
             style = MaterialTheme.typography.titleMedium,
         )
         QuickActionRow(
-            firstText = stringResource(R.string.home_profiles),
-            onFirst = onProfiles,
-            secondText = stringResource(R.string.home_ai_rules),
-            onSecond = onRules,
-        )
-        QuickActionRow(
-            firstText = stringResource(R.string.home_nodes),
-            onFirst = onNodes,
+            firstText = stringResource(R.string.home_connections),
+            onFirst = onConnections,
             firstEnabled = runtimeConnected,
-            secondText = stringResource(R.string.home_connections),
-            onSecond = onConnections,
-            secondEnabled = runtimeConnected,
-        )
-        QuickActionRow(
-            firstText = stringResource(R.string.home_live_logs),
-            onFirst = onLogs,
-            secondText = stringResource(R.string.home_settings),
-            onSecond = onSettings,
+            secondText = stringResource(R.string.home_live_logs),
+            onSecond = onLogs,
         )
     }
 }
@@ -368,76 +329,6 @@ private fun AiCommandSection(
 }
 
 @Composable
-private fun RuntimeLogsSection(
-    showLogs: Boolean,
-    coreLogLines: List<String>,
-    uiLogLines: List<String>,
-    onToggleLogs: () -> Unit,
-) {
-    VeerCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(R.string.home_runtime_logs),
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Text(
-                    text = stringResource(R.string.home_log_count, coreLogLines.size + uiLogLines.size),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            TextButton(onClick = onToggleLogs) {
-                Text(stringResource(if (showLogs) R.string.common_collapse else R.string.home_view))
-            }
-        }
-        if (showLogs) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(VeerDimensions.diagnosticPanelHeight),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                shape = VeerShapes.medium,
-            ) {
-                Column(
-                    modifier = Modifier
-                        .verticalScroll(rememberScrollState())
-                        .padding(VeerSpacing.sm),
-                ) {
-                    if (coreLogLines.isEmpty() && uiLogLines.isEmpty()) {
-                        Text(
-                            text = stringResource(R.string.home_no_events),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    } else {
-                        LogLines(
-                            title = stringResource(R.string.home_core_process),
-                            lines = coreLogLines,
-                        )
-                        LogLines(
-                            title = stringResource(R.string.home_ui_process),
-                            lines = uiLogLines,
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun LogLines(title: String, lines: List<String>) {
-    if (lines.isEmpty()) return
-    Text(text = title, style = MaterialTheme.typography.labelSmall)
-    lines.forEach { line ->
-        Text(
-            text = line,
-            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-        )
-    }
-}
-
-@Composable
 private fun aiActionLabel(busy: Boolean, readiness: AiExecutionReadiness): String = when {
     busy -> stringResource(R.string.home_ai_executing)
     readiness == AiExecutionReadiness.VPN_NOT_RUNNING ->
@@ -496,24 +387,16 @@ private fun HomePreviewSample(
                 aiReadiness = AiExecutionReadiness.READY,
                 aiFeedback = null,
                 aiFeedbackIsError = false,
-                showLogs = false,
-                coreLogLines = emptyList(),
-                uiLogLines = emptyList(),
             ),
             primaryActionLabel = "Disconnect VPN",
             primaryActionEnabled = true,
             onPrimaryAction = {},
             onQuickReconnect = {},
-            onProfiles = {},
-            onRules = {},
-            onNodes = {},
             onConnections = {},
             onLogs = {},
-            onSettings = {},
             onPromptChange = {},
             onSubmitPrompt = {},
             onDismissFeedback = {},
-            onToggleLogs = {},
             connectionContent = {
                 VeerCard {
                     Text("Tokyo 01 · 42 ms", style = MaterialTheme.typography.bodyMedium)

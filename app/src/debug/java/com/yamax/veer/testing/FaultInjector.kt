@@ -119,6 +119,32 @@ internal object FaultInjector {
         }
     }
 
+    /**
+     * Arms a one-shot callback at the deterministic teardown boundary after
+     * coreRunning is cleared and before the connectivity monitor is stopped.
+     */
+    fun armTeardownConnectivityProbe() {
+        if (useRemoteControl()) {
+            remoteCall(DebugCoreControlProtocol.METHOD_ARM_TEARDOWN_CONNECTIVITY_PROBE)
+            return
+        }
+        directTeardownConnectivityProbeFired = false
+        VeerVpnService.testBeforeConnectivityMonitorStop = {
+            val callback = VeerVpnService.debugAllNetworksLostCallback
+            callback?.invoke()
+            directTeardownConnectivityProbeFired = callback != null
+        }
+    }
+
+    fun wasTeardownConnectivityProbeFired(): Boolean {
+        if (useRemoteControl()) {
+            return remoteCall(DebugCoreControlProtocol.METHOD_TEARDOWN_CONNECTIVITY_PROBE_STATUS)
+                ?.getBoolean(DebugCoreControlProtocol.KEY_TEARDOWN_CONNECTIVITY_PROBE_FIRED)
+                ?: false
+        }
+        return directTeardownConnectivityProbeFired
+    }
+
     // -------------------------------------------------------------------------
     // Timing overrides (VeerVpnService companion vars)
     // -------------------------------------------------------------------------
@@ -171,6 +197,8 @@ internal object FaultInjector {
         VeerVpnService.testAutoRecoveryInternetProbe = null
         VeerVpnService.testAutoRecoveryExhaustedCallback = null
         directRecoveryExhausted = false
+        VeerVpnService.testBeforeConnectivityMonitorStop = null
+        directTeardownConnectivityProbeFired = false
     }
 
     fun configureExhaustedAutoRecovery() {
@@ -269,4 +297,5 @@ internal object FaultInjector {
         }.getOrNull()
 
     @Volatile private var directRecoveryExhausted = false
+    @Volatile private var directTeardownConnectivityProbeFired = false
 }

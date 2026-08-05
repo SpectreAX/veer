@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -36,7 +35,6 @@ import com.yamax.veer.ui.designsystem.preview.VeerPreview
 import com.yamax.veer.ui.designsystem.preview.VeerResponsivePreviews
 import com.yamax.veer.ui.designsystem.preview.VeerThemePreviews
 import com.yamax.veer.ui.designsystem.theme.VeerSpacing
-import com.yamax.veer.ui.designsystem.theme.VeerShapes
 import com.yamax.veer.ui.designsystem.theme.VeerDimensions
 import com.yamax.veer.ui.chart.SpeedChart
 import kotlinx.coroutines.coroutineScope
@@ -136,75 +134,69 @@ private fun ConnectionOverviewCard(
         status.nodeDelayMs?.let { stringResource(R.string.connection_delay_ms, it) },
     ).joinToString(" → ").ifEmpty { stringResource(R.string.connection_route_pending) }
 
-    Surface(
+    VeerCard(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("connection_overview"),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shape = VeerShapes.medium,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
-        Column(
-            modifier = Modifier.padding(VeerSpacing.md),
-            verticalArrangement = Arrangement.spacedBy(VeerSpacing.sm),
-        ) {
-            if (refreshing) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    VeerStatusBadge(
-                        status = VeerStatus.Loading,
-                        label = stringResource(R.string.connection_checking),
-                    )
-                }
+        if (refreshing) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                VeerStatusBadge(
+                    status = VeerStatus.Loading,
+                    label = stringResource(R.string.connection_checking),
+                )
             }
-            StatusLine(
-                label = stringResource(R.string.connection_vpn),
-                healthy = vpnConnected,
-                detail = engineState.localizedLabel(),
-            )
-            StatusLine(
-                label = stringResource(R.string.connection_mihomo),
-                healthy = status.controllerReachable,
-                detail = stringResource(
-                    if (status.controllerReachable) R.string.connection_controller_ready
-                    else R.string.connection_controller_unavailable,
-                ),
-            )
-            StatusLine(
-                label = stringResource(R.string.connection_internet),
-                healthy = status.internetReachable,
-                detail = when {
-                    !vpnConnected -> stringResource(R.string.connection_not_checked_stopped)
-                    !physicalNetworkAvailable -> stringResource(R.string.connection_physical_unavailable)
-                    status.internetReachable -> stringResource(
-                        R.string.connection_reachable,
-                        status.internetLatencyMs?.let {
-                            " · ${stringResource(R.string.connection_delay_ms, it)}"
-                        }.orEmpty(),
-                    )
-                    else -> stringResource(R.string.connection_access_failed)
-                },
-            )
-            Text(
-                text = stringResource(R.string.connection_exit, status.exit.locationLabel, exitIp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-            Text(
-                text = stringResource(R.string.connection_route, route),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-            Text(
-                text = stringResource(
-                    R.string.connection_traffic,
-                    formatBytes(status.downloadTotal),
-                    formatBytes(status.uploadTotal),
-                    status.activeConnections,
-                    status.activeRuleCount,
-                ),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
         }
+        StatusLine(
+            label = stringResource(R.string.connection_vpn),
+            healthy = vpnConnected,
+            detail = engineState.localizedLabel(),
+        )
+        StatusLine(
+            label = stringResource(R.string.connection_mihomo),
+            healthy = status.controllerReachable,
+            detail = stringResource(
+                if (status.controllerReachable) R.string.connection_controller_ready
+                else R.string.connection_controller_unavailable,
+            ),
+        )
+        StatusLine(
+            label = stringResource(R.string.connection_internet),
+            healthy = status.internetReachable,
+            detail = when {
+                !vpnConnected -> stringResource(R.string.connection_not_checked_stopped)
+                !physicalNetworkAvailable -> stringResource(R.string.connection_physical_unavailable)
+                status.internetReachable -> stringResource(
+                    R.string.connection_reachable,
+                    status.internetLatencyMs?.let {
+                        " · ${stringResource(R.string.connection_delay_ms, it)}"
+                    }.orEmpty(),
+                )
+                else -> stringResource(R.string.connection_access_failed)
+            },
+        )
+        Text(
+            text = stringResource(R.string.connection_exit, status.exit.locationLabel, exitIp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Text(
+            text = stringResource(R.string.connection_route, route),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Text(
+            text = stringResource(
+                R.string.connection_traffic,
+                formatBytes(status.downloadTotal),
+                formatBytes(status.uploadTotal),
+                status.activeConnections,
+                status.activeRuleCount,
+            ),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
 

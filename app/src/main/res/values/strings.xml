@@ -1,5 +1,8 @@
 <resources>
     <string name="app_name">Veer</string>
+    <string name="vpn_notification_channel_name">Veer VPN</string>
+    <string name="vpn_notification_channel_description">Shows when Veer is tunneling network traffic.</string>
+    <string name="vpn_notification_connected">Tunneling traffic through Mihomo</string>
 
     <!-- Activity labels -->
     <string name="activity_settings">Settings</string>
@@ -25,6 +28,14 @@
     <string name="common_show">Show</string>
     <string name="common_hide">Hide</string>
     <string name="common_retry">Retry</string>
+    <string name="common_unknown_error">Unknown error</string>
+
+    <!-- Bottom navigation -->
+    <string name="bottom_nav_home">Home</string>
+    <string name="bottom_nav_nodes">Nodes</string>
+    <string name="bottom_nav_rules">Rules</string>
+    <string name="bottom_nav_profiles">Profiles</string>
+    <string name="bottom_nav_settings">Settings</string>
 
     <!-- Settings -->
     <string name="settings_title">Settings</string>
@@ -51,6 +62,46 @@
     <string name="settings_per_app_all">All apps except Veer</string>
     <string name="settings_per_app_only">Proxy %1$d selected apps only</string>
     <string name="settings_per_app_bypass">Bypass %1$d selected apps</string>
+
+    <!-- Per-app routing -->
+    <string name="per_app_title">Per-app routing</string>
+    <string name="per_app_runtime_connected">VPN connected</string>
+    <string name="per_app_runtime_disconnected">VPN disconnected</string>
+    <string name="per_app_runtime_connected_description">Saving safely reconnects the VPN so the new app scope takes effect.</string>
+    <string name="per_app_runtime_disconnected_description">Changes are saved now and take effect on the next connection.</string>
+    <string name="per_app_loading">Loading installed apps</string>
+    <string name="per_app_loading_description">Reading launchable apps and the saved routing policy.</string>
+    <string name="per_app_load_failed_title">Could not load apps</string>
+    <string name="per_app_load_failed">Could not read installed apps: %1$s</string>
+    <string name="per_app_section_mode">Routing scope</string>
+    <string name="per_app_mode_all">Proxy all apps</string>
+    <string name="per_app_mode_all_description">All apps except Veer use the VPN</string>
+    <string name="per_app_mode_only">Proxy selected apps only</string>
+    <string name="per_app_mode_only_description">Useful for browsers, streaming, and AI apps</string>
+    <string name="per_app_mode_bypass">Bypass selected apps</string>
+    <string name="per_app_mode_bypass_description">Let banking, payment, or games connect directly</string>
+    <string name="per_app_all_apps_title">All apps are included</string>
+    <string name="per_app_all_apps_description">Veer always bypasses its own tunnel to prevent a proxy loop. No app selection is needed in this mode.</string>
+    <string name="per_app_section_apps">Choose apps</string>
+    <string name="per_app_search_label">Search apps</string>
+    <string name="per_app_search_placeholder">App name or package</string>
+    <string name="per_app_selection_summary">%1$d selected · %2$d currently available</string>
+    <string name="per_app_select_visible">Select visible</string>
+    <string name="per_app_empty_title">No apps available</string>
+    <string name="per_app_empty_description">No launchable apps were found. Refresh after apps finish installing.</string>
+    <string name="per_app_no_matches_title">No matching apps</string>
+    <string name="per_app_no_matches_description">Nothing matches “%1$s”. Clear the search to view all apps.</string>
+    <string name="per_app_system_app">System</string>
+    <string name="per_app_saving">Saving…</string>
+    <string name="per_app_save_reconnect">Save and safely reconnect</string>
+    <string name="per_app_message_saved">Saved</string>
+    <string name="per_app_message_error">Action needed</string>
+    <string name="per_app_message_attention">Review selection</string>
+    <string name="per_app_unavailable_selected">%1$d selected apps are currently unavailable. Deselect them before saving if they are no longer installed.</string>
+    <string name="per_app_selection_required">“Proxy selected apps only” requires at least one currently available app.</string>
+    <string name="per_app_saved_reconnecting">Saved. Veer is safely reconnecting to apply the new app scope.</string>
+    <string name="per_app_saved_next_connection">Saved. The new app scope takes effect on the next connection.</string>
+    <string name="per_app_save_failed">Could not save per-app routing: %1$s</string>
     <string name="theme_system">Use system setting</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
@@ -90,6 +141,15 @@
     <string name="startup_establishing_tunnel">Creating VPN tunnel</string>
     <string name="startup_starting_mihomo">Starting Mihomo</string>
     <string name="startup_ready">Startup complete</string>
+    <string name="startup_percent">%1$d%%</string>
+    <string name="speed_chart_disconnected">Disconnected</string>
+    <string name="speed_chart_waiting">Waiting for traffic samples</string>
+    <string name="speed_chart_accessibility_connected">Live traffic chart. Upload %1$s, download %2$s.</string>
+    <string name="speed_chart_accessibility_disconnected">Live traffic chart. Disconnected.</string>
+    <string name="speed_chart_current">↑ %1$s  ↓ %2$s</string>
+    <string name="speed_chart_60_seconds">60s</string>
+    <string name="speed_chart_30_seconds">30s</string>
+    <string name="speed_chart_now">Now</string>
     <string name="home_action_import_profile">Import profile</string>
     <string name="home_action_start">Start VPN</string>
     <string name="home_action_starting">Starting…</string>
@@ -107,6 +167,7 @@
     <string name="home_active_profile">Active profile: %1$s (%2$s…)</string>
     <string name="home_quick_reconnect">Quick reconnect</string>
     <string name="home_quick_actions">Quick actions</string>
+    <string name="home_diagnostics">Diagnostics</string>
     <string name="home_profiles">Profiles</string>
     <string name="home_ai_rules">AI rules</string>
     <string name="home_nodes">Nodes</string>
@@ -156,6 +217,88 @@
     <string name="engine_running">Running</string>
     <string name="engine_stopping">Stopping…</string>
     <string name="engine_error">Error: %1$s</string>
+
+    <!-- Logs -->
+    <string name="logs_title">Live logs</string>
+    <string name="logs_visible_count">%1$d/%2$d</string>
+    <string name="logs_status_live">Live updates</string>
+    <string name="logs_status_refreshing">Refreshing</string>
+    <string name="logs_status_paused">Updates paused</string>
+    <string name="logs_status_attention">Refresh issue</string>
+    <string name="logs_live_description">New entries appear automatically every second. Pause before reviewing older entries.</string>
+    <string name="logs_paused_description">The current list is frozen so you can inspect and select text.</string>
+    <string name="logs_search_label">Search logs</string>
+    <string name="logs_search_placeholder">Category or message</string>
+    <string name="logs_filter_source">Source</string>
+    <string name="logs_filter_level">Level</string>
+    <string name="logs_source_all">All sources</string>
+    <string name="logs_source_ui">Veer app</string>
+    <string name="logs_source_core">Veercore</string>
+    <string name="logs_level_all">All levels</string>
+    <string name="logs_level_debug">Debug</string>
+    <string name="logs_level_info">Info</string>
+    <string name="logs_level_warn">Warn</string>
+    <string name="logs_level_error">Error</string>
+    <string name="logs_level_unknown">Other</string>
+    <string name="logs_pause">Pause</string>
+    <string name="logs_continue">Resume</string>
+    <string name="logs_copy">Copy</string>
+    <string name="logs_export">Export</string>
+    <string name="logs_loading">Loading logs</string>
+    <string name="logs_loading_description">Collecting recent activity from Veer and Veercore.</string>
+    <string name="logs_empty_title">No logs yet</string>
+    <string name="logs_empty_description">Activity will appear here while Veer is running.</string>
+    <string name="logs_filtered_empty_title">No matching logs</string>
+    <string name="logs_filtered_empty_description">Try a different search, source, or level.</string>
+    <string name="logs_clear_filters">Clear filters</string>
+    <string name="logs_error_title">Logs could not be refreshed</string>
+    <string name="logs_error_description">Veer could not read recent activity. You can try again without affecting the VPN connection.</string>
+    <string name="logs_error_kept_existing">The existing entries are still available. Try refreshing again.</string>
+    <string name="logs_copy_success">Filtered logs copied</string>
+    <string name="logs_copy_empty">There are no logs to copy</string>
+    <string name="logs_export_success">Logs exported</string>
+    <string name="logs_export_failed">Logs could not be exported</string>
+    <string name="logs_clipboard_label">Veer logs</string>
+
+    <!-- Connections -->
+    <string name="connections_title">Active connections</string>
+    <string name="connections_status_live">Live</string>
+    <string name="connections_status_loading">Refreshing</string>
+    <string name="connections_status_stopped">VPN stopped</string>
+    <string name="connections_count">%1$d active</string>
+    <string name="connections_search_label">Search connections</string>
+    <string name="connections_search_placeholder">Domain, rule, or exit node</string>
+    <string name="connections_sort">Sort connections</string>
+    <string name="connections_sorted_by">Sorted by %1$s</string>
+    <string name="connections_sort_traffic">traffic</string>
+    <string name="connections_sort_duration">duration</string>
+    <string name="connections_sort_host">domain</string>
+    <string name="connections_close_all">Close all</string>
+    <string name="connections_close_all_title">Close all connections?</string>
+    <string name="connections_close_all_description">Apps may reconnect immediately. The VPN and proxy core will keep running.</string>
+    <string name="connections_close_all_confirm">Close all</string>
+    <string name="connections_close_one">Close connection</string>
+    <string name="connections_vpn_stopped_title">VPN is not connected</string>
+    <string name="connections_vpn_stopped_description">Connect Veer from the Home screen to inspect active traffic.</string>
+    <string name="connections_loading">Loading connections</string>
+    <string name="connections_loading_description">Reading current traffic from Veercore.</string>
+    <string name="connections_empty_title">No active connections</string>
+    <string name="connections_empty_description">Connections will appear here when apps send traffic through Veer.</string>
+    <string name="connections_filtered_empty_title">No matching connections</string>
+    <string name="connections_filtered_empty_description">Try a different domain, rule, or exit node.</string>
+    <string name="connections_clear_search">Clear search</string>
+    <string name="connections_direct">Direct</string>
+    <string name="connections_rule_unknown">Unmatched rule</string>
+    <string name="connections_route">%1$s → %2$s</string>
+    <string name="connections_traffic">↑ %1$s · ↓ %2$s</string>
+    <string name="connections_duration_hms">%1$dh %2$dm %3$ds</string>
+    <string name="connections_duration_ms">%1$dm %2$ds</string>
+    <string name="connections_duration_s">%1$ds</string>
+    <string name="connections_refresh_failed">Connections could not be refreshed. Check that the proxy core is running.</string>
+    <string name="connections_invalid_id">This connection is no longer available.</string>
+    <string name="connections_close_failed">The connection could not be closed.</string>
+    <string name="connections_close_all_success">All current connections were closed.</string>
+    <string name="connections_close_all_failed">Current connections could not be closed.</string>
 
     <!-- AI templates and history -->
     <string name="ai_templates_title">Quick templates</string>
@@ -234,6 +377,16 @@
     <string name="profile_fallback_title">Profile</string>
     <string name="profile_vpn_stopped_detail">VPN is not running — proxy selections show the last known state and cannot be changed.</string>
     <string name="profile_selected">Selected</string>
+    <string name="profile_detail_loading">Loading profile</string>
+    <string name="profile_detail_loading_description">Reading policy groups and saved node selections.</string>
+    <string name="profile_detail_error_title">Profile details unavailable</string>
+    <string name="profile_detail_runtime_live">VPN connected</string>
+    <string name="profile_detail_runtime_stopped">VPN stopped</string>
+    <string name="profile_detail_group_count">%1$d policy groups</string>
+    <string name="profile_detail_read_only">Read only</string>
+    <string name="profile_detail_empty_title">No policy groups</string>
+    <string name="profile_detail_empty_description">This profile does not contain any selectable proxy groups.</string>
+    <string name="profile_detail_node_count">%1$d options</string>
 
     <!-- Profile state messages -->
     <string name="profile_phase_stopping">Safely stopping the current VPN…</string>
@@ -275,6 +428,17 @@
 
     <!-- DNS settings -->
     <string name="dns_title">DNS settings</string>
+    <string name="dns_loading">Loading DNS settings</string>
+    <string name="dns_loading_description">Reading the selected profile and its current override.</string>
+    <string name="dns_no_profile_title">No profile selected</string>
+    <string name="dns_profile_active">Active profile</string>
+    <string name="dns_profile_inactive">Inactive profile</string>
+    <string name="dns_section_source">DNS source</string>
+    <string name="dns_section_servers">DNS servers</string>
+    <string name="dns_fake_ip_title">Fake IP</string>
+    <string name="dns_redir_host_title">Redir Host</string>
+    <string name="dns_message_attention">Needs attention</string>
+    <string name="dns_message_saved">Saved</string>
     <string name="dns_no_profile_selected">No profile selected</string>
     <string name="dns_context_inactive">This profile is inactive; saving will not interrupt the current VPN.</string>
     <string name="dns_context_running">The current profile is running; saving will reconnect safely and verify startup.</string>
@@ -354,6 +518,12 @@
     <string name="rules_count_status">%1$d rules · %2$s</string>
     <string name="rules_runtime_connected">runtime connected</string>
     <string name="rules_runtime_disconnected">currently disconnected</string>
+    <string name="rules_status_refreshing">Refreshing</string>
+    <string name="rules_count">%1$d rules</string>
+    <string name="rules_loading">Loading AI rules</string>
+    <string name="rules_loading_description">Checking saved routes and their current runtime status.</string>
+    <string name="rules_no_profile_title">No active profile</string>
+    <string name="rules_empty_title">No AI rules yet</string>
     <string name="rules_delete_title">Delete rule?</string>
     <string name="rules_delete_body">%1$s\nThis immediately updates the current connection.</string>
     <string name="rules_health_disabled">Disabled</string>
@@ -361,6 +531,9 @@
     <string name="rules_health_node_unavailable">Node unavailable</string>
     <string name="rules_health_not_loaded">Not loaded</string>
     <string name="rules_health_running">Running</string>
+    <string name="rules_health_updating">Updating</string>
+    <string name="rules_enabled_short">Enabled</string>
+    <string name="rules_disabled_short">Disabled</string>
     <string name="rules_exit_direction">Traffic exit</string>
     <string name="rules_profile_label">Profile: %1$s</string>
     <string name="rules_change_exit">Change exit</string>

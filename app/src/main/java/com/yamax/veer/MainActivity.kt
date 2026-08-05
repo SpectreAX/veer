@@ -18,7 +18,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -31,15 +30,12 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.repeatOnLifecycle
 import com.yamax.veer.app_state.AppStateRepository
 import com.yamax.veer.core_ai.AiController
 import com.yamax.veer.core_logging.VeerLog
 import com.yamax.veer.core_mihomo.EngineState
-import com.yamax.veer.core_mihomo.MihomoEngine
 import com.yamax.veer.core_mihomo.StartupStage
 import com.yamax.veer.core_mihomo.VeerVpnService
-import com.yamax.veer.core_mihomo.ipc.CoreStateClient
 import com.yamax.veer.data.AiHistoryEntry
 import com.yamax.veer.data.AiHistoryStore
 import com.yamax.veer.data.ApiKeyStore
@@ -55,13 +51,11 @@ import com.yamax.veer.ui.home.HomeScreen
 import com.yamax.veer.ui.home.HomeScreenState
 import com.yamax.veer.ui.homePrimaryAction
 import com.yamax.veer.ui.logs.LogsActivity
-import com.yamax.veer.ui.nodes.NodesActivity
-import com.yamax.veer.ui.profile.ProfileActivity
-import com.yamax.veer.ui.rules.RulesActivity
-import com.yamax.veer.ui.settings.SettingsActivity
+import com.yamax.veer.ui.navigation.VeerBottomBar
+import com.yamax.veer.ui.navigation.VeerTopLevelDestination
+import com.yamax.veer.ui.navigation.navigateToTopLevel
 import com.yamax.veer.ui.theme.VeerTheme
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -71,8 +65,19 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             VeerTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { inner ->
-                    VeerHomeRoute(modifier = Modifier.padding(inner))
+                Scaffold(
+                    modifier = Modifier.fillMaxSize(),
+                    bottomBar = {
+                        VeerBottomBar(
+                            selected = VeerTopLevelDestination.HOME,
+                            onSelect = this@MainActivity::navigateToTopLevel,
+                        )
+                    },
+                ) { inner ->
+                    VeerHomeRoute(
+                        modifier = Modifier.padding(inner),
+                        onNavigateTopLevel = this@MainActivity::navigateToTopLevel,
+                    )
                 }
             }
         }
@@ -80,13 +85,14 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun VeerHomeRoute(modifier: Modifier = Modifier) {
+private fun VeerHomeRoute(
+    modifier: Modifier = Modifier,
+    onNavigateTopLevel: (VeerTopLevelDestination) -> Unit,
+) {
     val appState by AppStateRepository.appState.collectAsStateWithLifecycle()
     val engineState = appState.runtime.engineState
     val activeProfile = appState.profile.activeProfile
     val lifecycleOwner = LocalLifecycleOwner.current
-    val uiLogLines = remember { mutableStateListOf<String>() }
-    val coreLogLines = remember { mutableStateListOf<String>() }
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
     val aiController = remember(context) { AiController(context.applicationContext) }
@@ -102,14 +108,6 @@ private fun VeerHomeRoute(modifier: Modifier = Modifier) {
     var aiFeedback by remember { mutableStateOf<String?>(null) }
     var aiFeedbackIsError by remember { mutableStateOf(false) }
     var aiHistory by remember { mutableStateOf<List<AiHistoryEntry>>(emptyList()) }
-    var showLogs by remember { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        MihomoEngine.logs.collect { line ->
-            uiLogLines.add(line)
-            if (uiLogLines.size > MAX_VISIBLE_LOG_LINES) uiLogLines.removeAt(0)
-        }
-    }
 
     DisposableEffect(context, lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -123,20 +121,6 @@ private fun VeerHomeRoute(modifier: Modifier = Modifier) {
 
     LaunchedEffect(activeProfile?.profileId?.value) {
         aiHistory = withContext(Dispatchers.IO) { aiHistoryStore.entries() }
-    }
-
-    LaunchedEffect(showLogs, lifecycleOwner) {
-        if (!showLogs) return@LaunchedEffect
-        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
-            while (true) {
-                val snapshot = withContext(Dispatchers.IO) {
-                    CoreStateClient.logSnapshot(limit = MAX_VISIBLE_LOG_LINES)
-                }
-                coreLogLines.clear()
-                coreLogLines.addAll(snapshot)
-                delay(LOG_REFRESH_INTERVAL_MS)
-            }
-        }
     }
 
     fun appendLog(line: String) {
@@ -284,15 +268,14 @@ private fun VeerHomeRoute(modifier: Modifier = Modifier) {
             aiReadiness = aiReadiness,
             aiFeedback = aiFeedback,
             aiFeedbackIsError = aiFeedbackIsError,
-            showLogs = showLogs,
-            coreLogLines = coreLogLines,
-            uiLogLines = uiLogLines,
         ),
         primaryActionLabel = stringResource(primaryAction.labelRes),
         primaryActionEnabled = primaryAction.enabled,
         onPrimaryAction = {
             when (primaryAction.action) {
-                HomePrimaryAction.IMPORT_PROFILE -> context.open(ProfileActivity::class.java)
+                HomePrimaryAction.IMPORT_PROFILE -> {
+                    onNavigateTopLevel(VeerTopLevelDestination.PROFILES)
+                }
                 HomePrimaryAction.START -> requestStart()
                 HomePrimaryAction.STOP,
                 HomePrimaryAction.RECOVER_ERROR,
@@ -303,16 +286,11 @@ private fun VeerHomeRoute(modifier: Modifier = Modifier) {
             }
         },
         onQuickReconnect = ::requestReconnect,
-        onProfiles = { context.open(ProfileActivity::class.java) },
-        onRules = { context.open(RulesActivity::class.java) },
-        onNodes = { context.open(NodesActivity::class.java) },
         onConnections = { context.open(ConnectionsActivity::class.java) },
         onLogs = { context.open(LogsActivity::class.java) },
-        onSettings = { context.open(SettingsActivity::class.java) },
         onPromptChange = { prompt = it },
         onSubmitPrompt = { submitPrompt() },
         onDismissFeedback = { aiFeedback = null },
-        onToggleLogs = { showLogs = !showLogs },
         modifier = modifier,
         startupContent = {
             if (engineState is EngineState.Starting) {
@@ -352,6 +330,3 @@ private fun VeerHomeRoute(modifier: Modifier = Modifier) {
 private fun android.content.Context.open(activity: Class<*>) {
     startActivity(Intent(this, activity))
 }
-
-private const val MAX_VISIBLE_LOG_LINES = 200
-private const val LOG_REFRESH_INTERVAL_MS = 1_000L

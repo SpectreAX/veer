@@ -18,7 +18,7 @@ data class LogViewerUiState(
     val filter: LogViewerFilter = LogViewerFilter(),
     val paused: Boolean = false,
     val refreshing: Boolean = false,
-    val error: String? = null,
+    val refreshFailed: Boolean = false,
 ) {
     val visibleLines: List<ViewerLogLine>
         get() = LogViewerFiltering.apply(lines, filter)
@@ -32,19 +32,16 @@ class LogViewerViewModel : ViewModel() {
 
     suspend fun refresh() {
         refreshMutex.withLock {
-            _uiState.update { it.copy(refreshing = true, error = null) }
+            _uiState.update { it.copy(refreshing = true, refreshFailed = false) }
             val result = withContext(Dispatchers.IO) {
                 runCatching(repository::snapshot)
             }
             _uiState.update { current ->
                 result.fold(
-                    onSuccess = { current.copy(lines = it, refreshing = false) },
-                    onFailure = {
-                        current.copy(
-                            refreshing = false,
-                            error = it.message ?: "日志刷新失败",
-                        )
+                    onSuccess = {
+                        current.copy(lines = it, refreshing = false, refreshFailed = false)
                     },
+                    onFailure = { current.copy(refreshing = false, refreshFailed = true) },
                 )
             }
         }

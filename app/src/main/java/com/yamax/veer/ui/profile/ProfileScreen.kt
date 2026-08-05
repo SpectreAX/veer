@@ -96,6 +96,8 @@ internal fun ProfileListScreen(
     onBack: () -> Unit,
     onProfileDetail: (ProfileId) -> Unit,
     onProfileDns: (ProfileId) -> Unit,
+    showBackNavigation: Boolean = true,
+    bottomBar: @Composable () -> Unit = {},
     viewModel: ProfileListViewModel = viewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -114,6 +116,8 @@ internal fun ProfileListScreen(
         yamlInput = yamlInput,
         onUrlInputChange = { urlInput = it },
         onYamlInputChange = { yamlInput = it },
+        showBackNavigation = showBackNavigation,
+        bottomBar = bottomBar,
         actions = ProfileListActions(
             onBack = onBack,
             onRefreshAll = viewModel::refreshAll,
@@ -166,6 +170,8 @@ internal fun ProfileListContent(
     onUrlInputChange: (String) -> Unit,
     onYamlInputChange: (String) -> Unit,
     actions: ProfileListActions,
+    showBackNavigation: Boolean = true,
+    bottomBar: @Composable () -> Unit = {},
 ) {
     val importing = state.importState is ImportState.Running
     val operationInProgress = state.switchingProfileId != null
@@ -176,7 +182,7 @@ internal fun ProfileListContent(
         topBar = {
             VeerTopAppBar(
                 title = stringResource(R.string.profile_title),
-                onBack = actions.onBack,
+                onBack = if (showBackNavigation) actions.onBack else null,
                 backContentDescription = stringResource(R.string.common_back),
                 actions = {
                     IconButton(
@@ -198,6 +204,7 @@ internal fun ProfileListContent(
                 },
             )
         },
+        bottomBar = bottomBar,
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize(),

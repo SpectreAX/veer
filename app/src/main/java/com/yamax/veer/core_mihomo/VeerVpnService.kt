@@ -1008,6 +1008,14 @@ class VeerVpnService : VpnService() {
             val needsStop = coreRunning || startAttempted
             coreRunning = false
 
+            // Debug instrumentation can install a one-shot probe to exercise the
+            // exact teardown window after coreRunning is cleared but before the
+            // connectivity callback is unregistered. Keeping the trigger here makes
+            // the lifecycle test deterministic without delaying production teardown.
+            val connectivityTeardownProbe = testBeforeConnectivityMonitorStop
+            testBeforeConnectivityMonitorStop = null
+            connectivityTeardownProbe?.invoke()
+
             val monT0 = System.currentTimeMillis()
             VeerLog.vpn("[tearDownCore] stopping connectivityMonitor")
             // 1.A.3 probes — fine-grained "step=X" markers narrow which un-runCatching'd
@@ -1237,8 +1245,12 @@ class VeerVpnService : VpnService() {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (nm.getNotificationChannel(CHANNEL_ID) != null) return
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "Veer VPN", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "Indicates that Veer is tunneling traffic."
+            NotificationChannel(
+                CHANNEL_ID,
+                getString(R.string.vpn_notification_channel_name),
+                NotificationManager.IMPORTANCE_LOW,
+            ).apply {
+                description = getString(R.string.vpn_notification_channel_description)
                 setShowBadge(false)
             }
         )
@@ -1253,8 +1265,8 @@ class VeerVpnService : VpnService() {
         )
         val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("Veer")
-            .setContentText("Tunneling traffic via Mihomo")
+            .setContentTitle(getString(R.string.app_name))
+            .setContentText(getString(R.string.vpn_notification_connected))
             .setOngoing(true)
             .setContentIntent(tap)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -1336,6 +1348,7 @@ class VeerVpnService : VpnService() {
         @JvmField @Volatile internal var testAutoRecoveryMaxCandidates: Int = -1
         @Volatile internal var testAutoRecoveryInternetProbe: (() -> Boolean)? = null
         @Volatile internal var testAutoRecoveryExhaustedCallback: (() -> Unit)? = null
+        @Volatile internal var testBeforeConnectivityMonitorStop: (() -> Unit)? = null
 
         // Written by bootCore() (main source set) — cannot be moved to the debug
         // source set because a debug-only declaration cannot be referenced from

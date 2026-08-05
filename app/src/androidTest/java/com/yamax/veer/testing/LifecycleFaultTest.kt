@@ -23,7 +23,6 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
-import java.util.concurrent.atomic.AtomicBoolean
 import org.junit.Before
 import org.junit.BeforeClass
 import org.junit.Test
@@ -824,22 +823,10 @@ class LifecycleFaultTest {
             assertNotNull("Service did not reach Running within 12 s", running)
         }
 
-        // Background thread: polls PhaseTrace for Stopping, then fires the callback.
-        // 50 ms after Stopping appears gives tearDownCore time to write coreRunning=false
-        // (it is the first statement inside engineMutex.withLock in tearDownCore).
-        val callbackFired = AtomicBoolean(false)
-        val callbackThread = Thread {
-            val deadline = System.currentTimeMillis() + 8_000L
-            while (System.currentTimeMillis() < deadline) {
-                if (PhaseTrace.stateNames().contains("Stopping")) {
-                    Thread.sleep(50L)
-                    FaultInjector.fireAllNetworksLostCallback()
-                    callbackFired.set(true)
-                    break
-                }
-                Thread.sleep(10L)
-            }
-        }.apply { isDaemon = true; start() }
+        // Arm a one-shot debug probe at the exact teardown boundary. A fixed
+        // sleep here is inherently flaky because a fast native shutdown can
+        // unregister and clear the callback before the test thread wakes up.
+        FaultInjector.armTeardownConnectivityProbe()
 
         stopVpn()
 
@@ -848,10 +835,9 @@ class LifecycleFaultTest {
             assertNotNull("Service did not reach Stopped after normal stop: ${PhaseTrace.stateNames()}", stopped)
         }
 
-        callbackThread.join(1_000L)
         assertTrue(
-            "Callback was never fired — debugAllNetworksLostCallback was null before Stopping",
-            callbackFired.get(),
+            "Callback was never fired at the connectivity teardown boundary",
+            FaultInjector.wasTeardownConnectivityProbeFired(),
         )
 
         // F1 invariant: the late callback must have taken the else branch (coreRunning=false).
