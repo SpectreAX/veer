@@ -58,6 +58,7 @@ import com.yamax.veer.ui.designsystem.theme.VeerShapes
 import com.yamax.veer.ui.designsystem.theme.VeerSpacing
 import com.yamax.veer.ui.resolve
 import com.yamax.veer.ui.navigation.VeerBottomBar
+import com.yamax.veer.ui.navigation.VeerTopLevelBackHandler
 import com.yamax.veer.ui.navigation.VeerTopLevelDestination
 import com.yamax.veer.ui.navigation.navigateToTopLevel
 import com.yamax.veer.ui.theme.VeerTheme
@@ -70,6 +71,7 @@ class RulesActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             VeerTheme {
+                VeerTopLevelBackHandler()
                 val state by viewModel.uiState.collectAsStateWithLifecycle()
                 val appState by AppStateRepository.appState.collectAsStateWithLifecycle()
                 val activeProfileId = appState.profile.activeProfileId?.value

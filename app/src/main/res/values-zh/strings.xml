@@ -165,7 +165,7 @@
     <string name="home_profiles">配置</string>
     <string name="home_ai_rules">AI 规则</string>
     <string name="home_nodes">节点</string>
-    <string name="home_connections">连接</string>
+    <string name="home_connections">活动连接</string>
     <string name="home_live_logs">实时日志</string>
     <string name="home_settings">设置</string>
     <string name="home_ai_command">AI 指令</string>

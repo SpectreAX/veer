@@ -75,6 +75,7 @@ import com.yamax.veer.ui.theme.ThemeMode
 import com.yamax.veer.ui.theme.ThemePreference
 import com.yamax.veer.ui.theme.VeerTheme
 import com.yamax.veer.ui.navigation.VeerBottomBar
+import com.yamax.veer.ui.navigation.VeerTopLevelBackHandler
 import com.yamax.veer.ui.navigation.VeerTopLevelDestination
 import com.yamax.veer.ui.navigation.navigateToTopLevel
 
@@ -85,6 +86,7 @@ class SettingsActivity : ComponentActivity() {
         setContent {
             val themeMode by ThemePreference.mode.collectAsStateWithLifecycle()
             VeerTheme(themeMode = themeMode) {
+                VeerTopLevelBackHandler()
                 val appState by AppStateRepository.appState.collectAsStateWithLifecycle()
                 val activeProfileId = appState.profile.activeProfileId
                 val activeProfileName = appState.profile.activeMetadata?.displayName

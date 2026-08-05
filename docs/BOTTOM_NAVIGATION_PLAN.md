@@ -41,3 +41,16 @@
 - 五个一级页面截图确认选中态、内容不被底栏遮挡、无多余返回箭头。
 - ADB 实际点击跨 Activity 验证导航与返回栈。
 - JVM、Lint、Debug、AndroidTest、Release 构建以及全量设备测试通过。
+
+## 验收结果
+
+日期：2026-08-05
+
+- 信息架构：`MainActivity`、`NodesActivity`、`RulesActivity`、`ProfileActivity`、`SettingsActivity` 共用同一个 `VeerBottomBar`；DNS、分应用代理、活跃连接、日志和配置详情没有接入底栏。
+- 首页归类：移除节点、规则、配置、设置的重复快捷入口；“诊断工具”只保留活动连接与实时日志，AI 指令和历史继续归入状态页。
+- 视觉：五个浅色一级页面、规则页深色模式及配置页窄屏大字体截图均通过目视检查；共享 Preview 明确覆盖 320dp 和 1.5 倍字体。
+- 可访问性：五个项目始终显示图标和本地化文字，具有稳定测试标签；当前项同时使用语义选中状态和 Material 3 指示器。
+- 返回栈：ADB 实际点击依次进入状态、节点、规则、配置、设置；切换后任务栈只保留状态页和当前 Tab；重复点击当前 Tab 不新增实例。
+- 系统返回：验收中发现直接依赖系统 Activity 栈时可能从非首页 Tab 返回桌面，已改为共享 `VeerTopLevelBackHandler`；四个非首页 Tab 均通过直接启动后返回状态页的设备测试，配置详情仍优先返回配置列表。
+- 自动化：`BottomNavigationUiInstrumentedTest` 覆盖五项展示、选中语义与点击分发；`TopLevelNavigationInstrumentedTest` 覆盖四个非首页 Tab 的系统返回行为。
+- 发布检查：`testDebugUnitTest`、`lintDebug`、`assembleDebug`、`assembleDebugAndroidTest`、`assembleRelease`（R8）全部通过；标准模拟器全量设备测试 33/33 通过。

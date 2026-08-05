@@ -95,5 +95,6 @@
 - 首页内嵌状态组件：启动进度改用统一卡片与令牌；实时流量图完成中英文状态、坐标与无障碍说明；AI 历史明确展示成功、失败、已撤销、配置不匹配和禁用操作。已通过 AI 再次执行/撤销设备测试，以及 Light、Dark、窄屏大字体、长规则截图。
 - 遗留原型清理：已删除无正式入口引用的 `VeerApp`、`HomeViewModel`、`HomeUiState`、`AppDestination` 及旧紫色/固定深色主题常量，避免继续维护第二套视觉语言；当前 `MainActivity` 与业务 ViewModel 不受影响。
 - Feature 层视觉值审计：正式 UI 已无直接 `dp`、`sp`、字重、圆角或十六进制颜色；中英文字符串键集合一致。
-- 发布级验收：`testDebugUnitTest`、`lintDebug`、`assembleDebug`、`assembleDebugAndroidTest`、`assembleRelease`（R8）全部通过；`tools/run_device_tests_preserving_app.sh` 在已连接设备上 31/31 通过并保留应用数据。
+- 底栏信息架构：状态、节点、规则、配置、设置五个一级目的地已统一接入 Material 3 底栏；首页重复入口已移除，二级任务保持无底栏层级，非首页 Tab 的系统返回显式回到状态页。
+- 发布级验收：`testDebugUnitTest`、`lintDebug`、`assembleDebug`、`assembleDebugAndroidTest`、`assembleRelease`（R8）全部通过；`tools/run_device_tests_preserving_app.sh` 在已连接设备上 33/33 通过并保留应用数据。
 - 最终审计：所有正式入口已覆盖；Feature 层无未登记视觉常量；中英文字符串键一致；`git diff --check` 通过。UI 重构计划完成。

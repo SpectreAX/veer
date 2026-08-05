@@ -2,6 +2,7 @@ package com.yamax.veer.ui.navigation
 
 import android.app.Activity
 import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.activity.ComponentActivity
 import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
@@ -84,6 +85,13 @@ internal fun ComponentActivity.navigateToTopLevel(destination: VeerTopLevelDesti
         ),
     )
     if (this !is MainActivity) finish()
+}
+
+@Composable
+internal fun ComponentActivity.VeerTopLevelBackHandler(enabled: Boolean = true) {
+    BackHandler(enabled = enabled) {
+        navigateToTopLevel(VeerTopLevelDestination.HOME)
+    }
 }
 
 private fun Activity.matches(destination: VeerTopLevelDestination): Boolean = when (destination) {

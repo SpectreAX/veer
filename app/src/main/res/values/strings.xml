@@ -31,7 +31,7 @@
     <string name="common_unknown_error">Unknown error</string>
 
     <!-- Bottom navigation -->
-    <string name="bottom_nav_home">Home</string>
+    <string name="bottom_nav_home">Status</string>
     <string name="bottom_nav_nodes">Nodes</string>
     <string name="bottom_nav_rules">Rules</string>
     <string name="bottom_nav_profiles">Profiles</string>

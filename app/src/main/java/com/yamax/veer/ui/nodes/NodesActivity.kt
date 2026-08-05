@@ -57,6 +57,7 @@ import com.yamax.veer.ui.designsystem.theme.VeerSpacing
 import com.yamax.veer.ui.designsystem.theme.veerColors
 import com.yamax.veer.ui.resolve
 import com.yamax.veer.ui.navigation.VeerBottomBar
+import com.yamax.veer.ui.navigation.VeerTopLevelBackHandler
 import com.yamax.veer.ui.navigation.VeerTopLevelDestination
 import com.yamax.veer.ui.navigation.navigateToTopLevel
 import com.yamax.veer.ui.theme.VeerTheme
@@ -69,6 +70,7 @@ class NodesActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             VeerTheme {
+                VeerTopLevelBackHandler()
                 val state by viewModel.uiState.collectAsStateWithLifecycle()
                 val filter by viewModel.filter.collectAsStateWithLifecycle()
                 val availableRegions by viewModel.availableRegions.collectAsStateWithLifecycle()

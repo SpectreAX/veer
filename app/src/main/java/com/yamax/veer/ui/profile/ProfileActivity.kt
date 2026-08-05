@@ -12,6 +12,7 @@ import com.yamax.veer.core_profile.ProfileId
 import com.yamax.veer.ui.dns.DnsSettingsActivity
 import com.yamax.veer.ui.theme.VeerTheme
 import com.yamax.veer.ui.navigation.VeerBottomBar
+import com.yamax.veer.ui.navigation.VeerTopLevelBackHandler
 import com.yamax.veer.ui.navigation.VeerTopLevelDestination
 import com.yamax.veer.ui.navigation.navigateToTopLevel
 
@@ -29,6 +30,7 @@ class ProfileActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             VeerTheme {
+                VeerTopLevelBackHandler(enabled = currentRoute is ProfileRoute.List)
                 BackHandler(enabled = currentRoute is ProfileRoute.Detail) {
                     currentRoute = ProfileRoute.List
                 }
