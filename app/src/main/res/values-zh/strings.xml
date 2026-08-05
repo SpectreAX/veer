@@ -20,6 +20,9 @@
     <string name="common_save">保存</string>
     <string name="common_replace">替换</string>
     <string name="common_clear">清除</string>
+    <string name="common_show">显示</string>
+    <string name="common_hide">隐藏</string>
+    <string name="common_retry">重试</string>
 
     <string name="settings_title">设置</string>
     <string name="settings_subtitle">集中管理 Veer 的行为与外观</string>
@@ -31,6 +34,8 @@
     <string name="settings_api_key_saved_message">API Key 已保存</string>
     <string name="settings_api_key_cleared_message">API Key 已清除</string>
     <string name="settings_section_network">网络与分流</string>
+    <string name="settings_section_connection">连接与分流</string>
+    <string name="settings_section_system">系统集成</string>
     <string name="settings_dns">DNS 设置</string>
     <string name="settings_active_profile">当前配置：%1$s</string>
     <string name="settings_activate_profile_first">请先导入并激活配置</string>
@@ -52,6 +57,9 @@
 
     <string name="background_protection_title">后台运行保护</string>
     <string name="background_protection_disclaimer">Veer 只读取公开系统状态；MIUI/HyperOS 开关需要你在系统设置中确认。</string>
+    <string name="background_status_restricted">受限制</string>
+    <string name="background_status_attention">需要处理</string>
+    <string name="background_status_ready">状态正常</string>
     <string name="background_battery_settings">电池与后台设置</string>
     <string name="background_autostart_settings">自启动设置</string>
     <string name="background_app_details">打开应用详情</string>
@@ -100,6 +108,8 @@
     <string name="home_live_logs">实时日志</string>
     <string name="home_settings">设置</string>
     <string name="home_ai_command">AI 指令</string>
+    <string name="home_ai_command_description">描述希望的流量方向；Veer 会明确展示应用前后的执行结果。</string>
+    <string name="home_ai_prompt_label">分流指令</string>
     <string name="home_ai_prompt_placeholder">例如：Netflix 走日本节点</string>
     <string name="home_ai_executing">正在执行…</string>
     <string name="home_ai_connect_first">连接后可执行</string>
@@ -115,6 +125,8 @@
     <string name="home_core_process">— Veercore 进程 —</string>
     <string name="home_ui_process">— 界面进程 —</string>
     <string name="connection_title">连接状态</string>
+    <string name="connection_vpn">VPN</string>
+    <string name="connection_mihomo">Mihomo 核心</string>
     <string name="connection_checking">检测中…</string>
     <string name="connection_controller_ready">控制器可用</string>
     <string name="connection_controller_unavailable">控制器不可达</string>
@@ -124,6 +136,10 @@
     <string name="connection_reachable">实际可用%1$s</string>
     <string name="connection_access_failed">实际访问失败</string>
     <string name="connection_exit_ip_pending">出口 IP 待检测</string>
+    <string name="connection_ipv4">IPv4 %1$s</string>
+    <string name="connection_ipv6">IPv6 %1$s</string>
+    <string name="connection_route_mode">%1$s [%2$s]</string>
+    <string name="connection_delay_ms">%1$d ms</string>
     <string name="connection_route_pending">等待控制器路由</string>
     <string name="connection_exit">出口：%1$s · %2$s</string>
     <string name="connection_route">路由：%1$s</string>
@@ -160,11 +176,19 @@
     <string name="profile_title">配置</string>
     <string name="profile_refresh_all">刷新全部订阅</string>
     <string name="profile_subscription_url">订阅链接</string>
+    <string name="profile_subscription_url_label">URL</string>
+    <string name="profile_subscription_url_placeholder">https://example.com/subscription</string>
+    <string name="profile_subscription_url_invalid">请输入有效的 HTTP 或 HTTPS 订阅链接。</string>
+    <string name="profile_paste_subscription_url">从剪贴板粘贴链接</string>
+    <string name="profile_subscription_description">链接仅保存在本机，用于导入和刷新订阅。</string>
     <string name="profile_importing">正在导入…</string>
     <string name="profile_import_starting">正在开始导入…</string>
     <string name="profile_import_saving">正在保存配置…</string>
     <string name="profile_import_subscription">导入订阅</string>
     <string name="profile_local_yaml">本地 Clash YAML</string>
+    <string name="profile_yaml_label">Clash YAML</string>
+    <string name="profile_yaml_placeholder">proxies:\n  - name: my-proxy\n    …</string>
+    <string name="profile_yaml_description">粘贴完整 Clash 配置，或直接选择 YAML 文件。</string>
     <string name="profile_select_yaml">选择 YAML 文件</string>
     <string name="profile_import_pasted">导入粘贴内容</string>
     <string name="profile_refresh_history">订阅刷新历史</string>
@@ -188,6 +212,7 @@
     <string name="profile_current">当前使用</string>
     <string name="profile_rename_description">重命名</string>
     <string name="profile_source_subscription">订阅：%1$s</string>
+    <string name="profile_source_https_url">HTTPS 订阅</string>
     <string name="profile_source_file">文件：%1$s</string>
     <string name="profile_source_base64">Base64 导入</string>
     <string name="profile_stats">%1$d 个节点 · %2$d 个策略组 · %3$d 条规则</string>
@@ -368,6 +393,12 @@
     <string name="nodes_probe_progress">正在检测 %1$d/%2$d · 可用 %3$d · 失败 %4$d</string>
     <string name="nodes_start_vpn">启动 VPN 后可查看和切换真实节点。</string>
     <string name="nodes_no_matches">没有匹配的策略组或节点。</string>
+    <string name="nodes_no_groups">当前配置没有可用的策略组。</string>
+    <string name="nodes_clear_filters">清除筛选</string>
+    <string name="nodes_load_failed">无法加载节点：%1$s</string>
+    <string name="nodes_load_failed_title">无法加载节点</string>
+    <string name="nodes_selected">已选择</string>
+    <string name="nodes_switching">正在切换</string>
     <string name="nodes_sort_default">默认</string>
     <string name="nodes_sort_delay">延迟↑</string>
     <string name="nodes_sort_name">名称</string>

@@ -31,6 +31,7 @@ class ProfileActivity : ComponentActivity() {
                 }
                 when (val route = currentRoute) {
                     is ProfileRoute.List   -> ProfileListScreen(
+                        onBack = ::finish,
                         onProfileDetail = { id -> currentRoute = ProfileRoute.Detail(id) },
                         onProfileDns = { id ->
                             startActivity(DnsSettingsActivity.intent(this, id))

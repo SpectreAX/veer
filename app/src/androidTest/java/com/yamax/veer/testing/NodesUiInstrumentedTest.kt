@@ -73,6 +73,7 @@ class NodesUiInstrumentedTest {
                     onToggleHideUnavailable = {
                         filter = filter.copy(hideUnavailable = !filter.hideUnavailable)
                     },
+                    onClearFilters = { filter = NodeFilter() },
                 )
             }
         }

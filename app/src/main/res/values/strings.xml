@@ -22,6 +22,9 @@
     <string name="common_save">Save</string>
     <string name="common_replace">Replace</string>
     <string name="common_clear">Clear</string>
+    <string name="common_show">Show</string>
+    <string name="common_hide">Hide</string>
+    <string name="common_retry">Retry</string>
 
     <!-- Settings -->
     <string name="settings_title">Settings</string>
@@ -34,6 +37,8 @@
     <string name="settings_api_key_saved_message">API key saved</string>
     <string name="settings_api_key_cleared_message">API key cleared</string>
     <string name="settings_section_network">Network and routing</string>
+    <string name="settings_section_connection">Connection and routing</string>
+    <string name="settings_section_system">System integration</string>
     <string name="settings_dns">DNS settings</string>
     <string name="settings_active_profile">Active profile: %1$s</string>
     <string name="settings_activate_profile_first">Import and activate a profile first</string>
@@ -56,6 +61,9 @@
     <!-- Background protection -->
     <string name="background_protection_title">Background protection</string>
     <string name="background_protection_disclaimer">Veer reads public Android status only. Confirm MIUI/HyperOS switches in system settings.</string>
+    <string name="background_status_restricted">Restricted</string>
+    <string name="background_status_attention">Needs attention</string>
+    <string name="background_status_ready">Ready</string>
     <string name="background_battery_settings">Battery and background settings</string>
     <string name="background_autostart_settings">Autostart settings</string>
     <string name="background_app_details">Open app details</string>
@@ -106,6 +114,8 @@
     <string name="home_live_logs">Live logs</string>
     <string name="home_settings">Settings</string>
     <string name="home_ai_command">AI command</string>
+    <string name="home_ai_command_description">Describe the route you want. Veer shows the result before and after applying it.</string>
+    <string name="home_ai_prompt_label">Routing instruction</string>
     <string name="home_ai_prompt_placeholder">For example: Route Netflix through Japan</string>
     <string name="home_ai_executing">Executing…</string>
     <string name="home_ai_connect_first">Connect to execute</string>
@@ -121,6 +131,8 @@
     <string name="home_core_process">— Veercore process —</string>
     <string name="home_ui_process">— UI process —</string>
     <string name="connection_title">Connection status</string>
+    <string name="connection_vpn">VPN</string>
+    <string name="connection_mihomo">Mihomo core</string>
     <string name="connection_checking">Checking…</string>
     <string name="connection_controller_ready">Controller available</string>
     <string name="connection_controller_unavailable">Controller unavailable</string>
@@ -130,6 +142,10 @@
     <string name="connection_reachable">Reachable%1$s</string>
     <string name="connection_access_failed">Access failed</string>
     <string name="connection_exit_ip_pending">Exit IP pending</string>
+    <string name="connection_ipv4">IPv4 %1$s</string>
+    <string name="connection_ipv6">IPv6 %1$s</string>
+    <string name="connection_route_mode">%1$s [%2$s]</string>
+    <string name="connection_delay_ms">%1$d ms</string>
     <string name="connection_route_pending">Waiting for controller route</string>
     <string name="connection_exit">Exit: %1$s · %2$s</string>
     <string name="connection_route">Route: %1$s</string>
@@ -168,11 +184,19 @@
     <string name="profile_title">Profiles</string>
     <string name="profile_refresh_all">Refresh all subscriptions</string>
     <string name="profile_subscription_url">Subscription URL</string>
+    <string name="profile_subscription_url_label">URL</string>
+    <string name="profile_subscription_url_placeholder">https://example.com/subscription</string>
+    <string name="profile_subscription_url_invalid">Enter a valid HTTP or HTTPS subscription URL.</string>
+    <string name="profile_paste_subscription_url">Paste link from clipboard</string>
+    <string name="profile_subscription_description">The address is stored on this device and used only for subscription refreshes.</string>
     <string name="profile_importing">Importing…</string>
     <string name="profile_import_starting">Starting import…</string>
     <string name="profile_import_saving">Saving profile…</string>
     <string name="profile_import_subscription">Import subscription</string>
     <string name="profile_local_yaml">Local Clash YAML</string>
+    <string name="profile_yaml_label">Clash YAML</string>
+    <string name="profile_yaml_placeholder">proxies:\n  - name: my-proxy\n    …</string>
+    <string name="profile_yaml_description">Paste a complete Clash configuration or choose a YAML file.</string>
     <string name="profile_select_yaml">Choose YAML file</string>
     <string name="profile_import_pasted">Import pasted content</string>
     <string name="profile_refresh_history">Subscription refresh history</string>
@@ -196,6 +220,7 @@
     <string name="profile_current">In use</string>
     <string name="profile_rename_description">Rename</string>
     <string name="profile_source_subscription">Subscription: %1$s</string>
+    <string name="profile_source_https_url">HTTPS subscription</string>
     <string name="profile_source_file">File: %1$s</string>
     <string name="profile_source_base64">Base64 import</string>
     <string name="profile_stats">%1$d nodes · %2$d policy groups · %3$d rules</string>
@@ -377,6 +402,12 @@
     <string name="nodes_probe_progress">Testing %1$d/%2$d · %3$d available · %4$d failed</string>
     <string name="nodes_start_vpn">Start the VPN to view and switch real nodes.</string>
     <string name="nodes_no_matches">No policy groups or nodes match the filters.</string>
+    <string name="nodes_no_groups">No usable policy groups are available in the current profile.</string>
+    <string name="nodes_clear_filters">Clear filters</string>
+    <string name="nodes_load_failed">Could not load nodes: %1$s</string>
+    <string name="nodes_load_failed_title">Could not load nodes</string>
+    <string name="nodes_selected">Selected</string>
+    <string name="nodes_switching">Switching</string>
     <string name="nodes_sort_default">Default</string>
     <string name="nodes_sort_delay">Latency ↑</string>
     <string name="nodes_sort_name">Name</string>
