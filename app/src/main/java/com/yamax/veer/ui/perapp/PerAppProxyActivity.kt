@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -22,6 +23,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -54,6 +56,7 @@ import com.yamax.veer.ui.designsystem.preview.VeerPreview
 import com.yamax.veer.ui.designsystem.preview.VeerResponsivePreviews
 import com.yamax.veer.ui.designsystem.preview.VeerThemePreviews
 import com.yamax.veer.ui.designsystem.theme.VeerDimensions
+import com.yamax.veer.ui.designsystem.theme.VeerElevation
 import com.yamax.veer.ui.designsystem.theme.VeerSpacing
 import com.yamax.veer.ui.resolve
 import com.yamax.veer.ui.theme.VeerTheme
@@ -121,6 +124,37 @@ internal fun PerAppProxyScreen(
                 onBack = onBack,
                 backContentDescription = stringResource(R.string.common_back),
             )
+        },
+        bottomBar = {
+            if (!state.loading && !state.loadFailed) {
+                Surface(tonalElevation = VeerElevation.low) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .padding(
+                                horizontal = VeerSpacing.lg,
+                                vertical = VeerSpacing.md,
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        VeerPrimaryButton(
+                            text = when {
+                                state.saving -> stringResource(R.string.per_app_saving)
+                                runtimeRunning -> stringResource(R.string.per_app_save_reconnect)
+                                else -> stringResource(R.string.common_save)
+                            },
+                            onClick = { onSave(runtimeRunning) },
+                            enabled = state.canSave,
+                            loading = state.saving,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .widthIn(max = VeerDimensions.formMaxWidth)
+                                .testTag("save_per_app_policy"),
+                        )
+                    }
+                }
+            }
         },
     ) { padding ->
         Box(
@@ -267,22 +301,6 @@ internal fun PerAppProxyScreen(
                                     onToggle = { onTogglePackage(app.packageName) },
                                 )
                             }
-                        }
-
-                        item(key = "save") {
-                            VeerPrimaryButton(
-                                text = when {
-                                    state.saving -> stringResource(R.string.per_app_saving)
-                                    runtimeRunning -> stringResource(R.string.per_app_save_reconnect)
-                                    else -> stringResource(R.string.common_save)
-                                },
-                                onClick = { onSave(runtimeRunning) },
-                                enabled = state.canSave,
-                                loading = state.saving,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("save_per_app_policy"),
-                            )
                         }
                     }
                 }

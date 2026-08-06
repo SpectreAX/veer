@@ -67,6 +67,21 @@ class MihomoRepository internal constructor(
         }
     }
 
+    /** Short controller probe for the startup readiness gate. */
+    suspend fun controllerReady(): Boolean = withContext(Dispatchers.IO) {
+        val readinessClient = client.newBuilder()
+            .connectTimeout(READINESS_PROBE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            .readTimeout(READINESS_PROBE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            .writeTimeout(READINESS_PROBE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            .callTimeout(READINESS_PROBE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            .build()
+        runCatching {
+            readinessClient.newCall(get("/version")).execute().use { response ->
+                response.isSuccessful && !response.body?.string().isNullOrBlank()
+            }
+        }.getOrDefault(false)
+    }
+
     /** Current Mihomo routing mode (`rule`, `global`, or `direct`). */
     suspend fun runtimeMode(): String? = withContext(Dispatchers.IO) {
         try {
@@ -722,6 +737,7 @@ class MihomoRepository internal constructor(
         private const val DEFAULT_DELAY_TIMEOUT_MS = 2500
         private const val DEFAULT_DELAY_PROBE_CONCURRENCY = 4
         private const val DEFAULT_DELAY_PROBE_URL = "https://www.gstatic.com/generate_204"
+        private const val READINESS_PROBE_TIMEOUT_MS = 200L
 
         private val JSON_MEDIA = "application/json".toMediaType()
         private const val EMPTY_JSON = "{}"

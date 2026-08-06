@@ -28,9 +28,12 @@ Key implementation decisions:
   service intents. The user’s desired running state is stored in a
   cross-process file marker rather than incoherent multi-process
   `SharedPreferences`.
-- A non-exported, same-UID `ContentProvider` is the bounded IPC surface for
+- A non-exported, same-UID AIDL service is the primary bounded IPC surface for
   engine/startup/connectivity state, traffic counters, route summary, log
-  snapshots and rule hot reload.
+  snapshots and rule hot reload. Its Binder is linked with `linkToDeath`, so a
+  killed `:veercore` process cannot leave a stale Running state in the UI.
+  The existing non-exported `ContentProvider` remains as a compatibility
+  fallback and owns the shared validation/dispatch implementation.
 - Runtime state changes call `notifyChange`; the UI mirrors them into its
   process-local `StateFlow`. High-frequency traffic uses a single bounded IPC
   call and never transfers the full proxy tree.
@@ -51,8 +54,10 @@ Runtime acceptance on the Android 16 arm64 emulator:
 
 - UI PID death: core PID unchanged; controller 200 and proxied HTTPS 204;
   relaunched UI synchronized to Running.
-- Core PID death: replacement PID launched and real proxy traffic recovered in
-  about 7 seconds.
+- Core PID death: the UI receives `CORE_BINDER_DIED`, rebinds to the replacement
+  process, and the desired-running recovery policy serially starts a new runtime.
+  The 2026-08-05 emulator fault-injection run recovered to readiness in about
+  17 seconds; this figure includes process creation and full core boot.
 - Explicit stop: remained Stopped for the observation window; no false
   auto-restart.
 - Fast reconnect: same core PID, real proxy traffic recovered in about

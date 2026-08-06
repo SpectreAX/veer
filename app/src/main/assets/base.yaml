@@ -19,7 +19,9 @@ secret: ""
 
 dns:
   enable: true
-  listen: 0.0.0.0:53
+  # Android TUN intercepts DNS with tun.dns-hijack below. Do not bind a local
+  # :53 listener: app UIDs cannot open privileged ports and the failed bind
+  # would leave Builder.addDnsServer() traffic without a resolver.
   enhanced-mode: fake-ip
   fake-ip-range: 198.18.0.1/16
   fake-ip-filter:

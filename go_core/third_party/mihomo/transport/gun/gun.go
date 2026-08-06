@@ -33,6 +33,7 @@ const (
 var (
 	ErrInvalidLength = errors.New("invalid length")
 	ErrSmallBuffer   = errors.New("buffer too small")
+	liveTransports   sync.Map
 )
 
 var defaultHeader = http.Header{
@@ -250,17 +251,92 @@ type Transport struct {
 	cancel    context.CancelFunc
 	closeOnce sync.Once
 	count     atomic.Int64
+
+	connectionMu sync.Mutex
+	connections  map[*trackedConn]struct{}
+}
+
+type trackedConn struct {
+	net.Conn
+	owner *Transport
+	once  sync.Once
+}
+
+func (c *trackedConn) Close() error {
+	err := c.Conn.Close()
+	c.once.Do(func() {
+		c.owner.connectionMu.Lock()
+		delete(c.owner.connections, c)
+		c.owner.connectionMu.Unlock()
+	})
+	return err
+}
+
+func (t *Transport) trackConnection(conn net.Conn) (net.Conn, error) {
+	tracked := &trackedConn{Conn: conn, owner: t}
+	t.connectionMu.Lock()
+	defer t.connectionMu.Unlock()
+	select {
+	case <-t.ctx.Done():
+		_ = conn.Close()
+		return nil, net.ErrClosed
+	default:
+	}
+	if t.connections == nil {
+		t.connections = make(map[*trackedConn]struct{})
+	}
+	t.connections[tracked] = struct{}{}
+	return tracked, nil
+}
+
+func (t *Transport) closeConnections() {
+	t.connectionMu.Lock()
+	connections := make([]*trackedConn, 0, len(t.connections))
+	for conn := range t.connections {
+		connections = append(connections, conn)
+	}
+	t.connections = nil
+	t.connectionMu.Unlock()
+
+	for _, conn := range connections {
+		_ = conn.Conn.Close()
+	}
 }
 
 func (t *Transport) Close() error {
 	t.closeOnce.Do(func() {
 		t.cancel()
+		// Close the sockets themselves before asking the HTTP pool to drain.
+		// Active HTTP/2 streams are not guaranteed to be present in the idle
+		// pool, and their read loops otherwise remain blocked in TLS.Read.
+		t.closeConnections()
 		httputils.CloseTransport(t.transport)
+		// A dial that completed concurrently with cancellation is rejected by
+		// trackConnection; the second drain is a defensive generation barrier.
+		t.closeConnections()
+		liveTransports.Delete(t)
 	})
 	return nil
 }
 
+// CloseAllTransports closes every gRPC/Gun transport created in this process.
+//
+// Standalone Mihomo normally relies on process exit to collect any transport
+// that was created concurrently with a provider health check. Veer restarts
+// the embedded core inside one long-lived Go process, so a transport that has
+// already escaped an old proxy map would otherwise retain its HTTP/2 read loop
+// and socket across generations.
+func CloseAllTransports() {
+	liveTransports.Range(func(key, _ any) bool {
+		if transport, ok := key.(*Transport); ok {
+			_ = transport.Close()
+		}
+		return true
+	})
+}
+
 func NewTransport(dialFn DialFn, tlsConfig *vmess.TLSConfig, gunCfg *Config) *Transport {
+	var wrap *Transport
 	dialFunc := func(ctx context.Context, network, addr string) (net.Conn, error) {
 		ctx, cancel := context.WithTimeout(ctx, C.DefaultTLSTimeout)
 		defer cancel()
@@ -302,7 +378,7 @@ func NewTransport(dialFn DialFn, tlsConfig *vmess.TLSConfig, gunCfg *Config) *Tr
 			if err != nil {
 				return nil, err
 			}
-			return wrapped, nil
+			return wrap.trackConnection(wrapped)
 		},
 		Protocols:          protocols,
 		DisableCompression: true,
@@ -313,12 +389,13 @@ func NewTransport(dialFn DialFn, tlsConfig *vmess.TLSConfig, gunCfg *Config) *Tr
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	wrap := &Transport{
+	wrap = &Transport{
 		transport: transport,
 		cfg:       gunCfg,
 		ctx:       ctx,
 		cancel:    cancel,
 	}
+	liveTransports.Store(wrap, struct{}{})
 	return wrap
 }
 

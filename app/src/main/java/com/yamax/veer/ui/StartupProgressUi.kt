@@ -129,7 +129,13 @@ internal fun startupProgressUi(stage: StartupStage): StartupProgressUi = when (s
         detailRes = R.string.startup_starting_mihomo,
         step = 5,
         totalSteps = STARTUP_STEP_COUNT,
-        progress = 0.9f,
+        progress = 0.82f,
+    )
+    StartupStage.VERIFYING_RUNTIME -> StartupProgressUi(
+        detailRes = R.string.startup_verifying_mihomo,
+        step = 6,
+        totalSteps = STARTUP_STEP_COUNT,
+        progress = 0.94f,
     )
     StartupStage.READY -> StartupProgressUi(
         detailRes = R.string.startup_ready,
@@ -139,4 +145,4 @@ internal fun startupProgressUi(stage: StartupStage): StartupProgressUi = when (s
     )
 }
 
-private const val STARTUP_STEP_COUNT = 5
+private const val STARTUP_STEP_COUNT = 6

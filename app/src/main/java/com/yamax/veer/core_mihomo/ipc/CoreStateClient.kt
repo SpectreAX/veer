@@ -1,21 +1,28 @@
 package com.yamax.veer.core_mihomo.ipc
 
+import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
 import android.database.ContentObserver
 import android.net.VpnService
 import android.os.Bundle
 import android.os.Handler
+import android.os.IBinder
 import android.os.Looper
 import androidx.core.content.ContextCompat
 import com.yamax.veer.app_state.AppStateRepository
 import com.yamax.veer.core_logging.VeerLog
 import com.yamax.veer.core_mihomo.CoreRunStateStore
+import com.yamax.veer.core_mihomo.EngineRecoverability
 import com.yamax.veer.core_mihomo.EngineState
 import com.yamax.veer.core_mihomo.MihomoEngine
 import com.yamax.veer.core_mihomo.VeerVpnService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
@@ -25,11 +32,56 @@ internal object CoreStateClient {
     private val initialized = AtomicBoolean()
     private val refreshQueued = AtomicBoolean()
     private val refreshRequested = AtomicBoolean()
+    private val controlBinding = AtomicBoolean()
+    private val controlBound = AtomicBoolean()
+    private val binderDeathHandling = AtomicBoolean()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     @Volatile private var appContext: Context? = null
     @Volatile private var lastCoreProcessId: Int = 0
     @Volatile private var lastRunningProcessId: Int = 0
     @Volatile private var lastRecoveryProcessId: Int = 0
+    @Volatile private var control: IVeercoreControl? = null
+
+    private val deathRecipient = IBinder.DeathRecipient {
+        control = null
+        handleBinderDeath("binderDied")
+    }
+
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            controlBinding.set(false)
+            binderDeathHandling.set(false)
+            control = IVeercoreControl.Stub.asInterface(service)
+            runCatching { service?.linkToDeath(deathRecipient, 0) }
+                .onFailure {
+                    control = null
+                    handleBinderDeath("linkToDeath failed: ${it.message}")
+                    return
+                }
+            VeerLog.core("[CoreStateClient] AIDL connected")
+            requestRefresh()
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            control = null
+            controlBinding.set(false)
+            handleBinderDeath("service disconnected")
+        }
+
+        override fun onBindingDied(name: ComponentName?) {
+            control = null
+            controlBinding.set(false)
+            unbindControl()
+            handleBinderDeath("binding died")
+        }
+
+        override fun onNullBinding(name: ComponentName?) {
+            control = null
+            controlBinding.set(false)
+            unbindControl()
+            handleBinderDeath("null binding")
+        }
+    }
 
     fun init(context: Context) {
         if (!initialized.compareAndSet(false, true)) return
@@ -43,10 +95,47 @@ internal object CoreStateClient {
                 }
             },
         )
-        requestRefresh()
+        // A stopped app has no remote state to discover. Eagerly binding here
+        // cold-started :veercore for every UI/test process, kept it resident,
+        // and made the UI depend on Android's remote-provider publication
+        // deadline. A relaunched UI still reconnects immediately when the
+        // durable desired-running marker says a VPN session should exist.
+        if (CoreRunStateStore.isDesiredRunning(context.applicationContext)) {
+            bindControl()
+            requestRefresh()
+        }
+        // ContentProvider observers do not provide a Binder death callback when
+        // their hosting process is killed. While the user still desires a
+        // running VPN, periodically issue the lightweight runtime call. That
+        // call re-creates the provider process, exposes its new PID and lets the
+        // recovery policy convert the old Running generation into a serialized
+        // replacement start instead of leaving stale UI state indefinitely.
+        scope.launch {
+            while (isActive) {
+                delay(CORE_PROCESS_LIVENESS_INTERVAL_MS)
+                if (CoreRunStateStore.isDesiredRunning(context.applicationContext)) {
+                    bindControl()
+                    requestRefresh()
+                }
+            }
+        }
     }
 
     fun isAvailable(): Boolean = initialized.get()
+
+    /**
+     * Closes the interval between recording a desired-running command and the
+     * periodic liveness pass establishing the AIDL death recipient.
+     *
+     * Intent factories call this from the main process before Android starts
+     * (or reconnects) the remote VPN service. In `:veercore` the client is not
+     * initialized, so the call is intentionally a no-op.
+     */
+    fun onDesiredRunningRequested() {
+        if (!initialized.get()) return
+        bindControl()
+        requestRefresh()
+    }
 
     fun trafficSnapshot(): CoreTrafficSnapshot? {
         val bundle = call(CoreStateProtocol.METHOD_TRAFFIC) ?: return null
@@ -128,11 +217,26 @@ internal object CoreStateClient {
         val startupStage = CoreStateProtocol.decodeStartupStage(
             bundle.getString(CoreStateProtocol.KEY_STARTUP_STAGE),
         )
-        if (MihomoEngine.state.value != engineState) {
-            MihomoEngine.setState(engineState)
+        val engineStatus = CoreStateProtocol.decodeEngineStatus(
+            state = engineState,
+            timestampMs = bundle.getLong(CoreStateProtocol.KEY_STATE_TIMESTAMP),
+            operationId = bundle.getString(CoreStateProtocol.KEY_OPERATION_ID),
+            message = bundle.getString(CoreStateProtocol.KEY_STATE_MESSAGE),
+            machineCode = bundle.getString(CoreStateProtocol.KEY_MACHINE_CODE),
+            rootCause = bundle.getString(CoreStateProtocol.KEY_ROOT_CAUSE),
+            recoverability = bundle.getString(CoreStateProtocol.KEY_RECOVERABILITY),
+        )
+        if (MihomoEngine.status.value != engineStatus) {
+            MihomoEngine.syncStatus(engineStatus)
         }
         if (MihomoEngine.startupStage.value != startupStage) {
             MihomoEngine.setStartupStage(startupStage)
+        }
+        if (
+            engineState is EngineState.Stopped &&
+                !CoreRunStateStore.isDesiredRunning(requireNotNull(appContext))
+        ) {
+            unbindControl()
         }
         AppStateRepository.updateConnectivity(
             physicalNetworksAvailable =
@@ -202,6 +306,19 @@ internal object CoreStateClient {
 
     private fun call(method: String, extras: Bundle? = null): Bundle? {
         val resolver = appContext?.contentResolver ?: return null
+        control?.let { aidl ->
+            val remote = runCatching {
+                aidl.call(method, extras ?: Bundle.EMPTY)
+            }.onFailure {
+                VeerLog.core(
+                    "[CoreStateClient] AIDL $method failed: ${it.message}",
+                    VeerLog.Level.WARN,
+                )
+                control = null
+                handleBinderDeath("AIDL call failed")
+            }.getOrNull()
+            if (remote != null) return remote
+        }
         return runCatching {
             resolver.call(CoreStateProtocol.URI, method, null, extras)
         }.onFailure {
@@ -211,4 +328,74 @@ internal object CoreStateClient {
             )
         }.getOrNull()
     }
+
+    private fun bindControl() {
+        val context = appContext ?: return
+        if (
+            control != null ||
+                controlBound.get() ||
+                !controlBinding.compareAndSet(false, true)
+        ) return
+        val bound = runCatching {
+            context.bindService(
+                Intent(context, CoreControlService::class.java),
+                serviceConnection,
+                Context.BIND_AUTO_CREATE or Context.BIND_IMPORTANT,
+            )
+        }.getOrElse {
+            VeerLog.core(
+                "[CoreStateClient] AIDL bind failed: ${it.message}",
+                VeerLog.Level.WARN,
+            )
+            false
+        }
+        if (bound) {
+            controlBound.set(true)
+        } else {
+            controlBinding.set(false)
+        }
+    }
+
+    private fun unbindControl() {
+        val context = appContext ?: return
+        val binder = control?.asBinder()
+        control = null
+        controlBinding.set(false)
+        runCatching { binder?.unlinkToDeath(deathRecipient, 0) }
+        if (controlBound.getAndSet(false)) {
+            runCatching { context.unbindService(serviceConnection) }
+                .onFailure {
+                    VeerLog.core(
+                        "[CoreStateClient] AIDL unbind failed: ${it.message}",
+                        VeerLog.Level.WARN,
+                    )
+                }
+        }
+    }
+
+    private fun handleBinderDeath(reason: String) {
+        val context = appContext ?: return
+        if (!CoreRunStateStore.isDesiredRunning(context)) {
+            binderDeathHandling.set(false)
+            unbindControl()
+            return
+        }
+        if (!binderDeathHandling.compareAndSet(false, true)) return
+        VeerLog.core("[CoreStateClient] core Binder lost: $reason", VeerLog.Level.ERROR)
+        MihomoEngine.setState(
+            next = EngineState.Error("Core process connection lost"),
+            message = "Core process connection lost",
+            machineCode = "CORE_BINDER_DIED",
+            rootCause = reason,
+            recoverability = EngineRecoverability.RESTART_CORE,
+        )
+        scope.launch {
+            delay(BINDER_REBIND_DELAY_MS)
+            controlBinding.set(false)
+            bindControl()
+        }
+    }
+
+    private const val CORE_PROCESS_LIVENESS_INTERVAL_MS = 2_000L
+    private const val BINDER_REBIND_DELAY_MS = 250L
 }

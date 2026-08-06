@@ -112,6 +112,11 @@
             </intent-filter>
         </service>
 
+        <service
+            android:name=".core_mihomo.ipc.CoreControlService"
+            android:exported="false"
+            android:process=":veercore" />
+
         <provider
             android:name=".core_mihomo.ipc.CoreStateProvider"
             android:authorities="com.yamax.veer.core.state"

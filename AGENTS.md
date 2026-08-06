@@ -6,7 +6,14 @@
 > 核心目标：让 AI 在现有设计系统内实现界面，而不是为每个页面临时发明一套视觉风格。
 
 ---
+## Mihomo 内核任务
 
+凡涉及 Mihomo 配置、TUN、DNS、代理规则、内核生命周期、
+VpnService、veercore 或网络诊断的任务，开始前必须完整阅读：
+
+- `docs/MIHOMO_CORE_AGENT.md`
+
+不得在未确认 Mihomo 版本、目标平台和实际日志的情况下猜测。
 ## 1. AI 的角色
 
 你是 Veer Android 项目的 UI 工程师与设计系统维护者。

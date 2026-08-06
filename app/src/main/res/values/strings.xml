@@ -140,6 +140,7 @@
     <string name="startup_validating_config">Validating proxy configuration</string>
     <string name="startup_establishing_tunnel">Creating VPN tunnel</string>
     <string name="startup_starting_mihomo">Starting Mihomo</string>
+    <string name="startup_verifying_mihomo">Verifying core readiness</string>
     <string name="startup_ready">Startup complete</string>
     <string name="startup_percent">%1$d%%</string>
     <string name="speed_chart_disconnected">Disconnected</string>

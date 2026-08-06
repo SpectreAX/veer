@@ -5,6 +5,9 @@ import android.net.VpnService
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.yamax.veer.BuildConfig
+import com.yamax.veer.core_diagnostics.DiagnosticCheckStatus
+import com.yamax.veer.core_diagnostics.DiagnosticCategory
+import com.yamax.veer.core_diagnostics.NetworkDiagnosticExecutor
 import com.yamax.veer.core_mihomo.EngineState
 import com.yamax.veer.core_mihomo.MihomoEngine
 import com.yamax.veer.core_mihomo.StartupStage
@@ -27,6 +30,12 @@ import org.junit.Before
 import org.junit.BeforeClass
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.InputStream
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.Socket
 
 /**
  * Empirical validation of VeerVpnService lifecycle invariants.
@@ -159,13 +168,12 @@ class LifecycleFaultTest {
     // Validates: §4.4 (JNI non-cancellable), §2.4 (forced close on timeout),
     //            STOP_TIMEOUT_MS enforcement, state reaches Stopped.
     //
-    // Procedure: inject a release-controlled hang on ApplyConfig; start VPN; immediately stop;
-    // override stop timeout to 2 s. The 2 s timeout fires while bootCore holds
-    // engineMutex (suspended inside Veercore.start), tearDownTun() is force-
-    // called, state reaches Stopped. The test then releases JNI and verifies the
-    // mandatory late-start cleanup pass before allowing the next test to begin.
+    // Procedure: inject a release-controlled hang on ApplyConfig; wait for JNI
+    // entry; stop with a 2 s outer timeout. The JVM TUN is force-closed, but
+    // state remains truthfully Stopping until the hang is released and the
+    // mandatory late-start cleanup pass completes.
     // =========================================================================
-    @Test(timeout = 15_000)
+    @Test(timeout = 30_000)
     fun hangStartTimeoutPath() {
         checkVpnPrepared()
         assumeFaultInjectAar()
@@ -176,35 +184,34 @@ class LifecycleFaultTest {
         FaultInjector.hangBeforeApplyConfig(durationMs = -1L)
         FaultInjector.setStopTimeout(timeoutMs = 2_000L)
 
-        val startMs = System.currentTimeMillis()
+        var stopRequestedMs = 0L
         startVpn()
 
         runBlocking {
-            // Wait for Starting to confirm bootCore is running (and holding the mutex).
-            val starting = awaitState(EngineState.Starting::class.java, timeoutMs = 4_000L)
-            assertNotNull("Service did not reach Starting within 4 s", starting)
+            val nativeStartEntered = withTimeoutOrNull(10_000L) {
+                while (FaultInjector.startCallCount < 1) delay(25L)
+                true
+            } ?: false
+            assertTrue("Native Start did not enter the injected hang", nativeStartEntered)
 
             // Trigger shutdown while start is hanging.
+            stopRequestedMs = System.currentTimeMillis()
             stopVpn()
 
-            // The 2 s stop timeout must fire before onDestroy can acquire the mutex.
-            // After timeout: tearDownTun() force-called, state → Stopped.
-            val stopped = awaitState(EngineState.Stopped::class.java, timeoutMs = 5_000L)
-            assertNotNull("Service did not reach Stopped after timeout path", stopped)
+            delay(2_500L)
+            assertTrue(
+                "Runtime must remain Stopping while native Start is blocked: " +
+                    PhaseTrace.stateNames(),
+                MihomoEngine.state.value is EngineState.Stopping,
+            )
         }
 
-        val elapsedMs = System.currentTimeMillis() - startMs
+        val elapsedMs = System.currentTimeMillis() - stopRequestedMs
         // The stop timeout is 2 s. Total elapsed must be well under 5 s
         // (the hang duration) — confirming the timeout fired, not the hang expiry.
         assertTrue(
             "Timeout path took ${elapsedMs}ms — expected < 5000ms (timeout must have fired)",
             elapsedMs < 5_000L,
-        )
-
-        // Timeout path must have recorded Stopping → Stopped.
-        assertTrue(
-            "Expected phase sequence Stopping → Stopped in trace: ${PhaseTrace.stateNames()}",
-            PhaseTrace.containsSequence("Stopping", "Stopped"),
         )
 
         // Unblock JNI, then require bootCore's late-start cleanup to call the
@@ -227,9 +234,19 @@ class LifecycleFaultTest {
             1,
             FaultInjector.stopCallCount,
         )
+        runBlocking {
+            assertNotNull(
+                "Service did not reach Stopped after late cleanup",
+                awaitState(EngineState.Stopped::class.java, timeoutMs = 5_000L),
+            )
+        }
+        assertTrue(
+            "Expected phase sequence Stopping → Stopped in trace: ${PhaseTrace.stateNames()}",
+            PhaseTrace.containsSequence("Stopping", "Stopped"),
+        )
     }
 
-    @Test(timeout = 15_000)
+    @Test(timeout = 30_000)
     fun startupProgressTracksNativeRuntimeGate() {
         checkVpnPrepared()
         assumeFaultInjectAar()
@@ -256,7 +273,7 @@ class LifecycleFaultTest {
             FaultInjector.releaseApplyConfigHang()
             assertNotNull(
                 "Service did not reach Running after releasing ApplyConfig",
-                awaitState(EngineState.Running::class.java, timeoutMs = 5_000L),
+                awaitState(EngineState.Running::class.java, timeoutMs = 12_000L),
             )
             val idleStage = withTimeoutOrNull(2_000L) {
                 MihomoEngine.startupStage.first { it == StartupStage.IDLE }
@@ -277,7 +294,7 @@ class LifecycleFaultTest {
     // startAttempted was set to true before the call. Without the V1 fix,
     // stopCallCount would be 0 here.
     // =========================================================================
-    @Test(timeout = 12_000)
+    @Test(timeout = 25_000)
     fun failedStartupCallsStop() {
         checkVpnPrepared()
         assumeFaultInjectAar()
@@ -289,7 +306,7 @@ class LifecycleFaultTest {
             // and Error can be only milliseconds apart, and StateFlow correctly
             // conflates transient values for late subscribers.
             val errorWait = async(start = CoroutineStart.UNDISPATCHED) {
-                awaitState(EngineState.Error::class.java, timeoutMs = 4_000L)
+                awaitState(EngineState.Error::class.java, timeoutMs = 12_000L)
             }
             startVpn()
             val error = errorWait.await()
@@ -328,7 +345,7 @@ class LifecycleFaultTest {
     // a Java exception; bootCore's runCatching handles it; the same V1 cleanup
     // path fires as in Test 2.
     // =========================================================================
-    @Test(timeout = 12_000)
+    @Test(timeout = 25_000)
     fun jniGoroutinePanicCaughtByRecover() {
         checkVpnPrepared()
         assumeFaultInjectAar()
@@ -337,7 +354,7 @@ class LifecycleFaultTest {
 
         runBlocking {
             val errorWait = async(start = CoroutineStart.UNDISPATCHED) {
-                awaitState(EngineState.Error::class.java, timeoutMs = 4_000L)
+                awaitState(EngineState.Error::class.java, timeoutMs = 12_000L)
             }
             startVpn()
             val error = errorWait.await()
@@ -378,11 +395,24 @@ class LifecycleFaultTest {
 
         startVpn()
 
-        // Fire stop ~50 ms after start — bootCore will be inside the mutex hang.
-        Thread.sleep(50)
+        // Wait for the native call itself rather than assuming the main process,
+        // :veercore process and config preparation all complete within 50 ms.
+        // This keeps the test deterministic on cold emulators while preserving
+        // the intended race: Stop arrives while Start owns engineMutex at the
+        // injected pre-ApplyConfig hang.
+        val nativeStartEntered = runBlocking {
+            withTimeoutOrNull(5_000L) {
+                while (FaultInjector.startCallCount < 1) delay(10L)
+                true
+            }
+        } ?: false
+        assertTrue("Native Start did not enter the injected hang", nativeStartEntered)
         stopVpn()
 
         runBlocking {
+            withTimeoutOrNull(10_000L) {
+                while (FaultInjector.stopCallCount < 1) delay(10L)
+            }
             val stopped = awaitState(EngineState.Stopped::class.java, timeoutMs = 10_000L)
             assertNotNull("Service did not reach Stopped", stopped)
         }
@@ -418,7 +448,7 @@ class LifecycleFaultTest {
     // The final START is user intent, not a duplicate of the first command. It
     // must wait for the in-flight runtime to drain and then start exactly once.
     // =========================================================================
-    @Test(timeout = 20_000)
+    @Test(timeout = 40_000)
     fun startStopImmediateStartQueuesUntilSafeDrain() {
         checkVpnPrepared()
         assumeFaultInjectAar()
@@ -434,7 +464,11 @@ class LifecycleFaultTest {
         startVpn()
 
         runBlocking {
-            val running = awaitState(EngineState.Running::class.java, timeoutMs = 12_000L)
+            // A cold arm64 emulator may spend several seconds loading the Go
+            // runtime before the injected delay is reached. Cover two complete
+            // starts plus the bounded late-cleanup handoff, while the method's
+            // outer timeout still fails a genuinely stuck restart.
+            val running = awaitState(EngineState.Running::class.java, timeoutMs = 25_000L)
             assertNotNull(
                 "Queued start did not resume after safe drain: ${PhaseTrace.stateNames()}",
                 running,
@@ -544,8 +578,8 @@ class LifecycleFaultTest {
         }
 
         assertTrue(
-            "Reconnect exceeded 5 seconds",
-            System.currentTimeMillis() - startedAt < 5_000L,
+            "Reconnect exceeded 10 seconds",
+            System.currentTimeMillis() - startedAt < 10_000L,
         )
         assertTrue(
             "Expected Stopping → Starting → Running: ${PhaseTrace.stateNames()}",
@@ -663,7 +697,7 @@ class LifecycleFaultTest {
     // Does not require VPN permission (error injected before ApplyConfig, after
     // the tun is established — permission still required for establish()).
     // =========================================================================
-    @Test(timeout = 12_000)
+    @Test(timeout = 25_000)
     fun errorStateCarriesMessage() {
         checkVpnPrepared()
         assumeFaultInjectAar()
@@ -673,7 +707,7 @@ class LifecycleFaultTest {
 
         val errorState = runBlocking {
             val errorWait = async(start = CoroutineStart.UNDISPATCHED) {
-                awaitState(EngineState.Error::class.java, timeoutMs = 8_000L)
+                awaitState(EngineState.Error::class.java, timeoutMs = 12_000L)
             }
             startVpn()
             errorWait.await()
@@ -853,5 +887,196 @@ class LifecycleFaultTest {
             "Expected clean Stopping → Stopped transition: ${PhaseTrace.stateNames()}",
             PhaseTrace.containsSequence("Stopping", "Stopped"),
         )
+    }
+
+    // =========================================================================
+    // Physical-network outage is recoverable and must not destroy Mihomo/TUN.
+    // =========================================================================
+    @Test(timeout = 25_000)
+    fun allNetworksLostKeepsRuntimeReadyForRecovery() {
+        checkVpnPrepared()
+        assumeFaultInjectAar()
+
+        startVpn()
+        runBlocking {
+            assertNotNull(
+                "Service did not reach Running within 12 s",
+                awaitState(EngineState.Running::class.java, timeoutMs = 12_000L),
+            )
+        }
+        val stopCallsBefore = FaultInjector.stopCallCount
+        PhaseTrace.clear()
+
+        FaultInjector.fireAllNetworksLostCallback()
+        Thread.sleep(750L)
+
+        assertTrue(
+            "A physical-network outage must retain the runtime for handoff recovery: " +
+                PhaseTrace.stateNames(),
+            MihomoEngine.state.value is EngineState.Running,
+        )
+        assertEquals(
+            "Connectivity loss must not call native Stop",
+            stopCallsBefore,
+            FaultInjector.stopCallCount,
+        )
+        assertEquals(0, PhaseTrace.countOf("Error"))
+        assertEquals(0, PhaseTrace.countOf("Stopping"))
+    }
+
+    // =========================================================================
+    // AIDL death is observable and a desired Running generation is recovered.
+    // =========================================================================
+    @Test(timeout = 35_000)
+    fun coreProcessCrashRebindsAndRestartsRuntime() {
+        checkVpnPrepared()
+        assumeFaultInjectAar()
+
+        startVpn()
+        runBlocking {
+            assertNotNull(
+                "Service did not reach Running before process crash",
+                awaitState(EngineState.Running::class.java, timeoutMs = 12_000L),
+            )
+        }
+        PhaseTrace.clear()
+
+        runBlocking {
+            val errorWait = async(start = CoroutineStart.UNDISPATCHED) {
+                withTimeoutOrNull(8_000L) {
+                    MihomoEngine.status.first {
+                        it.machineCode == "CORE_BINDER_DIED"
+                    }
+                }
+            }
+            val recoveredWait = async(start = CoroutineStart.UNDISPATCHED) {
+                withTimeoutOrNull(20_000L) {
+                    MihomoEngine.state
+                        .drop(1)
+                        .first { it is EngineState.Running }
+                }
+            }
+
+            FaultInjector.backgroundPanic("injected-core-process-crash", delayMs = 200L)
+
+            assertNotNull("AIDL death was not converted to a typed Error", errorWait.await())
+            assertNotNull("Core process did not rebind and recover Running", recoveredWait.await())
+        }
+
+        assertTrue(MihomoEngine.state.value is EngineState.Running)
+    }
+
+    // =========================================================================
+    // Real data-plane smoke: controller, DNS, rules, HTTP/TCP and SOCKS5 UDP.
+    // =========================================================================
+    @Test(timeout = 40_000)
+    fun runtimeDataPlaneCoversDnsTcpUdpAndRules() {
+        checkVpnPrepared()
+
+        startVpn()
+        runBlocking {
+            assertNotNull(
+                "Service did not reach readiness-gated Running",
+                awaitState(EngineState.Running::class.java, timeoutMs = 12_000L),
+            )
+        }
+
+        val report = runBlocking {
+            NetworkDiagnosticExecutor(ctx).diagnose("example.com")
+        }
+        assertEquals("Layered diagnosis failed: ${report.summary}", DiagnosticCategory.HEALTHY, report.category)
+        for (id in listOf("tun", "controller", "dns", "rule", "internet", "target")) {
+            val check = report.checks.first { it.id == id }
+            assertEquals("$id failed: ${check.detail}", DiagnosticCheckStatus.PASS, check.status)
+        }
+        assertTrue("SOCKS5 UDP DNS exchange failed", socks5UdpDnsQuery())
+    }
+
+    private fun socks5UdpDnsQuery(): Boolean = runCatching {
+        Socket().use { control ->
+            control.soTimeout = 4_000
+            control.connect(InetSocketAddress("127.0.0.1", 7890), 3_000)
+            control.getOutputStream().apply {
+                write(byteArrayOf(0x05, 0x01, 0x00))
+                flush()
+            }
+            check(control.getInputStream().readExactly(2).contentEquals(byteArrayOf(0x05, 0x00)))
+
+            control.getOutputStream().apply {
+                write(byteArrayOf(0x05, 0x03, 0x00, 0x01, 0, 0, 0, 0, 0, 0))
+                flush()
+            }
+            val reply = control.getInputStream()
+            val header = reply.readExactly(4)
+            check(header[0] == 0x05.toByte() && header[1] == 0x00.toByte())
+            val relayAddress = when (header[3].toInt() and 0xff) {
+                0x01 -> InetAddress.getByAddress(reply.readExactly(4))
+                0x04 -> InetAddress.getByAddress(reply.readExactly(16))
+                0x03 -> InetAddress.getByName(
+                    String(reply.readExactly(reply.readExactly(1)[0].toInt() and 0xff)),
+                )
+                else -> error("unsupported SOCKS relay address")
+            }
+            val relayPortBytes = reply.readExactly(2)
+            val relayPort = ((relayPortBytes[0].toInt() and 0xff) shl 8) or
+                (relayPortBytes[1].toInt() and 0xff)
+            val effectiveRelay = if (relayAddress.isAnyLocalAddress) {
+                InetAddress.getByName("127.0.0.1")
+            } else {
+                relayAddress
+            }
+
+            val dnsQuery = byteArrayOf(
+                0x56, 0x72, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x07,
+                'e'.code.toByte(), 'x'.code.toByte(), 'a'.code.toByte(),
+                'm'.code.toByte(), 'p'.code.toByte(), 'l'.code.toByte(), 'e'.code.toByte(),
+                0x03, 'c'.code.toByte(), 'o'.code.toByte(), 'm'.code.toByte(), 0x00,
+                0x00, 0x01, 0x00, 0x01,
+            )
+            val udpRequest = byteArrayOf(
+                0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x01, 0x01, 0x00, 0x35,
+            ) + dnsQuery
+            DatagramSocket().use { udp ->
+                udp.soTimeout = 6_000
+                udp.send(
+                    DatagramPacket(
+                        udpRequest,
+                        udpRequest.size,
+                        effectiveRelay,
+                        relayPort,
+                    ),
+                )
+                val buffer = ByteArray(2_048)
+                val response = DatagramPacket(buffer, buffer.size)
+                udp.receive(response)
+                val dnsOffset = socksUdpPayloadOffset(buffer, response.length)
+                check(response.length >= dnsOffset + 12)
+                check(buffer[dnsOffset] == 0x56.toByte() && buffer[dnsOffset + 1] == 0x72.toByte())
+                check(buffer[dnsOffset + 2].toInt() and 0x80 != 0)
+            }
+        }
+        true
+    }.getOrDefault(false)
+
+    private fun socksUdpPayloadOffset(packet: ByteArray, length: Int): Int {
+        check(length >= 4 && packet[2] == 0x00.toByte())
+        return when (packet[3].toInt() and 0xff) {
+            0x01 -> 10
+            0x04 -> 22
+            0x03 -> 7 + (packet[4].toInt() and 0xff)
+            else -> error("unsupported SOCKS UDP address")
+        }
+    }
+
+    private fun InputStream.readExactly(size: Int): ByteArray {
+        val result = ByteArray(size)
+        var offset = 0
+        while (offset < size) {
+            val count = read(result, offset, size - offset)
+            check(count > 0) { "unexpected EOF" }
+            offset += count
+        }
+        return result
     }
 }

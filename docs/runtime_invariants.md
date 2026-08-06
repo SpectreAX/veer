@@ -248,8 +248,8 @@ policy changes them.
 | From | To | Trigger |
 |------|-----|---------|
 | `Stopped` | `Starting` | `bootCore` acquires mutex, `coreRunning == false` |
-| `Starting` | `Running` | `Veercore.start` returns without exception, `coreRunning = true` |
-| `Starting` | `Error` | tun establish null, config prepare failure, `Veercore.start` exception |
+| `Starting` | `Running` | `Veercore.start` returns, then the native proxy tree and local Controller both pass the bounded readiness gate |
+| `Starting` | `Error` | tun establish null, config/semantic validation failure, `Veercore.start` exception, or readiness timeout |
 | `Running` | `Error` | watchdog detects API unreachable; `CoroutineExceptionHandler` fires |
 | `Running` | `Stopping` | shutdown, profile switch, fast reconnect, or system `onDestroy()` begins teardown |
 | `Error` | `Stopping` | an error path calls `requestShutdown()` |
@@ -273,6 +273,12 @@ policy changes them.
 2. `requestShutdown()` has been or will be called shortly after.
 3. **The Go runtime may still be running.** `Error` is not a guarantee of
    shutdown — `Stopping` and `Stopped` are.
+
+`EngineStatus` is the cross-process diagnostic envelope for this state. It
+adds an operation id, timestamp, machine-readable code, root cause and
+recoverability without changing the UI-facing sealed `EngineState` API. The
+`:veercore` process is authoritative; AIDL transports the exact envelope and
+the ContentProvider path is only a compatibility fallback.
 4. The `message` field is the first available cause string: `t.cause?.message`,
    then `t.message`, then `t.toString()`.
 

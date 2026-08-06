@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -78,7 +79,10 @@ class PerAppProxyUiInstrumentedTest {
             assertTrue(packageName in state.selectedPackages)
             assertTrue(state.canSave)
         }
-        composeRule.onNodeWithTag("save_per_app_policy").performScrollTo().performClick()
+        composeRule.onNodeWithTag("save_per_app_policy")
+            .assertIsDisplayed()
+            .assertIsEnabled()
+            .performClick()
         composeRule.runOnIdle { assertEquals(true, savedWhileRunning) }
     }
 }
