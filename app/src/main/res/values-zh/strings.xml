@@ -1,5 +1,8 @@
 <resources>
     <string name="app_name">Veer</string>
+    <string name="vpn_notification_channel_name">Veer VPN</string>
+    <string name="vpn_notification_channel_description">Veer 正在转发网络流量时显示。</string>
+    <string name="vpn_notification_connected">正在通过 Mihomo 转发流量</string>
 
     <string name="activity_settings">设置</string>
     <string name="activity_dns_settings">DNS 设置</string>
@@ -20,6 +23,17 @@
     <string name="common_save">保存</string>
     <string name="common_replace">替换</string>
     <string name="common_clear">清除</string>
+    <string name="common_show">显示</string>
+    <string name="common_hide">隐藏</string>
+    <string name="common_retry">重试</string>
+    <string name="common_unknown_error">未知错误</string>
+
+    <!-- Bottom navigation -->
+    <string name="bottom_nav_home">状态</string>
+    <string name="bottom_nav_nodes">节点</string>
+    <string name="bottom_nav_rules">规则</string>
+    <string name="bottom_nav_profiles">配置</string>
+    <string name="bottom_nav_settings">设置</string>
 
     <string name="settings_title">设置</string>
     <string name="settings_subtitle">集中管理 Veer 的行为与外观</string>
@@ -31,6 +45,8 @@
     <string name="settings_api_key_saved_message">API Key 已保存</string>
     <string name="settings_api_key_cleared_message">API Key 已清除</string>
     <string name="settings_section_network">网络与分流</string>
+    <string name="settings_section_connection">连接与分流</string>
+    <string name="settings_section_system">系统集成</string>
     <string name="settings_dns">DNS 设置</string>
     <string name="settings_active_profile">当前配置：%1$s</string>
     <string name="settings_activate_profile_first">请先导入并激活配置</string>
@@ -43,6 +59,46 @@
     <string name="settings_per_app_all">全部应用（Veer 除外）</string>
     <string name="settings_per_app_only">仅代理已选 %1$d 个应用</string>
     <string name="settings_per_app_bypass">绕过已选 %1$d 个应用</string>
+
+    <!-- Per-app routing -->
+    <string name="per_app_title">应用分流</string>
+    <string name="per_app_runtime_connected">VPN 已连接</string>
+    <string name="per_app_runtime_disconnected">VPN 未连接</string>
+    <string name="per_app_runtime_connected_description">保存后将安全重连，使新的应用范围立即生效。</string>
+    <string name="per_app_runtime_disconnected_description">更改会立即保存，并在下次连接时生效。</string>
+    <string name="per_app_loading">正在读取已安装应用</string>
+    <string name="per_app_loading_description">正在检查可启动应用与已保存的分流策略。</string>
+    <string name="per_app_load_failed_title">无法读取应用</string>
+    <string name="per_app_load_failed">读取已安装应用失败：%1$s</string>
+    <string name="per_app_section_mode">分流范围</string>
+    <string name="per_app_mode_all">代理所有应用</string>
+    <string name="per_app_mode_all_description">除 Veer 外，所有应用都使用 VPN</string>
+    <string name="per_app_mode_only">仅代理所选应用</string>
+    <string name="per_app_mode_only_description">适合浏览器、流媒体和 AI 应用</string>
+    <string name="per_app_mode_bypass">绕过所选应用</string>
+    <string name="per_app_mode_bypass_description">让银行、支付或游戏应用直接连接</string>
+    <string name="per_app_all_apps_title">已包含全部应用</string>
+    <string name="per_app_all_apps_description">Veer 始终绕过自身隧道以避免代理环路；此模式无需选择应用。</string>
+    <string name="per_app_section_apps">选择应用</string>
+    <string name="per_app_search_label">搜索应用</string>
+    <string name="per_app_search_placeholder">应用名称或包名</string>
+    <string name="per_app_selection_summary">已选 %1$d 个 · 当前可用 %2$d 个</string>
+    <string name="per_app_select_visible">全选当前结果</string>
+    <string name="per_app_empty_title">没有可用应用</string>
+    <string name="per_app_empty_description">未找到可启动应用；应用安装完成后可重试。</string>
+    <string name="per_app_no_matches_title">没有匹配的应用</string>
+    <string name="per_app_no_matches_description">没有应用匹配“%1$s”；清除搜索可查看全部应用。</string>
+    <string name="per_app_system_app">系统应用</string>
+    <string name="per_app_saving">正在保存…</string>
+    <string name="per_app_save_reconnect">保存并安全重连</string>
+    <string name="per_app_message_saved">已保存</string>
+    <string name="per_app_message_error">需要处理</string>
+    <string name="per_app_message_attention">检查选择</string>
+    <string name="per_app_unavailable_selected">有 %1$d 个已选应用当前不可用；如已卸载，请取消选择后保存。</string>
+    <string name="per_app_selection_required">“仅代理所选应用”至少需要选择一个当前可用的应用。</string>
+    <string name="per_app_saved_reconnecting">已保存，Veer 正在安全重连以应用新的应用范围。</string>
+    <string name="per_app_saved_next_connection">已保存，新的应用范围将在下次连接时生效。</string>
+    <string name="per_app_save_failed">保存应用分流失败：%1$s</string>
     <string name="theme_system">跟随系统</string>
     <string name="theme_light">浅色</string>
     <string name="theme_dark">深色</string>
@@ -52,6 +108,9 @@
 
     <string name="background_protection_title">后台运行保护</string>
     <string name="background_protection_disclaimer">Veer 只读取公开系统状态；MIUI/HyperOS 开关需要你在系统设置中确认。</string>
+    <string name="background_status_restricted">受限制</string>
+    <string name="background_status_attention">需要处理</string>
+    <string name="background_status_ready">状态正常</string>
     <string name="background_battery_settings">电池与后台设置</string>
     <string name="background_autostart_settings">自启动设置</string>
     <string name="background_app_details">打开应用详情</string>
@@ -76,7 +135,17 @@
     <string name="startup_validating_config">校验代理配置</string>
     <string name="startup_establishing_tunnel">创建 VPN 通道</string>
     <string name="startup_starting_mihomo">启动 Mihomo</string>
+    <string name="startup_verifying_mihomo">验证内核运行状态</string>
     <string name="startup_ready">启动完成</string>
+    <string name="startup_percent">%1$d%%</string>
+    <string name="speed_chart_disconnected">未连接</string>
+    <string name="speed_chart_waiting">等待流量样本</string>
+    <string name="speed_chart_accessibility_connected">实时流量图，上传 %1$s，下载 %2$s。</string>
+    <string name="speed_chart_accessibility_disconnected">实时流量图，当前未连接。</string>
+    <string name="speed_chart_current">↑ %1$s  ↓ %2$s</string>
+    <string name="speed_chart_60_seconds">60 秒</string>
+    <string name="speed_chart_30_seconds">30 秒</string>
+    <string name="speed_chart_now">现在</string>
     <string name="home_action_import_profile">导入配置</string>
     <string name="home_action_start">启动 VPN</string>
     <string name="home_action_starting">正在启动…</string>
@@ -93,13 +162,16 @@
     <string name="home_active_profile">当前配置：%1$s（%2$s…）</string>
     <string name="home_quick_reconnect">快速重连</string>
     <string name="home_quick_actions">快捷操作</string>
+    <string name="home_diagnostics">诊断工具</string>
     <string name="home_profiles">配置</string>
     <string name="home_ai_rules">AI 规则</string>
     <string name="home_nodes">节点</string>
-    <string name="home_connections">连接</string>
+    <string name="home_connections">活动连接</string>
     <string name="home_live_logs">实时日志</string>
     <string name="home_settings">设置</string>
     <string name="home_ai_command">AI 指令</string>
+    <string name="home_ai_command_description">描述希望的流量方向；Veer 会明确展示应用前后的执行结果。</string>
+    <string name="home_ai_prompt_label">分流指令</string>
     <string name="home_ai_prompt_placeholder">例如：Netflix 走日本节点</string>
     <string name="home_ai_executing">正在执行…</string>
     <string name="home_ai_connect_first">连接后可执行</string>
@@ -115,6 +187,8 @@
     <string name="home_core_process">— Veercore 进程 —</string>
     <string name="home_ui_process">— 界面进程 —</string>
     <string name="connection_title">连接状态</string>
+    <string name="connection_vpn">VPN</string>
+    <string name="connection_mihomo">Mihomo 核心</string>
     <string name="connection_checking">检测中…</string>
     <string name="connection_controller_ready">控制器可用</string>
     <string name="connection_controller_unavailable">控制器不可达</string>
@@ -124,6 +198,10 @@
     <string name="connection_reachable">实际可用%1$s</string>
     <string name="connection_access_failed">实际访问失败</string>
     <string name="connection_exit_ip_pending">出口 IP 待检测</string>
+    <string name="connection_ipv4">IPv4 %1$s</string>
+    <string name="connection_ipv6">IPv6 %1$s</string>
+    <string name="connection_route_mode">%1$s [%2$s]</string>
+    <string name="connection_delay_ms">%1$d ms</string>
     <string name="connection_route_pending">等待控制器路由</string>
     <string name="connection_exit">出口：%1$s · %2$s</string>
     <string name="connection_route">路由：%1$s</string>
@@ -134,6 +212,88 @@
     <string name="engine_running">运行中</string>
     <string name="engine_stopping">正在停止…</string>
     <string name="engine_error">错误：%1$s</string>
+
+    <!-- Logs -->
+    <string name="logs_title">实时日志</string>
+    <string name="logs_visible_count">%1$d/%2$d</string>
+    <string name="logs_status_live">实时更新</string>
+    <string name="logs_status_refreshing">正在刷新</string>
+    <string name="logs_status_paused">更新已暂停</string>
+    <string name="logs_status_attention">刷新异常</string>
+    <string name="logs_live_description">每秒自动显示新日志；查看较早内容前可先暂停更新。</string>
+    <string name="logs_paused_description">当前列表保持不变，可以安心查看和选择文字。</string>
+    <string name="logs_search_label">搜索日志</string>
+    <string name="logs_search_placeholder">分类或消息内容</string>
+    <string name="logs_filter_source">来源</string>
+    <string name="logs_filter_level">级别</string>
+    <string name="logs_source_all">全部来源</string>
+    <string name="logs_source_ui">Veer 应用</string>
+    <string name="logs_source_core">Veercore</string>
+    <string name="logs_level_all">全部级别</string>
+    <string name="logs_level_debug">调试</string>
+    <string name="logs_level_info">信息</string>
+    <string name="logs_level_warn">警告</string>
+    <string name="logs_level_error">错误</string>
+    <string name="logs_level_unknown">其他</string>
+    <string name="logs_pause">暂停</string>
+    <string name="logs_continue">继续</string>
+    <string name="logs_copy">复制</string>
+    <string name="logs_export">导出</string>
+    <string name="logs_loading">正在读取日志</string>
+    <string name="logs_loading_description">正在收集 Veer 与 Veercore 的近期活动。</string>
+    <string name="logs_empty_title">暂无日志</string>
+    <string name="logs_empty_description">Veer 运行时产生的活动会显示在这里。</string>
+    <string name="logs_filtered_empty_title">没有匹配的日志</string>
+    <string name="logs_filtered_empty_description">请尝试其他搜索词、来源或级别。</string>
+    <string name="logs_clear_filters">清除筛选</string>
+    <string name="logs_error_title">无法刷新日志</string>
+    <string name="logs_error_description">Veer 暂时无法读取近期活动；重试不会影响 VPN 连接。</string>
+    <string name="logs_error_kept_existing">已有日志仍可查看，请稍后再次刷新。</string>
+    <string name="logs_copy_success">已复制筛选结果</string>
+    <string name="logs_copy_empty">没有可复制的日志</string>
+    <string name="logs_export_success">日志已导出</string>
+    <string name="logs_export_failed">日志导出失败</string>
+    <string name="logs_clipboard_label">Veer 日志</string>
+
+    <!-- Connections -->
+    <string name="connections_title">活跃连接</string>
+    <string name="connections_status_live">实时更新</string>
+    <string name="connections_status_loading">正在刷新</string>
+    <string name="connections_status_stopped">VPN 已停止</string>
+    <string name="connections_count">%1$d 个活跃连接</string>
+    <string name="connections_search_label">搜索连接</string>
+    <string name="connections_search_placeholder">域名、规则或出口节点</string>
+    <string name="connections_sort">连接排序</string>
+    <string name="connections_sorted_by">排序：%1$s</string>
+    <string name="connections_sort_traffic">流量</string>
+    <string name="connections_sort_duration">时长</string>
+    <string name="connections_sort_host">域名</string>
+    <string name="connections_close_all">全部断开</string>
+    <string name="connections_close_all_title">断开全部连接？</string>
+    <string name="connections_close_all_description">应用可能立即重新连接；VPN 和代理核心会继续运行。</string>
+    <string name="connections_close_all_confirm">全部断开</string>
+    <string name="connections_close_one">断开连接</string>
+    <string name="connections_vpn_stopped_title">VPN 尚未连接</string>
+    <string name="connections_vpn_stopped_description">请先从首页连接 Veer，再查看当前流量。</string>
+    <string name="connections_loading">正在读取连接</string>
+    <string name="connections_loading_description">正在从 Veercore 获取当前流量。</string>
+    <string name="connections_empty_title">暂无活跃连接</string>
+    <string name="connections_empty_description">应用通过 Veer 发送流量后，连接会显示在这里。</string>
+    <string name="connections_filtered_empty_title">没有匹配的连接</string>
+    <string name="connections_filtered_empty_description">请尝试其他域名、规则或出口节点。</string>
+    <string name="connections_clear_search">清除搜索</string>
+    <string name="connections_direct">直连</string>
+    <string name="connections_rule_unknown">未匹配规则</string>
+    <string name="connections_route">%1$s → %2$s</string>
+    <string name="connections_traffic">↑ %1$s · ↓ %2$s</string>
+    <string name="connections_duration_hms">%1$d 小时 %2$d 分 %3$d 秒</string>
+    <string name="connections_duration_ms">%1$d 分 %2$d 秒</string>
+    <string name="connections_duration_s">%1$d 秒</string>
+    <string name="connections_refresh_failed">刷新连接失败，请确认代理核心正在运行。</string>
+    <string name="connections_invalid_id">该连接已不存在。</string>
+    <string name="connections_close_failed">断开连接失败。</string>
+    <string name="connections_close_all_success">已断开全部当前连接。</string>
+    <string name="connections_close_all_failed">断开全部连接失败。</string>
 
     <string name="ai_templates_title">快捷模板</string>
     <string name="ai_template_netflix_jp_title">Netflix 日区</string>
@@ -160,11 +320,19 @@
     <string name="profile_title">配置</string>
     <string name="profile_refresh_all">刷新全部订阅</string>
     <string name="profile_subscription_url">订阅链接</string>
+    <string name="profile_subscription_url_label">URL</string>
+    <string name="profile_subscription_url_placeholder">https://example.com/subscription</string>
+    <string name="profile_subscription_url_invalid">请输入有效的 HTTP 或 HTTPS 订阅链接。</string>
+    <string name="profile_paste_subscription_url">从剪贴板粘贴链接</string>
+    <string name="profile_subscription_description">链接仅保存在本机，用于导入和刷新订阅。</string>
     <string name="profile_importing">正在导入…</string>
     <string name="profile_import_starting">正在开始导入…</string>
     <string name="profile_import_saving">正在保存配置…</string>
     <string name="profile_import_subscription">导入订阅</string>
     <string name="profile_local_yaml">本地 Clash YAML</string>
+    <string name="profile_yaml_label">Clash YAML</string>
+    <string name="profile_yaml_placeholder">proxies:\n  - name: my-proxy\n    …</string>
+    <string name="profile_yaml_description">粘贴完整 Clash 配置，或直接选择 YAML 文件。</string>
     <string name="profile_select_yaml">选择 YAML 文件</string>
     <string name="profile_import_pasted">导入粘贴内容</string>
     <string name="profile_refresh_history">订阅刷新历史</string>
@@ -188,6 +356,7 @@
     <string name="profile_current">当前使用</string>
     <string name="profile_rename_description">重命名</string>
     <string name="profile_source_subscription">订阅：%1$s</string>
+    <string name="profile_source_https_url">HTTPS 订阅</string>
     <string name="profile_source_file">文件：%1$s</string>
     <string name="profile_source_base64">Base64 导入</string>
     <string name="profile_stats">%1$d 个节点 · %2$d 个策略组 · %3$d 条规则</string>
@@ -201,6 +370,16 @@
     <string name="profile_fallback_title">配置</string>
     <string name="profile_vpn_stopped_detail">VPN 未运行；代理选择仅显示上次状态，当前不可修改。</string>
     <string name="profile_selected">已选择</string>
+    <string name="profile_detail_loading">正在读取配置</string>
+    <string name="profile_detail_loading_description">正在加载策略组和已保存的节点选择。</string>
+    <string name="profile_detail_error_title">无法查看配置详情</string>
+    <string name="profile_detail_runtime_live">VPN 已连接</string>
+    <string name="profile_detail_runtime_stopped">VPN 已停止</string>
+    <string name="profile_detail_group_count">%1$d 个策略组</string>
+    <string name="profile_detail_read_only">仅可查看</string>
+    <string name="profile_detail_empty_title">没有策略组</string>
+    <string name="profile_detail_empty_description">该配置不包含可选择的代理策略组。</string>
+    <string name="profile_detail_node_count">%1$d 个选项</string>
 
     <string name="profile_phase_stopping">正在安全停止当前 VPN…</string>
     <string name="profile_phase_activating">正在激活所选配置…</string>
@@ -241,6 +420,17 @@
 
     <!-- DNS 设置 -->
     <string name="dns_title">DNS 设置</string>
+    <string name="dns_loading">正在读取 DNS 设置</string>
+    <string name="dns_loading_description">正在加载所选配置及其当前覆写。</string>
+    <string name="dns_no_profile_title">未选择配置</string>
+    <string name="dns_profile_active">活动配置</string>
+    <string name="dns_profile_inactive">非活动配置</string>
+    <string name="dns_section_source">DNS 来源</string>
+    <string name="dns_section_servers">DNS 服务器</string>
+    <string name="dns_fake_ip_title">Fake IP</string>
+    <string name="dns_redir_host_title">Redir Host</string>
+    <string name="dns_message_attention">需要处理</string>
+    <string name="dns_message_saved">已保存</string>
     <string name="dns_no_profile_selected">未选择配置</string>
     <string name="dns_context_inactive">这是非活动配置；保存不会中断当前 VPN。</string>
     <string name="dns_context_running">当前配置正在运行；保存后将安全重连并验证启动结果。</string>
@@ -320,6 +510,12 @@
     <string name="rules_count_status">共 %1$d 条 · %2$s</string>
     <string name="rules_runtime_connected">运行时已连接</string>
     <string name="rules_runtime_disconnected">当前未连接</string>
+    <string name="rules_status_refreshing">正在刷新</string>
+    <string name="rules_count">%1$d 条规则</string>
+    <string name="rules_loading">正在读取 AI 规则</string>
+    <string name="rules_loading_description">正在检查已保存的流量方向和当前运行状态。</string>
+    <string name="rules_no_profile_title">尚未激活配置</string>
+    <string name="rules_empty_title">还没有 AI 规则</string>
     <string name="rules_delete_title">删除规则？</string>
     <string name="rules_delete_body">%1$s\n此操作会立即更新当前连接。</string>
     <string name="rules_health_disabled">已禁用</string>
@@ -327,6 +523,9 @@
     <string name="rules_health_node_unavailable">节点不可用</string>
     <string name="rules_health_not_loaded">未加载</string>
     <string name="rules_health_running">运行中</string>
+    <string name="rules_health_updating">正在更新</string>
+    <string name="rules_enabled_short">已启用</string>
+    <string name="rules_disabled_short">已禁用</string>
     <string name="rules_exit_direction">流量出口方向</string>
     <string name="rules_profile_label">所属配置：%1$s</string>
     <string name="rules_change_exit">更改出口</string>
@@ -368,6 +567,12 @@
     <string name="nodes_probe_progress">正在检测 %1$d/%2$d · 可用 %3$d · 失败 %4$d</string>
     <string name="nodes_start_vpn">启动 VPN 后可查看和切换真实节点。</string>
     <string name="nodes_no_matches">没有匹配的策略组或节点。</string>
+    <string name="nodes_no_groups">当前配置没有可用的策略组。</string>
+    <string name="nodes_clear_filters">清除筛选</string>
+    <string name="nodes_load_failed">无法加载节点：%1$s</string>
+    <string name="nodes_load_failed_title">无法加载节点</string>
+    <string name="nodes_selected">已选择</string>
+    <string name="nodes_switching">正在切换</string>
     <string name="nodes_sort_default">默认</string>
     <string name="nodes_sort_delay">延迟↑</string>
     <string name="nodes_sort_name">名称</string>

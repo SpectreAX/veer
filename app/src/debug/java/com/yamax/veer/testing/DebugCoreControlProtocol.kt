@@ -10,6 +10,8 @@ internal object DebugCoreControlProtocol {
     const val METHOD_COUNTERS = "counters"
     const val METHOD_GOROUTINES = "goroutines"
     const val METHOD_FIRE_ALL_NETWORKS_LOST = "fire_all_networks_lost"
+    const val METHOD_ARM_TEARDOWN_CONNECTIVITY_PROBE = "arm_teardown_connectivity_probe"
+    const val METHOD_TEARDOWN_CONNECTIVITY_PROBE_STATUS = "teardown_connectivity_probe_status"
     const val METHOD_SET_WATCHDOG_TIMINGS = "set_watchdog_timings"
     const val METHOD_SET_STOP_TIMEOUT = "set_stop_timeout"
     const val METHOD_RESET_TIMINGS = "reset_timings"
@@ -28,4 +30,5 @@ internal object DebugCoreControlProtocol {
     const val KEY_INTERVAL_MS = "interval_ms"
     const val KEY_TIMEOUT_MS = "timeout_ms"
     const val KEY_RECOVERY_EXHAUSTED = "recovery_exhausted"
+    const val KEY_TEARDOWN_CONNECTIVITY_PROBE_FIRED = "teardown_connectivity_probe_fired"
 }

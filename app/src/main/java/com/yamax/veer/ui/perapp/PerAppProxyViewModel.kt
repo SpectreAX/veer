@@ -9,6 +9,9 @@ import com.yamax.veer.core_mihomo.VeerVpnService
 import com.yamax.veer.data.PerAppProxyMode
 import com.yamax.veer.data.PerAppProxyPolicy
 import com.yamax.veer.data.PerAppProxyPolicyStore
+import com.yamax.veer.R
+import com.yamax.veer.ui.UiText
+import com.yamax.veer.ui.uiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,11 +21,13 @@ import kotlinx.coroutines.withContext
 
 internal data class PerAppProxyUiState(
     val loading: Boolean = true,
+    val loadFailed: Boolean = false,
     val saving: Boolean = false,
     val mode: PerAppProxyMode = PerAppProxyMode.ALL_APPS,
     val selectedPackages: Set<String> = emptySet(),
     val apps: List<InstalledAppEntry> = emptyList(),
-    val message: String? = null,
+    val message: UiText? = null,
+    val messageKind: PerAppMessageKind = PerAppMessageKind.INFO,
 ) {
     val availableSelectedCount: Int
         get() = apps.count { it.isAvailable && it.packageName in selectedPackages }
@@ -31,6 +36,12 @@ internal data class PerAppProxyUiState(
         get() = !loading &&
             !saving &&
             (mode != PerAppProxyMode.ONLY_SELECTED || availableSelectedCount > 0)
+}
+
+internal enum class PerAppMessageKind {
+    INFO,
+    SUCCESS,
+    ERROR,
 }
 
 internal class PerAppProxyViewModel(application: Application) : AndroidViewModel(application) {
@@ -44,33 +55,52 @@ internal class PerAppProxyViewModel(application: Application) : AndroidViewModel
     fun refresh() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(loading = true, message = null)
-            val loaded = withContext(Dispatchers.IO) {
-                val context = getApplication<Application>()
-                val policy = PerAppProxyPolicyStore.read(context)
-                val available = InstalledAppRepository.launchableApps(context)
-                val knownPackages = available.mapTo(mutableSetOf(), InstalledAppEntry::packageName)
-                val stale = policy.packageNames
-                    .filterNot(knownPackages::contains)
-                    .sorted()
-                    .map { packageName ->
-                        InstalledAppEntry(
-                            label = packageName,
-                            packageName = packageName,
-                            isSystemApp = false,
-                            isAvailable = false,
-                        )
-                    }
-                Triple(policy, available + stale, stale.size)
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val context = getApplication<Application>()
+                    val policy = PerAppProxyPolicyStore.read(context)
+                    val available = InstalledAppRepository.launchableApps(context)
+                    val knownPackages = available.mapTo(mutableSetOf(), InstalledAppEntry::packageName)
+                    val stale = policy.packageNames
+                        .filterNot(knownPackages::contains)
+                        .sorted()
+                        .map { packageName ->
+                            InstalledAppEntry(
+                                label = packageName,
+                                packageName = packageName,
+                                isSystemApp = false,
+                                isAvailable = false,
+                            )
+                        }
+                    Triple(policy, available + stale, stale.size)
+                }
             }
-            _uiState.value = PerAppProxyUiState(
-                loading = false,
-                mode = loaded.first.mode,
-                selectedPackages = loaded.first.packageNames,
-                apps = loaded.second,
-                message = if (loaded.third > 0) {
-                    "有 ${loaded.third} 个已选应用当前不可用，可取消选择后保存。"
-                } else {
-                    null
+            _uiState.value = result.fold(
+                onSuccess = { loaded ->
+                    PerAppProxyUiState(
+                        loading = false,
+                        mode = loaded.first.mode,
+                        selectedPackages = loaded.first.packageNames,
+                        apps = loaded.second,
+                        message = if (loaded.third > 0) {
+                            uiText(R.string.per_app_unavailable_selected, loaded.third)
+                        } else {
+                            null
+                        },
+                    )
+                },
+                onFailure = { error ->
+                    PerAppProxyUiState(
+                        loading = false,
+                        loadFailed = true,
+                        message = uiText(
+                            R.string.per_app_load_failed,
+                            error.message ?: getApplication<Application>().getString(
+                                R.string.common_unknown_error,
+                            ),
+                        ),
+                        messageKind = PerAppMessageKind.ERROR,
+                    )
                 },
             )
         }
@@ -107,7 +137,8 @@ internal class PerAppProxyViewModel(application: Application) : AndroidViewModel
         val snapshot = _uiState.value
         if (!snapshot.canSave) {
             _uiState.value = snapshot.copy(
-                message = "“仅代理所选应用”至少需要选择一个当前可用的应用。",
+                message = uiText(R.string.per_app_selection_required),
+                messageKind = PerAppMessageKind.ERROR,
             )
             return
         }
@@ -144,12 +175,23 @@ internal class PerAppProxyViewModel(application: Application) : AndroidViewModel
                 message = result.fold(
                     onSuccess = {
                         if (runtimeRunning) {
-                            "已保存，正在快速重连以应用新的分流范围。"
+                            uiText(R.string.per_app_saved_reconnecting)
                         } else {
-                            "已保存，下次连接时生效。"
+                            uiText(R.string.per_app_saved_next_connection)
                         }
                     },
-                    onFailure = { "保存失败：${it.message ?: "未知错误"}" },
+                    onFailure = {
+                        uiText(
+                            R.string.per_app_save_failed,
+                            it.message ?: getApplication<Application>().getString(
+                                R.string.common_unknown_error,
+                            ),
+                        )
+                    },
+                ),
+                messageKind = result.fold(
+                    onSuccess = { PerAppMessageKind.SUCCESS },
+                    onFailure = { PerAppMessageKind.ERROR },
                 ),
             )
         }

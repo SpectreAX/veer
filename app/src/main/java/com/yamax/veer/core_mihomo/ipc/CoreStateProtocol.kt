@@ -1,7 +1,9 @@
 package com.yamax.veer.core_mihomo.ipc
 
 import android.net.Uri
+import com.yamax.veer.core_mihomo.EngineRecoverability
 import com.yamax.veer.core_mihomo.EngineState
+import com.yamax.veer.core_mihomo.EngineStatus
 import com.yamax.veer.core_mihomo.StartupStage
 
 internal data class CoreRuntimeSnapshot(
@@ -44,6 +46,12 @@ internal object CoreStateProtocol {
 
     const val KEY_ENGINE_KIND = "engine_kind"
     const val KEY_ENGINE_ERROR = "engine_error"
+    const val KEY_STATE_TIMESTAMP = "state_timestamp"
+    const val KEY_OPERATION_ID = "operation_id"
+    const val KEY_STATE_MESSAGE = "state_message"
+    const val KEY_MACHINE_CODE = "machine_code"
+    const val KEY_ROOT_CAUSE = "root_cause"
+    const val KEY_RECOVERABILITY = "recoverability"
     const val KEY_STARTUP_STAGE = "startup_stage"
     const val KEY_PHYSICAL_NETWORKS = "physical_networks"
     const val KEY_HAS_INTERNET = "has_internet"
@@ -86,4 +94,24 @@ internal object CoreStateProtocol {
         value
             ?.let { name -> StartupStage.entries.firstOrNull { it.name == name } }
             ?: StartupStage.IDLE
+
+    fun decodeEngineStatus(
+        state: EngineState,
+        timestampMs: Long,
+        operationId: String?,
+        message: String?,
+        machineCode: String?,
+        rootCause: String?,
+        recoverability: String?,
+    ): EngineStatus = EngineStatus(
+        state = state,
+        timestampMs = timestampMs.takeIf { it > 0L } ?: System.currentTimeMillis(),
+        operationId = operationId.orEmpty().ifBlank { "remote-unknown" },
+        message = message.orEmpty().ifBlank { engineKind(state) },
+        machineCode = machineCode.orEmpty().ifBlank { "CORE_UNKNOWN" },
+        rootCause = rootCause?.takeIf(String::isNotBlank),
+        recoverability = recoverability
+            ?.let { value -> EngineRecoverability.entries.firstOrNull { it.name == value } }
+            ?: EngineRecoverability.NOT_APPLICABLE,
+    )
 }

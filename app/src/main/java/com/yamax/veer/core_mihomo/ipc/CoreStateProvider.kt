@@ -36,6 +36,7 @@ internal class CoreStateProvider : ContentProvider() {
 
     private fun runtimeSnapshot(): Bundle {
         val engine = MihomoEngine.state.value
+        val status = MihomoEngine.status.value
         val appState = AppStateRepository.appState.value
         return Bundle().apply {
             putString(CoreStateProtocol.KEY_ENGINE_KIND, CoreStateProtocol.engineKind(engine))
@@ -44,6 +45,12 @@ internal class CoreStateProvider : ContentProvider() {
                 (engine as? com.yamax.veer.core_mihomo.EngineState.Error)?.message,
             )
             putString(CoreStateProtocol.KEY_STARTUP_STAGE, MihomoEngine.startupStage.value.name)
+            putLong(CoreStateProtocol.KEY_STATE_TIMESTAMP, status.timestampMs)
+            putString(CoreStateProtocol.KEY_OPERATION_ID, status.operationId)
+            putString(CoreStateProtocol.KEY_STATE_MESSAGE, status.message)
+            putString(CoreStateProtocol.KEY_MACHINE_CODE, status.machineCode)
+            putString(CoreStateProtocol.KEY_ROOT_CAUSE, status.rootCause)
+            putString(CoreStateProtocol.KEY_RECOVERABILITY, status.recoverability.name)
             putInt(
                 CoreStateProtocol.KEY_PHYSICAL_NETWORKS,
                 appState.connectivity.physicalNetworksAvailable,

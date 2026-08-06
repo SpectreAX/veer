@@ -18,6 +18,7 @@ import com.yamax.veer.MainActivity
 import com.yamax.veer.R
 import com.yamax.veer.app_state.AppStateRepository
 import com.yamax.veer.core_logging.VeerLog
+import com.yamax.veer.core_mihomo.ipc.CoreStateClient
 import com.yamax.veer.core_profile.ProfileManager
 import com.yamax.veer.data.ConfigManager
 import com.yamax.veer.data.PerAppProxyMode
@@ -40,7 +41,6 @@ import kotlinx.coroutines.withContext
 import veercore.SocketProtector
 import veercore.Veercore
 import java.io.File
-import java.lang.reflect.InvocationTargetException
 import java.net.InetAddress
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
@@ -122,6 +122,7 @@ class VeerVpnService : VpnService() {
     private val restartAfterDestructionRequested = AtomicBoolean(false)
     private val stopSelfIssued = AtomicBoolean(false)
     private val lateStartCleanupRequired = AtomicBoolean(false)
+    private val lateStartCleanupLaunched = AtomicBoolean(false)
     private val shutdownFinalizationLock = Any()
 
     @Volatile private var tunInterface: ParcelFileDescriptor? = null
@@ -252,8 +253,7 @@ class VeerVpnService : VpnService() {
 
     // ----- Core boot ----------------------------------------------------------
 
-    private suspend fun bootCore() {
-        var cleanupAfterLateStart = false
+    private suspend fun bootCore(startNewOperation: Boolean = true) {
         engineMutex.withLock {
             if (shutdownStarted.get()) {
                 VeerLog.vpn("[bootCore] ignored — shutdown already in progress")
@@ -263,9 +263,16 @@ class VeerVpnService : VpnService() {
                 VeerLog.vpn("[bootCore] ignored — already running")
                 return
             }
+            if (startNewOperation) MihomoEngine.beginOperation("start")
             MihomoEngine.setStartupStage(StartupStage.PREPARING_CONFIG)
             MihomoEngine.setState(EngineState.Starting)
             VeerLog.vpn("[bootCore] phase=PREPARE_CONFIG")
+
+            // The core process deliberately does not read profile state from
+            // Application.onCreate: doing disk work there can exceed Android's
+            // ContentProvider publication timeout. Foreground promotion has
+            // already happened before this IO-dispatched startup path runs.
+            ProfileManager.init(applicationContext)
 
             // A periodic subscription refresh may have staged a newer validated
             // active config while the previous core was running. Adopt it only
@@ -337,23 +344,19 @@ class VeerVpnService : VpnService() {
                 return
             }
 
-            // Validate config BEFORE establishing TUN. Uses reflection so the app
-            // compiles against the old AAR; after rebuilding with veer-core/0.1.2+
-            // the method is resolved and validation runs normally.
+            // Validate config BEFORE establishing TUN using the same Mihomo parser
+            // that Start will use. The bundled AAR is versioned with this source,
+            // so silently skipping validation for an old binding is not allowed.
             val validateT0 = System.currentTimeMillis()
             MihomoEngine.setStartupStage(StartupStage.VALIDATING_CONFIG)
             VeerLog.vpn("[bootCore] phase=VALIDATE_CONFIG")
             try {
                 VeercoreNativeExecutor.call {
-                    Veercore::class.java
-                        .getMethod("validateConfig", String::class.java, String::class.java)
-                        .invoke(null, homeDir.absolutePath, ConfigManager.BASE_CONFIG)
+                    Veercore.validateConfig(homeDir.absolutePath, ConfigManager.BASE_CONFIG)
                 }
                 VeerLog.vpn("[bootCore] VALIDATE_CONFIG OK (+${System.currentTimeMillis() - validateT0}ms)")
-            } catch (e: NoSuchMethodException) {
-                VeerLog.vpn("[bootCore] VALIDATE_CONFIG skipped — rebuild AAR to enable (${e.message})")
-            } catch (e: InvocationTargetException) {
-                val msg = e.cause?.message ?: e.message ?: "config validation failed"
+            } catch (e: Exception) {
+                val msg = e.cause?.message ?: e.message ?: e.toString()
                 VeerLog.vpn("[bootCore] VALIDATE_CONFIG FAILED (+${System.currentTimeMillis() - validateT0}ms): $msg", VeerLog.Level.ERROR)
                 MihomoEngine.setState(EngineState.Error("Config invalid: $msg"))
                 requestShutdown("config validation failed")
@@ -406,6 +409,19 @@ class VeerVpnService : VpnService() {
             }
                 .onFailure { t ->
                     val msg = t.cause?.message ?: t.message ?: t.toString()
+                    if (shutdownStarted.get()) {
+                        // The outer stop timeout may close the JVM TUN while a
+                        // slow start still owns engineMutex. Accessing that fd
+                        // then reports "Already closed"; this is cancellation,
+                        // not a separate runtime failure. The authoritative
+                        // shutdown/late-cleanup path still sees startAttempted.
+                        VeerLog.vpn(
+                            "[bootCore] START_RUNTIME aborted by shutdown" +
+                                " (+${System.currentTimeMillis() - startT0}ms): $msg",
+                            VeerLog.Level.WARN,
+                        )
+                        return
+                    }
                     VeerLog.vpn("[bootCore] START_RUNTIME FAILED (+${System.currentTimeMillis() - startT0}ms): $msg", VeerLog.Level.ERROR)
                     MihomoEngine.setState(EngineState.Error(msg))
                     requestShutdown("runtime start failed")
@@ -414,19 +430,129 @@ class VeerVpnService : VpnService() {
             VeerLog.vpn("[bootCore] START_RUNTIME OK (+${System.currentTimeMillis() - startT0}ms)")
 
             coreRunning = true
-            if (shutdownStarted.get()) {
-                // ACTION_STOP may arrive while the non-cancellable JNI start is
-                // in progress. The original teardown may already have timed out
-                // waiting for this mutex, so this coroutine must perform a second,
-                // serialized cleanup pass after releasing the lock. Never publish
-                // a transient Running state after shutdown was requested.
-                VeerLog.vpn(
-                    "[bootCore] start completed after shutdown request — scheduling late-start cleanup",
+            MihomoEngine.setStartupStage(StartupStage.VERIFYING_RUNTIME)
+            VeerLog.vpn("[bootCore] phase=VERIFY_RUNTIME")
+            val readinessT0 = System.currentTimeMillis()
+            val readiness = RuntimeReadinessVerifier(
+                maxAttempts = READINESS_MAX_ATTEMPTS,
+                retryDelayMs = READINESS_RETRY_DELAY_MS,
+                probe = {
+                    val nativeReady = runCatching {
+                        VeercoreNativeExecutor.call {
+                            Veercore.getDashboardRoutingStats("").coreRunning
+                        }
+                    }.getOrDefault(false)
+                    val controllerReady = MihomoRepository.get().controllerReady()
+                    RuntimeReadinessEvidence(nativeReady, controllerReady)
+                },
+                isCancelled = shutdownStarted::get,
+            ).await()
+            when (readiness) {
+                is RuntimeReadinessResult.Ready -> VeerLog.vpn(
+                    "[bootCore] VERIFY_RUNTIME OK attempts=${readiness.attempts}" +
+                        " (+${System.currentTimeMillis() - readinessT0}ms)",
+                )
+                is RuntimeReadinessResult.Cancelled -> VeerLog.vpn(
+                    "[bootCore] VERIFY_RUNTIME cancelled by shutdown after " +
+                        "${readiness.attempts} attempt(s)",
                     VeerLog.Level.WARN,
                 )
-                cleanupAfterLateStart = true
+                is RuntimeReadinessResult.TimedOut -> {
+                    val evidence = readiness.lastEvidence
+                    val message = "runtime readiness timed out " +
+                        "(native=${evidence.nativeRuntimeReady}, " +
+                        "controller=${evidence.controllerReady})"
+                    VeerLog.vpn("[bootCore] VERIFY_RUNTIME FAILED: $message", VeerLog.Level.ERROR)
+                    MihomoEngine.setState(EngineState.Error(message))
+                    requestShutdown("runtime readiness failed")
+                    return
+                }
+            }
+            if (shutdownStarted.get()) {
+                // ACTION_STOP may arrive while the non-cancellable JNI start is
+                // in progress. The shutdown coroutine either remains queued on
+                // this mutex or, after its bounded wait expires, launches the
+                // single late-cleanup owner. Never publish a transient Running
+                // state after shutdown was requested.
+                VeerLog.vpn(
+                    "[bootCore] start completed after shutdown request — teardown remains authoritative",
+                    VeerLog.Level.WARN,
+                )
             } else {
                 VeerLog.vpn("[bootCore] mihomo core started")
+                val allNetworksLostHandler: () -> Unit = {
+                    AppStateRepository.updateConnectivity(0, false)
+                    VeerLog.connectivity(
+                        "onAllNetworksLost coreRunning=$coreRunning " +
+                            "shutdownStarted=${shutdownStarted.get()}",
+                    )
+                    if (coreRunning && !shutdownStarted.get()) {
+                        // Connectivity loss is not a core-lifecycle failure. Keep
+                        // TUN and Mihomo alive so Wi-Fi/cellular handoff can recover
+                        // through setUnderlyingNetworks and UpdateSystemDNS without
+                        // an expensive Stop/Start cycle.
+                        runCatching { setUnderlyingNetworks(null) }
+                            .onFailure {
+                                VeerLog.connectivity(
+                                    "failed to clear underlying networks: ${it.message}",
+                                    VeerLog.Level.WARN,
+                                )
+                            }
+                        VeerLog.connectivity("all networks lost — runtime retained for recovery")
+                    } else {
+                        VeerLog.connectivity("onAllNetworksLost ignored — teardown in progress")
+                    }
+                }
+                debugAllNetworksLostCallback = allNetworksLostHandler
+                val monitor = ConnectivityMonitor(
+                    context = this,
+                    onUnderlyingNetworksChanged = { networks ->
+                        setUnderlyingNetworks(networks)
+                        AppStateRepository.updateConnectivity(networks.size, true)
+                    },
+                    onSystemDnsChanged = { servers ->
+                        serviceScope.launch {
+                            runCatching {
+                                VeercoreNativeExecutor.call {
+                                    Veercore.updateSystemDNS(servers.joinToString(","))
+                                }
+                            }.onFailure {
+                                VeerLog.connectivity(
+                                    "system DNS update failed: ${it.message}",
+                                    VeerLog.Level.WARN,
+                                )
+                            }
+                        }
+                    },
+                    onAllNetworksLost = allNetworksLostHandler,
+                )
+                val initialConnectivity = monitor.captureCurrentSnapshot()
+                runCatching {
+                    val networks = initialConnectivity.networks
+                    setUnderlyingNetworks(networks.takeIf { it.isNotEmpty() })
+                    AppStateRepository.updateConnectivity(
+                        physicalNetworksAvailable = networks.size,
+                        hasInternet = networks.isNotEmpty(),
+                    )
+                    VeercoreNativeExecutor.call {
+                        Veercore.updateSystemDNS(
+                            initialConnectivity.dnsServers.joinToString(","),
+                        )
+                    }
+                }.onSuccess {
+                    VeerLog.connectivity(
+                        "initial network/DNS synchronization complete before Running " +
+                            "(networks=${initialConnectivity.networks.size}, " +
+                            "dns=${initialConnectivity.dnsServers.size})",
+                    )
+                }.onFailure {
+                    VeerLog.connectivity(
+                        "initial network/DNS synchronization failed: ${it.message}",
+                        VeerLog.Level.WARN,
+                    )
+                }
+                connectivityMonitor = monitor.also { it.start(initialConnectivity) }
+
                 runCatching { ProfileManager.markActiveAsLastKnownGood(applicationContext) }
                     .onFailure {
                         VeerLog.profile(
@@ -438,58 +564,9 @@ class VeerVpnService : VpnService() {
                 MihomoEngine.setState(EngineState.Running)
                 launchWatchdog()
                 launchAutoRecovery()
-                val allNetworksLostHandler: () -> Unit = {
-                    AppStateRepository.updateConnectivity(0, false)
-                    VeerLog.connectivity(
-                        "onAllNetworksLost coreRunning=$coreRunning " +
-                            "shutdownStarted=${shutdownStarted.get()}",
-                    )
-                    if (coreRunning && !shutdownStarted.get()) {
-                        VeerLog.connectivity("all networks lost — requesting serialized shutdown")
-                        MihomoEngine.setState(EngineState.Error("no network connectivity"))
-                        requestShutdown("all networks lost")
-                    } else {
-                        VeerLog.connectivity("onAllNetworksLost ignored — teardown in progress")
-                    }
-                }
-                debugAllNetworksLostCallback = allNetworksLostHandler
-                connectivityMonitor = ConnectivityMonitor(
-                    context = this,
-                    onUnderlyingNetworksChanged = { networks ->
-                        setUnderlyingNetworks(networks)
-                        AppStateRepository.updateConnectivity(networks.size, true)
-                    },
-                    onAllNetworksLost = allNetworksLostHandler,
-                ).also { it.start() }
             }
         }
 
-        if (cleanupAfterLateStart) {
-            // A normal shutdown coroutine was already queued on engineMutex and
-            // owns teardown. Only take over when its bounded mutex wait actually
-            // timed out; otherwise two teardown callers could race a queued start.
-            delay(LATE_START_CLEANUP_SETTLE_MS)
-            if (
-                lateStartCleanupRequired.get() &&
-                shutdownStarted.get() &&
-                (coreRunning || startAttempted)
-            ) {
-                VeerLog.vpn("[bootCore] running late-start cleanup after shutdown timeout")
-                var resumeQueuedStart = false
-                withContext(NonCancellable) {
-                    tearDownCore(finalizeState = false)
-                    MihomoEngine.setState(EngineState.Stopped)
-                    lateStartCleanupRequired.set(false)
-                    resumeQueuedStart = claimQueuedStartAfterSafeDrain()
-                }
-                if (resumeQueuedStart) {
-                    VeerLog.vpn("[bootCore] resuming queued start after late cleanup")
-                    bootCore()
-                }
-            } else {
-                VeerLog.vpn("[bootCore] serialized shutdown owns late-start cleanup")
-            }
-        }
     }
 
     // ----- TUN routing --------------------------------------------------------
@@ -743,6 +820,7 @@ class VeerVpnService : VpnService() {
         }
 
         VeerLog.vpn("[profileSwitch] stopping core and releasing TUN")
+        MihomoEngine.beginOperation("profile_switch")
         MihomoEngine.setState(EngineState.Stopping)
         serviceScope.launch {
             try {
@@ -785,6 +863,7 @@ class VeerVpnService : VpnService() {
 
         val reconnectT0 = System.currentTimeMillis()
         VeerLog.vpn("[reconnect] beginning in-service reconnect")
+        MihomoEngine.beginOperation("reconnect")
         MihomoEngine.setState(EngineState.Stopping)
         serviceScope.launch {
             try {
@@ -802,7 +881,7 @@ class VeerVpnService : VpnService() {
                     )
                     return@launch
                 }
-                bootCore()
+                bootCore(startNewOperation = false)
                 VeerLog.vpn(
                     "[reconnect] completed state=${MihomoEngine.state.value}" +
                         " (+${System.currentTimeMillis() - reconnectT0}ms)",
@@ -849,7 +928,9 @@ class VeerVpnService : VpnService() {
 
         shutdownStartId = latestStartId
         lateStartCleanupRequired.set(false)
+        lateStartCleanupLaunched.set(false)
         VeerLog.vpn("[stop] $reason — beginning serialized teardown")
+        MihomoEngine.beginOperation("stop")
         MihomoEngine.setState(EngineState.Stopping)
         serviceScope.launch {
             var restartAfterDrain = false
@@ -868,15 +949,14 @@ class VeerVpnService : VpnService() {
                         VeerLog.Level.ERROR,
                     )
                     tearDownTun()
+                    launchLateStartCleanup()
                 }
                 // Core and TUN are already fully released. Preserve Error when
                 // the JNI stop latch timed out: that process may still contain
                 // a zombie Shutdown goroutine and must not offer reconnect.
-                if (!nonRecoverableStopFailure) {
+                if (!nonRecoverableStopFailure && completed) {
                     MihomoEngine.setState(EngineState.Stopped)
-                    if (completed) {
-                        restartAfterDrain = claimQueuedStartAfterSafeDrain()
-                    }
+                    restartAfterDrain = claimQueuedStartAfterSafeDrain()
                 }
             } catch (t: Throwable) {
                 VeerLog.vpn(
@@ -893,48 +973,82 @@ class VeerVpnService : VpnService() {
                     }
                 } else {
                     VeerLog.vpn("[stop] teardown finished — scheduling foreground-service stop")
-                    // Keep foreground ownership during the short reuse window.
-                    // Moving stopForeground into this delayed job prevents a
-                    // just-arrived ACTION_START from losing its notification
-                    // after it has already reopened the shutdown gate.
-                    shutdownFinalizeJob = serviceScope.launch {
-                        delay(SHUTDOWN_DESTROY_GRACE_MS)
-                        val stopAccepted = synchronized(shutdownFinalizationLock) {
-                            if (
-                                shutdownStarted.get() &&
-                                    !coreRunning &&
-                                    !startAttempted
-                            ) {
-                                // stopSelfResult is the framework's atomic
-                                // generation check: if ACTION_START has already
-                                // produced a newer startId, the old stop is
-                                // refused. Keep this decision under the same
-                                // lock used by ACTION_START so it cannot boot
-                                // between framework acceptance and publication.
-                                stopSelfResult(shutdownStartId).also {
-                                    stopSelfIssued.set(it)
-                                }
-                            } else {
-                                null
-                            }
-                        }
-                        when (stopAccepted) {
-                            false -> {
-                                VeerLog.vpn(
-                                    "[stop] service destruction cancelled by newer startId",
-                                )
-                                return@launch
-                            }
-                            true -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                                stopForeground(STOP_FOREGROUND_REMOVE)
-                            } else {
-                                @Suppress("DEPRECATION")
-                                stopForeground(true)
-                            }
-                            null -> Unit
-                        }
+                    scheduleForegroundServiceStop()
+                }
+            }
+        }
+    }
+
+    /**
+     * Owns cleanup when the bounded shutdown could not acquire [engineMutex]
+     * before an in-flight native start returned. The timeout path is the only
+     * producer; this avoids the old timing race where boot and shutdown each
+     * expected the other coroutine to perform the second cleanup pass.
+     */
+    private fun launchLateStartCleanup() {
+        if (!lateStartCleanupLaunched.compareAndSet(false, true)) return
+        serviceScope.launch {
+            var resumeQueuedStart = false
+            try {
+                VeerLog.vpn("[stop] waiting for in-flight start before late cleanup")
+                withContext(NonCancellable) {
+                    tearDownCore(finalizeState = false)
+                    lateStartCleanupRequired.set(false)
+                    if (!nonRecoverableStopFailure) {
+                        MihomoEngine.setState(EngineState.Stopped)
+                        resumeQueuedStart = claimQueuedStartAfterSafeDrain()
                     }
                 }
+                if (resumeQueuedStart) {
+                    VeerLog.vpn("[stop] resuming queued start after late cleanup")
+                    bootCore()
+                } else if (shutdownStarted.get()) {
+                    VeerLog.vpn("[stop] late cleanup complete — scheduling service stop")
+                    scheduleForegroundServiceStop()
+                }
+            } catch (t: Throwable) {
+                VeerLog.vpn(
+                    "[stop] late cleanup failed: ${t.message}",
+                    VeerLog.Level.ERROR,
+                )
+                MihomoEngine.setState(
+                    next = EngineState.Error(t.message ?: "late cleanup failed"),
+                    machineCode = "CORE_LATE_CLEANUP_FAILED",
+                    rootCause = t.javaClass.name,
+                    recoverability = EngineRecoverability.RESTART_APP,
+                )
+                tearDownTun()
+            } finally {
+                lateStartCleanupLaunched.set(false)
+            }
+        }
+    }
+
+    /** Keeps foreground ownership during the short same-instance reuse window. */
+    private fun scheduleForegroundServiceStop() {
+        shutdownFinalizeJob?.cancel()
+        shutdownFinalizeJob = serviceScope.launch {
+            delay(SHUTDOWN_DESTROY_GRACE_MS)
+            val stopAccepted = synchronized(shutdownFinalizationLock) {
+                if (shutdownStarted.get() && !coreRunning && !startAttempted) {
+                    // stopSelfResult atomically rejects an obsolete stop when a
+                    // newer START generation has already reached the service.
+                    stopSelfResult(shutdownStartId).also { stopSelfIssued.set(it) }
+                } else {
+                    null
+                }
+            }
+            when (stopAccepted) {
+                false -> VeerLog.vpn(
+                    "[stop] service destruction cancelled by newer startId",
+                )
+                true -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                } else {
+                    @Suppress("DEPRECATION")
+                    stopForeground(true)
+                }
+                null -> Unit
             }
         }
     }
@@ -1007,6 +1121,14 @@ class VeerVpnService : VpnService() {
             // request another shutdown during an already-in-progress teardown.
             val needsStop = coreRunning || startAttempted
             coreRunning = false
+
+            // Debug instrumentation can install a one-shot probe to exercise the
+            // exact teardown window after coreRunning is cleared but before the
+            // connectivity callback is unregistered. Keeping the trigger here makes
+            // the lifecycle test deterministic without delaying production teardown.
+            val connectivityTeardownProbe = testBeforeConnectivityMonitorStop
+            testBeforeConnectivityMonitorStop = null
+            connectivityTeardownProbe?.invoke()
 
             val monT0 = System.currentTimeMillis()
             VeerLog.vpn("[tearDownCore] stopping connectivityMonitor")
@@ -1112,7 +1234,11 @@ class VeerVpnService : VpnService() {
             }
             VeerLog.vpn("[tearDownCore] step=setState($terminalState)")
             if (nonRecoverableStopFailure) {
-                MihomoEngine.setState(EngineState.Error("VPN stop timed out — restart the app to reconnect"))
+                MihomoEngine.setState(
+                    next = EngineState.Error("VPN stop timed out — restart the app to reconnect"),
+                    machineCode = "CORE_STOP_TIMEOUT",
+                    recoverability = EngineRecoverability.RESTART_APP,
+                )
             } else if (finalizeState) {
                 MihomoEngine.setState(EngineState.Stopped)
             }
@@ -1137,6 +1263,7 @@ class VeerVpnService : VpnService() {
             VeerLog.vpn("[onDestroy] entered coreRunning=$coreRunning startAttempted=$startAttempted")
             if (shutdownStarted.compareAndSet(false, true)) {
                 VeerLog.vpn("[onDestroy] system lifecycle initiated shutdown")
+                MihomoEngine.beginOperation("system_stop")
                 MihomoEngine.setState(EngineState.Stopping)
             } else {
                 VeerLog.vpn("[onDestroy] explicit shutdown already initiated")
@@ -1237,8 +1364,12 @@ class VeerVpnService : VpnService() {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (nm.getNotificationChannel(CHANNEL_ID) != null) return
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "Veer VPN", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "Indicates that Veer is tunneling traffic."
+            NotificationChannel(
+                CHANNEL_ID,
+                getString(R.string.vpn_notification_channel_name),
+                NotificationManager.IMPORTANCE_LOW,
+            ).apply {
+                description = getString(R.string.vpn_notification_channel_description)
                 setShowBadge(false)
             }
         )
@@ -1253,8 +1384,8 @@ class VeerVpnService : VpnService() {
         )
         val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("Veer")
-            .setContentText("Tunneling traffic via Mihomo")
+            .setContentTitle(getString(R.string.app_name))
+            .setContentText(getString(R.string.vpn_notification_connected))
             .setOngoing(true)
             .setContentIntent(tap)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -1319,8 +1450,12 @@ class VeerVpnService : VpnService() {
         private const val AUTO_RECOVERY_FAILURE_THRESHOLD = 2
         private const val AUTO_RECOVERY_MAX_CANDIDATES = 3
         private const val SHUTDOWN_DESTROY_GRACE_MS = 1_000L
-        private const val LATE_START_CLEANUP_SETTLE_MS = 50L
-        private const val ERROR_VISIBILITY_MS = 100L
+        // State crosses a Binder/ContentObserver boundary. Keep actionable
+        // failures visible long enough for a busy main process to consume the
+        // typed status before Stopping replaces it.
+        private const val ERROR_VISIBILITY_MS = 1_000L
+        private const val READINESS_MAX_ATTEMPTS = 10
+        private const val READINESS_RETRY_DELAY_MS = 100L
 
         // Outer timeout: how long onDestroy waits for engineMutex (coroutine suspension — real timeout).
         private const val STOP_TIMEOUT_MS           = 4_000L
@@ -1336,6 +1471,7 @@ class VeerVpnService : VpnService() {
         @JvmField @Volatile internal var testAutoRecoveryMaxCandidates: Int = -1
         @Volatile internal var testAutoRecoveryInternetProbe: (() -> Boolean)? = null
         @Volatile internal var testAutoRecoveryExhaustedCallback: (() -> Unit)? = null
+        @Volatile internal var testBeforeConnectivityMonitorStop: (() -> Unit)? = null
 
         // Written by bootCore() (main source set) — cannot be moved to the debug
         // source set because a debug-only declaration cannot be referenced from
@@ -1346,6 +1482,7 @@ class VeerVpnService : VpnService() {
 
         fun startIntent(context: Context): Intent {
             CoreRunStateStore.setDesiredRunning(context, true)
+            CoreStateClient.onDesiredRunningRequested()
             return Intent(context, VeerVpnService::class.java).setAction(ACTION_START)
         }
 
@@ -1356,11 +1493,13 @@ class VeerVpnService : VpnService() {
 
         fun reconnectIntent(context: Context): Intent {
             CoreRunStateStore.setDesiredRunning(context, true)
+            CoreStateClient.onDesiredRunningRequested()
             return Intent(context, VeerVpnService::class.java).setAction(ACTION_RECONNECT)
         }
 
         fun prepareProfileSwitchIntent(context: Context): Intent {
             CoreRunStateStore.setDesiredRunning(context, true)
+            CoreStateClient.onDesiredRunningRequested()
             return Intent(context, VeerVpnService::class.java).setAction(ACTION_PREPARE_PROFILE_SWITCH)
         }
     }

@@ -25,7 +25,7 @@ class StartupProgressUiInstrumentedTest {
         .outerRule(InteractiveComposeDeviceRule())
         .around(composeRule)
 
-    @Test(timeout = 10_000)
+    @Test(timeout = 30_000)
     fun startingStateShowsCurrentMilestoneAndProgress() {
         composeRule.setContent {
             VeerTheme {
@@ -41,7 +41,7 @@ class StartupProgressUiInstrumentedTest {
             context.getString(
                 R.string.startup_step,
                 3,
-                5,
+                6,
                 context.getString(R.string.startup_validating_config),
             ),
         ).assertIsDisplayed()

@@ -6,31 +6,25 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,13 +35,30 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.yamax.veer.R
 import com.yamax.veer.app_state.AppStateRepository
 import com.yamax.veer.core_mihomo.EngineState
 import com.yamax.veer.data.PerAppProxyMode
+import com.yamax.veer.ui.designsystem.components.VeerCard
+import com.yamax.veer.ui.designsystem.components.VeerPrimaryButton
+import com.yamax.veer.ui.designsystem.components.VeerSecondaryButton
+import com.yamax.veer.ui.designsystem.components.VeerSettingsRow
+import com.yamax.veer.ui.designsystem.components.VeerStateView
+import com.yamax.veer.ui.designsystem.components.VeerStatus
+import com.yamax.veer.ui.designsystem.components.VeerStatusBadge
+import com.yamax.veer.ui.designsystem.components.VeerTextField
+import com.yamax.veer.ui.designsystem.components.VeerTopAppBar
+import com.yamax.veer.ui.designsystem.preview.VeerPreview
+import com.yamax.veer.ui.designsystem.preview.VeerResponsivePreviews
+import com.yamax.veer.ui.designsystem.preview.VeerThemePreviews
+import com.yamax.veer.ui.designsystem.theme.VeerDimensions
+import com.yamax.veer.ui.designsystem.theme.VeerElevation
+import com.yamax.veer.ui.designsystem.theme.VeerSpacing
+import com.yamax.veer.ui.resolve
 import com.yamax.veer.ui.theme.VeerTheme
 
 class PerAppProxyActivity : ComponentActivity() {
@@ -64,6 +75,7 @@ class PerAppProxyActivity : ComponentActivity() {
                     state = state,
                     runtimeRunning = appState.runtime.engineState is EngineState.Running,
                     onBack = ::finish,
+                    onRetry = viewModel::refresh,
                     onModeChange = viewModel::setMode,
                     onTogglePackage = viewModel::togglePackage,
                     onSelectVisible = viewModel::selectVisible,
@@ -77,10 +89,11 @@ class PerAppProxyActivity : ComponentActivity() {
 }
 
 @Composable
-private fun PerAppProxyScreen(
+internal fun PerAppProxyScreen(
     state: PerAppProxyUiState,
     runtimeRunning: Boolean,
     onBack: () -> Unit,
+    onRetry: () -> Unit,
     onModeChange: (PerAppProxyMode) -> Unit,
     onTogglePackage: (String) -> Unit,
     onSelectVisible: (Set<String>) -> Unit,
@@ -101,156 +114,219 @@ private fun PerAppProxyScreen(
         }
     }
 
-    Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 16.dp),
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp, bottom = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(onClick = onBack) { Text("返回") }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("应用分流", style = MaterialTheme.typography.headlineSmall)
-                    Text(
-                        if (runtimeRunning) "保存后将快速重连并立即生效" else "下次连接时生效",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-
-            PerAppModeCard(
-                selected = state.mode,
-                onModeChange = onModeChange,
+    Scaffold(
+        modifier = Modifier
+            .fillMaxSize()
+            .testTag("per_app_screen"),
+        topBar = {
+            VeerTopAppBar(
+                title = stringResource(R.string.per_app_title),
+                onBack = onBack,
+                backContentDescription = stringResource(R.string.common_back),
             )
-
-            state.message?.let { message ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        message,
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    TextButton(onClick = onDismissMessage) { Text("关闭") }
-                }
-            }
-
-            if (state.mode != PerAppProxyMode.ALL_APPS) {
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    label = { Text("搜索应用或包名") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text(
-                        "已选 ${state.selectedPackages.size} · 可用 ${state.availableSelectedCount}",
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    TextButton(
-                        onClick = {
-                            onSelectVisible(
-                                visibleApps
-                                    .filter(InstalledAppEntry::isAvailable)
-                                    .mapTo(mutableSetOf(), InstalledAppEntry::packageName),
-                            )
-                        },
-                        enabled = visibleApps.any(InstalledAppEntry::isAvailable),
+        },
+        bottomBar = {
+            if (!state.loading && !state.loadFailed) {
+                Surface(tonalElevation = VeerElevation.low) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .padding(
+                                horizontal = VeerSpacing.lg,
+                                vertical = VeerSpacing.md,
+                            ),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Text("全选当前")
-                    }
-                    TextButton(
-                        onClick = onClearSelection,
-                        enabled = state.selectedPackages.isNotEmpty(),
-                    ) {
-                        Text("清空")
-                    }
-                }
-            } else {
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    "除 Veer 自身外，设备上的所有应用都通过 VPN。Veer 自身始终绕过隧道以防止代理环路。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(10.dp))
-            }
-
-            when {
-                state.loading -> Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator()
-                }
-
-                state.mode == PerAppProxyMode.ALL_APPS -> Spacer(Modifier.weight(1f))
-
-                visibleApps.isEmpty() -> Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("没有匹配的应用")
-                }
-
-                else -> LazyColumn(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .testTag("per_app_list"),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    items(visibleApps, key = InstalledAppEntry::packageName) { app ->
-                        AppSelectionRow(
-                            app = app,
-                            selected = app.packageName in state.selectedPackages,
-                            onToggle = { onTogglePackage(app.packageName) },
+                        VeerPrimaryButton(
+                            text = when {
+                                state.saving -> stringResource(R.string.per_app_saving)
+                                runtimeRunning -> stringResource(R.string.per_app_save_reconnect)
+                                else -> stringResource(R.string.common_save)
+                            },
+                            onClick = { onSave(runtimeRunning) },
+                            enabled = state.canSave,
+                            loading = state.saving,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .widthIn(max = VeerDimensions.formMaxWidth)
+                                .testTag("save_per_app_policy"),
                         )
                     }
                 }
             }
-
-            Button(
-                onClick = { onSave(runtimeRunning) },
-                enabled = state.canSave,
+        },
+    ) { padding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+            contentAlignment = Alignment.TopCenter,
+        ) {
+            LazyColumn(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 12.dp)
-                    .testTag("save_per_app_policy"),
+                    .fillMaxSize()
+                    .widthIn(max = VeerDimensions.formMaxWidth)
+                    .testTag("per_app_list"),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                    horizontal = VeerSpacing.lg,
+                    vertical = VeerSpacing.lg,
+                ),
+                verticalArrangement = Arrangement.spacedBy(VeerSpacing.md),
             ) {
-                Text(
-                    when {
-                        state.saving -> "正在保存…"
-                        runtimeRunning -> "保存并快速重连"
-                        else -> "保存"
-                    },
-                )
+                item(key = "runtime") {
+                    PerAppRuntimeSummary(runtimeRunning = runtimeRunning)
+                }
+
+                when {
+                    state.loading -> item(key = "loading") {
+                        VeerStateView(
+                            title = stringResource(R.string.per_app_loading),
+                            description = stringResource(R.string.per_app_loading_description),
+                            loading = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+
+                    state.loadFailed -> item(key = "load_error") {
+                        VeerStateView(
+                            title = stringResource(R.string.per_app_load_failed_title),
+                            description = state.message?.resolve(),
+                            actionText = stringResource(R.string.common_retry),
+                            onAction = onRetry,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+
+                    else -> {
+                        item(key = "mode_heading") {
+                            Text(
+                                text = stringResource(R.string.per_app_section_mode),
+                                style = MaterialTheme.typography.titleLarge,
+                            )
+                        }
+                        item(key = "modes") {
+                            PerAppModeCard(selected = state.mode, onModeChange = onModeChange)
+                        }
+
+                        state.message?.let { message ->
+                            item(key = "message") {
+                                PerAppMessageCard(
+                                    message = message.resolve(),
+                                    kind = state.messageKind,
+                                    onDismiss = onDismissMessage,
+                                )
+                            }
+                        }
+
+                        if (state.mode == PerAppProxyMode.ALL_APPS) {
+                            item(key = "all_apps_info") {
+                                VeerCard(modifier = Modifier.fillMaxWidth()) {
+                                    Text(
+                                        text = stringResource(R.string.per_app_all_apps_title),
+                                        style = MaterialTheme.typography.titleMedium,
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.per_app_all_apps_description),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                    )
+                                }
+                            }
+                        } else {
+                            item(key = "apps_heading") {
+                                Text(
+                                    text = stringResource(R.string.per_app_section_apps),
+                                    style = MaterialTheme.typography.titleLarge,
+                                )
+                            }
+                            item(key = "search") {
+                                VeerTextField(
+                                    value = query,
+                                    onValueChange = { query = it },
+                                    label = stringResource(R.string.per_app_search_label),
+                                    placeholder = stringResource(R.string.per_app_search_placeholder),
+                                    singleLine = true,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("per_app_search"),
+                                )
+                            }
+                            item(key = "selection_actions") {
+                                PerAppSelectionActions(
+                                    selectedCount = state.selectedPackages.size,
+                                    availableSelectedCount = state.availableSelectedCount,
+                                    canSelectVisible = visibleApps.any(InstalledAppEntry::isAvailable),
+                                    canClear = state.selectedPackages.isNotEmpty(),
+                                    onSelectVisible = {
+                                        onSelectVisible(
+                                            visibleApps
+                                                .filter(InstalledAppEntry::isAvailable)
+                                                .mapTo(mutableSetOf(), InstalledAppEntry::packageName),
+                                        )
+                                    },
+                                    onClear = onClearSelection,
+                                )
+                            }
+
+                            when {
+                                state.apps.isEmpty() -> item(key = "empty_apps") {
+                                    VeerStateView(
+                                        title = stringResource(R.string.per_app_empty_title),
+                                        description = stringResource(R.string.per_app_empty_description),
+                                        actionText = stringResource(R.string.common_retry),
+                                        onAction = onRetry,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                }
+
+                                visibleApps.isEmpty() -> item(key = "empty_search") {
+                                    VeerStateView(
+                                        title = stringResource(R.string.per_app_no_matches_title),
+                                        description = stringResource(
+                                            R.string.per_app_no_matches_description,
+                                            query.text,
+                                        ),
+                                        actionText = stringResource(R.string.common_clear),
+                                        onAction = { query = TextFieldValue("") },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                }
+                            }
+
+                            items(visibleApps, key = InstalledAppEntry::packageName) { app ->
+                                AppSelectionCard(
+                                    app = app,
+                                    selected = app.packageName in state.selectedPackages,
+                                    onToggle = { onTogglePackage(app.packageName) },
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun PerAppRuntimeSummary(runtimeRunning: Boolean) {
+    VeerCard(modifier = Modifier.fillMaxWidth()) {
+        VeerStatusBadge(
+            status = if (runtimeRunning) VeerStatus.Connected else VeerStatus.Disconnected,
+            label = stringResource(
+                if (runtimeRunning) R.string.per_app_runtime_connected
+                else R.string.per_app_runtime_disconnected,
+            ),
+        )
+        Text(
+            text = stringResource(
+                if (runtimeRunning) R.string.per_app_runtime_connected_description
+                else R.string.per_app_runtime_disconnected_description,
+            ),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
+        )
     }
 }
 
@@ -259,70 +335,127 @@ private fun PerAppModeCard(
     selected: PerAppProxyMode,
     onModeChange: (PerAppProxyMode) -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer,
-        ),
-    ) {
-        Column(modifier = Modifier.padding(vertical = 4.dp)) {
-            ModeRow(
-                mode = PerAppProxyMode.ALL_APPS,
-                title = "代理所有应用",
-                description = "默认模式，所有应用都通过 Veer",
-                selected = selected,
-                onModeChange = onModeChange,
-            )
-            ModeRow(
-                mode = PerAppProxyMode.ONLY_SELECTED,
-                title = "仅代理所选应用",
-                description = "适合只让浏览器、流媒体等应用走代理",
-                selected = selected,
-                onModeChange = onModeChange,
-            )
-            ModeRow(
-                mode = PerAppProxyMode.BYPASS_SELECTED,
-                title = "绕过所选应用",
-                description = "适合让银行、支付、游戏等应用直连",
-                selected = selected,
-                onModeChange = onModeChange,
-            )
-        }
+    VeerCard(modifier = Modifier.fillMaxWidth()) {
+        PerAppModeRow(
+            mode = PerAppProxyMode.ALL_APPS,
+            title = stringResource(R.string.per_app_mode_all),
+            description = stringResource(R.string.per_app_mode_all_description),
+            selected = selected,
+            onModeChange = onModeChange,
+        )
+        PerAppModeRow(
+            mode = PerAppProxyMode.ONLY_SELECTED,
+            title = stringResource(R.string.per_app_mode_only),
+            description = stringResource(R.string.per_app_mode_only_description),
+            selected = selected,
+            onModeChange = onModeChange,
+        )
+        PerAppModeRow(
+            mode = PerAppProxyMode.BYPASS_SELECTED,
+            title = stringResource(R.string.per_app_mode_bypass),
+            description = stringResource(R.string.per_app_mode_bypass_description),
+            selected = selected,
+            onModeChange = onModeChange,
+        )
     }
 }
 
 @Composable
-private fun ModeRow(
+private fun PerAppModeRow(
     mode: PerAppProxyMode,
     title: String,
     description: String,
     selected: PerAppProxyMode,
     onModeChange: (PerAppProxyMode) -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onModeChange(mode) }
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    VeerSettingsRow(
+        title = title,
+        description = description,
+        trailingContent = {
+            RadioButton(selected = selected == mode, onClick = { onModeChange(mode) })
+        },
+        onClick = { onModeChange(mode) },
+        modifier = Modifier.testTag("per_app_mode_${mode.name}"),
+    )
+}
+
+@Composable
+private fun PerAppMessageCard(
+    message: String,
+    kind: PerAppMessageKind,
+    onDismiss: () -> Unit,
+) {
+    VeerCard(
+        modifier = Modifier.fillMaxWidth(),
+        containerColor = when (kind) {
+            PerAppMessageKind.SUCCESS -> MaterialTheme.colorScheme.primaryContainer
+            PerAppMessageKind.ERROR -> MaterialTheme.colorScheme.errorContainer
+            PerAppMessageKind.INFO -> MaterialTheme.colorScheme.surfaceContainer
+        },
     ) {
-        RadioButton(
-            selected = selected == mode,
-            onClick = { onModeChange(mode) },
+        VeerStatusBadge(
+            status = when (kind) {
+                PerAppMessageKind.SUCCESS -> VeerStatus.Connected
+                PerAppMessageKind.ERROR -> VeerStatus.Warning
+                PerAppMessageKind.INFO -> VeerStatus.Unavailable
+            },
+            label = stringResource(
+                when (kind) {
+                    PerAppMessageKind.SUCCESS -> R.string.per_app_message_saved
+                    PerAppMessageKind.ERROR -> R.string.per_app_message_error
+                    PerAppMessageKind.INFO -> R.string.per_app_message_attention
+                },
+            ),
         )
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleSmall)
-            Text(
-                description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Text(text = message, style = MaterialTheme.typography.bodyMedium)
+        VeerSecondaryButton(
+            text = stringResource(R.string.common_close),
+            onClick = onDismiss,
+            modifier = Modifier.align(Alignment.End),
+        )
+    }
+}
+
+@Composable
+private fun PerAppSelectionActions(
+    selectedCount: Int,
+    availableSelectedCount: Int,
+    canSelectVisible: Boolean,
+    canClear: Boolean,
+    onSelectVisible: () -> Unit,
+    onClear: () -> Unit,
+) {
+    VeerCard(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = stringResource(
+                R.string.per_app_selection_summary,
+                selectedCount,
+                availableSelectedCount,
+            ),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(VeerSpacing.sm),
+        ) {
+            VeerSecondaryButton(
+                text = stringResource(R.string.per_app_select_visible),
+                onClick = onSelectVisible,
+                enabled = canSelectVisible,
+                modifier = Modifier.weight(1f),
+            )
+            VeerSecondaryButton(
+                text = stringResource(R.string.common_clear),
+                onClick = onClear,
+                enabled = canClear,
+                modifier = Modifier.weight(1f),
             )
         }
     }
 }
 
 @Composable
-private fun AppSelectionRow(
+private fun AppSelectionCard(
     app: InstalledAppEntry,
     selected: Boolean,
     onToggle: () -> Unit,
@@ -333,53 +466,126 @@ private fun AppSelectionRow(
             null
         } else {
             runCatching {
-                context.packageManager
-                    .getApplicationIcon(app.packageName)
-                    .toBitmap(width = 40, height = 40)
-                    .asImageBitmap()
+                context.packageManager.getApplicationIcon(app.packageName).toBitmap().asImageBitmap()
             }.getOrNull()
         }
     }
-    Row(
+    val canToggle = app.isAvailable || selected
+
+    VeerCard(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onToggle)
-            .padding(vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .testTag("per_app_${app.packageName}"),
+        enabled = canToggle,
+        onClick = if (canToggle) onToggle else null,
     ) {
-        if (icon != null) {
-            Image(
-                bitmap = icon,
-                contentDescription = null,
-                modifier = Modifier.size(40.dp),
-            )
-        } else {
-            Box(
-                modifier = Modifier
-                    .size(40.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("?")
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = VeerDimensions.touchTarget),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(VeerSpacing.md),
+        ) {
+            if (icon != null) {
+                Image(
+                    bitmap = icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(VeerDimensions.appIcon),
+                )
+            } else {
+                Box(
+                    modifier = Modifier.size(VeerDimensions.appIcon),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = app.label.firstOrNull()?.uppercase() ?: "?",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
             }
-        }
-        Spacer(Modifier.size(10.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                if (app.isAvailable) app.label else "${app.label}（不可用）",
-                style = MaterialTheme.typography.bodyMedium,
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(VeerSpacing.xs),
+            ) {
+                Text(text = app.label, style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    text = app.packageName,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                if (app.isSystemApp || !app.isAvailable) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(VeerSpacing.sm)) {
+                        if (app.isSystemApp) {
+                            VeerStatusBadge(
+                                status = VeerStatus.Unavailable,
+                                label = stringResource(R.string.per_app_system_app),
+                            )
+                        }
+                        if (!app.isAvailable) {
+                            VeerStatusBadge(
+                                status = VeerStatus.Warning,
+                                label = stringResource(R.string.common_unavailable),
+                            )
+                        }
+                    }
+                }
+            }
+            Checkbox(
+                checked = selected,
+                enabled = canToggle,
+                onCheckedChange = { onToggle() },
             )
-            Text(
-                buildString {
-                    append(app.packageName)
-                    if (app.isSystemApp) append(" · 系统")
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
-        Checkbox(
-            checked = selected,
-            onCheckedChange = { onToggle() },
+    }
+}
+
+private fun previewPerAppState() = PerAppProxyUiState(
+    loading = false,
+    mode = PerAppProxyMode.ONLY_SELECTED,
+    selectedPackages = setOf("com.example.streaming", "com.example.removed"),
+    apps = listOf(
+        InstalledAppEntry(
+            label = "Streaming application with a deliberately long localized name",
+            packageName = "com.example.streaming",
+            isSystemApp = false,
+        ),
+        InstalledAppEntry(
+            label = "System browser",
+            packageName = "com.example.browser.system",
+            isSystemApp = true,
+        ),
+        InstalledAppEntry(
+            label = "com.example.removed",
+            packageName = "com.example.removed",
+            isSystemApp = false,
+            isAvailable = false,
+        ),
+    ),
+)
+
+@VeerThemePreviews
+@Composable
+private fun PerAppProxyThemePreview() {
+    VeerPreview {
+        PerAppProxyScreen(
+            state = previewPerAppState(),
+            runtimeRunning = true,
+            onBack = {}, onRetry = {}, onModeChange = {}, onTogglePackage = {},
+            onSelectVisible = {}, onClearSelection = {}, onSave = {}, onDismissMessage = {},
+        )
+    }
+}
+
+@VeerResponsivePreviews
+@Composable
+private fun PerAppProxyResponsivePreview() {
+    VeerPreview {
+        PerAppProxyScreen(
+            state = previewPerAppState(),
+            runtimeRunning = false,
+            onBack = {}, onRetry = {}, onModeChange = {}, onTogglePackage = {},
+            onSelectVisible = {}, onClearSelection = {}, onSave = {}, onDismissMessage = {},
         )
     }
 }

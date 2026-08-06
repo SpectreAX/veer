@@ -1,6 +1,8 @@
 package com.yamax.veer.ui.connections
 
 import com.yamax.veer.core_mihomo.MihomoRepository
+import com.yamax.veer.R
+import com.yamax.veer.ui.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -145,7 +147,8 @@ class ConnectionsViewModelTest {
 
         assertEquals(listOf("existing"), viewModel.uiState.value.connections.map { it.id })
         assertFalse(viewModel.uiState.value.loading)
-        assertTrue(viewModel.uiState.value.message.orEmpty().contains("刷新连接失败"))
+        val message = viewModel.uiState.value.message as UiText.Resource
+        assertEquals(R.string.connections_refresh_failed, message.resourceId)
     }
 
     private class FakeConnectionsGateway(

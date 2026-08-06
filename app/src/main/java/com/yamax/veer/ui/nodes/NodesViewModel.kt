@@ -60,6 +60,7 @@ internal data class NodesUiState(
     val busyTarget: String? = null,
     val batchProbeProgress: BatchProbeProgress? = null,
     val message: UiText? = null,
+    val error: UiText? = null,
 )
 
 internal class NodesViewModel(application: Application) : AndroidViewModel(application) {
@@ -108,21 +109,38 @@ internal class NodesViewModel(application: Application) : AndroidViewModel(appli
                         loading = false,
                         busyTarget = null,
                         batchProbeProgress = null,
+                        error = null,
                     )
                 }
                 return@launch
             }
-            _uiState.update { it.copy(loading = true, running = true) }
-            val snapshot = runCatching { repository.routingSnapshot() }
-                .getOrDefault(MihomoRepository.RoutingSnapshot.EMPTY)
-            _uiState.update {
-                it.copy(
-                    groups = buildGroups(snapshot),
-                    running = true,
-                    loading = false,
-                    busyTarget = null,
-                )
-            }
+            _uiState.update { it.copy(loading = true, running = true, error = null) }
+            runCatching { repository.routingSnapshot() }
+                .onSuccess { snapshot ->
+                    _uiState.update {
+                        it.copy(
+                            groups = buildGroups(snapshot),
+                            running = true,
+                            loading = false,
+                            busyTarget = null,
+                            error = null,
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            groups = emptyList(),
+                            running = true,
+                            loading = false,
+                            busyTarget = null,
+                            error = uiText(
+                                R.string.nodes_load_failed,
+                                error.message ?: error::class.java.simpleName,
+                            ),
+                        )
+                    }
+                }
         }
     }
 
@@ -294,6 +312,10 @@ internal class NodesViewModel(application: Application) : AndroidViewModel(appli
 
     fun toggleHideUnavailable() {
         _filter.update { it.copy(hideUnavailable = !it.hideUnavailable) }
+    }
+
+    fun clearFilters() {
+        _filter.value = NodeFilter()
     }
 
     private fun buildGroups(

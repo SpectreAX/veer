@@ -18,14 +18,20 @@ Veer carries a small embedded-runtime lifecycle patch set:
   cannot accumulate across in-process VPN restarts. Connection registration
   now shares the close gate, so a dial completing after resolver shutdown is
   rejected instead of escaping the tracked set.
-- `transport/gun/gun.go` treats `Close` as terminal. A closed gRPC-over-HTTP
-  client returns `net.ErrClosed` instead of lazily creating a new transport
-  after the owning provider generation has been destroyed.
+- `transport/gun/gun.go` treats `Close` as terminal, tracks every live Gun
+  transport and its raw sockets, and provides an embedded-runtime drain
+  barrier. This closes active HTTP/2 TLS reads that are not guaranteed to be
+  present in the HTTP client's idle pool during a concurrent health check.
 - resolver and TUN shutdown paths expose synchronous cancellation/cleanup
   barriers used by `go_core/veer_core.go`.
+- `go_core/third_party/sing-tun` preserves the gVisor `Attach(nil)` detach
+  signal; without it each Android TUN restart leaks the fd reader and packet
+  processors.
+- normal embedded controller shutdown ignores `http.ErrServerClosed` instead
+  of reporting a false runtime error after every successful Stop.
 
 These changes are covered by host unit tests and the physical-device
-Start/Stop fault matrix. On HyperOS/Android 13, all 14 lifecycle cases pass and
+Start/Stop fault matrix. On HyperOS/Android 13, all 17 lifecycle cases pass and
 repeated restart batches return to a stable goroutine count.
 
 Remove the local `replace` and this mirror after an equivalent lifecycle fix

@@ -20,13 +20,16 @@ internal object CoreStatePublisher {
         val resolver = context.applicationContext.contentResolver
         scope.launch {
             combine(
-                MihomoEngine.state,
+                MihomoEngine.status,
                 MihomoEngine.startupStage,
                 AppStateRepository.appState,
-            ) { engine, startup, appState ->
+            ) { status, startup, appState ->
                 PublisherKey(
-                    engineKind = CoreStateProtocol.engineKind(engine),
-                    engineError = (engine as? com.yamax.veer.core_mihomo.EngineState.Error)?.message,
+                    engineKind = CoreStateProtocol.engineKind(status.state),
+                    engineError = (status.state as? com.yamax.veer.core_mihomo.EngineState.Error)?.message,
+                    operationId = status.operationId,
+                    timestampMs = status.timestampMs,
+                    machineCode = status.machineCode,
                     startupStage = startup.name,
                     physicalNetworks = appState.connectivity.physicalNetworksAvailable,
                     hasInternet = appState.connectivity.hasInternet,
@@ -42,6 +45,9 @@ internal object CoreStatePublisher {
     private data class PublisherKey(
         val engineKind: String,
         val engineError: String?,
+        val operationId: String,
+        val timestampMs: Long,
+        val machineCode: String,
         val startupStage: String,
         val physicalNetworks: Int,
         val hasInternet: Boolean,

@@ -44,14 +44,18 @@ object ApiKeyStore {
         val value = key.trim()
         require(value.isNotEmpty()) { "API key must not be empty" }
         val encrypted = encrypt(value)
-        prefs(context).edit {
+        // Secret updates are rare and must survive an immediate process stop
+        // (for example, Android reclaiming the settings process right after
+        // the user taps Save). SharedPreferences.apply() can lose that update
+        // before its asynchronous disk write runs, so commit synchronously.
+        prefs(context).edit(commit = true) {
             putString(KEY_DEEPSEEK_ENCRYPTED, encrypted)
             remove(KEY_DEEPSEEK)
         }
     }
 
     fun clearDeepseekKey(context: Context) {
-        prefs(context).edit {
+        prefs(context).edit(commit = true) {
             remove(KEY_DEEPSEEK)
             remove(KEY_DEEPSEEK_ENCRYPTED)
         }

@@ -7,6 +7,14 @@ All conclusions are derived from reading `veer_core.go` directly. Where Mihomo
 internals (e.g., `executor.ApplyConfig`, `executor.Shutdown`) are referenced,
 the analysis is based on observed behaviour and Mihomo's public API contract.
 
+> 2026-08-05 update: this document preserves the original boundary analysis,
+> while the implemented readiness gate, typed cross-process state, late-start
+> cleanup ownership, synchronous resolver teardown, sing-tun detach fix and
+> Gun raw-socket drain are authoritative in `docs/MIHOMO_CORE_AUDIT.md` and
+> `docs/PHYSICAL_DEVICE_FULL_TEST_2026-08-05.md`. Older “current” limitations
+> below should be read as the defect baseline when those two reports say they
+> have been fixed and physically verified.
+
 ---
 
 ## 1. Call Inventory
@@ -218,9 +226,10 @@ After `hub.ApplyConfig` returns:
   independently.
 
 The bridge calls `hub.ApplyConfig(cfg)`, not `executor.ApplyConfig(cfg, true)`.
-The latter explicitly excludes the external controller in mihomo v1.18.10 and
-would leave `127.0.0.1:9090` unavailable while the Android state incorrectly
-reported `Running`. `Stop()` pairs `executor.Shutdown()` with an empty
+The latter excludes the external controller and would leave
+`127.0.0.1:9090` unavailable. After `Start()` returns, Android does not publish
+`Running` until both the native proxy tree and Controller `/version` pass the
+bounded readiness gate. `Stop()` pairs `executor.Shutdown()` with an empty
 `route.ReCreateServer` call to close the controller listener as well.
 
 ### Post-transfer semantics
@@ -472,6 +481,8 @@ runCatching { Veercore.start(homeDir, BASE_CONFIG, pfd.fd) }
         return
     }
 coreRunning = true
+// Running is still unpublished here. Verify native routing state and the
+// local Controller in the same bounded readiness attempt first.
 ```
 
 **V1 — ~~VIOLATION~~ FIXED: partial initialization cleaned up via `startAttempted` flag**

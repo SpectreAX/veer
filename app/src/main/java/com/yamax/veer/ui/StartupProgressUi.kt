@@ -1,6 +1,5 @@
 package com.yamax.veer.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,10 +13,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import androidx.annotation.StringRes
 import com.yamax.veer.R
 import com.yamax.veer.core_mihomo.StartupStage
+import com.yamax.veer.ui.designsystem.components.VeerCard
+import com.yamax.veer.ui.designsystem.preview.VeerPreview
+import com.yamax.veer.ui.designsystem.preview.VeerThemePreviews
+import com.yamax.veer.ui.designsystem.theme.VeerSpacing
 
 /**
  * Presentation model for the real startup stages emitted by the VPN service.
@@ -36,13 +38,11 @@ internal data class StartupProgressUi(
 internal fun StartupProgressPanel(stage: StartupStage) {
     val model = startupProgressUi(stage)
 
-    Column(
+    VeerCard(
         modifier = Modifier
             .fillMaxWidth()
-            .testTag("startup_progress_panel")
-            .background(MaterialTheme.colorScheme.secondaryContainer)
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+            .testTag("startup_progress_panel"),
+        containerColor = MaterialTheme.colorScheme.secondaryContainer,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -51,7 +51,10 @@ internal fun StartupProgressPanel(stage: StartupStage) {
                 modifier = Modifier.weight(1f),
             )
             Text(
-                text = "${(model.progress * 100).toInt()}%",
+                text = stringResource(
+                    R.string.startup_percent,
+                    (model.progress * 100).toInt(),
+                ),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.testTag("startup_progress_percent"),
@@ -74,6 +77,20 @@ internal fun StartupProgressPanel(stage: StartupStage) {
             color = MaterialTheme.colorScheme.onSecondaryContainer,
             modifier = Modifier.testTag("startup_progress_detail"),
         )
+    }
+}
+
+@VeerThemePreviews
+@Composable
+private fun StartupProgressPanelPreview() {
+    VeerPreview {
+        Column(
+            modifier = Modifier.padding(VeerSpacing.lg),
+            verticalArrangement = Arrangement.spacedBy(VeerSpacing.md),
+        ) {
+            StartupProgressPanel(StartupStage.ENSURING_GEO_DATA)
+            StartupProgressPanel(StartupStage.READY)
+        }
     }
 }
 
@@ -112,7 +129,13 @@ internal fun startupProgressUi(stage: StartupStage): StartupProgressUi = when (s
         detailRes = R.string.startup_starting_mihomo,
         step = 5,
         totalSteps = STARTUP_STEP_COUNT,
-        progress = 0.9f,
+        progress = 0.82f,
+    )
+    StartupStage.VERIFYING_RUNTIME -> StartupProgressUi(
+        detailRes = R.string.startup_verifying_mihomo,
+        step = 6,
+        totalSteps = STARTUP_STEP_COUNT,
+        progress = 0.94f,
     )
     StartupStage.READY -> StartupProgressUi(
         detailRes = R.string.startup_ready,
@@ -122,4 +145,4 @@ internal fun startupProgressUi(stage: StartupStage): StartupProgressUi = when (s
     )
 }
 
-private const val STARTUP_STEP_COUNT = 5
+private const val STARTUP_STEP_COUNT = 6

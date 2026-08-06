@@ -15,6 +15,7 @@ class StartupProgressUiTest {
             StartupStage.VALIDATING_CONFIG,
             StartupStage.ESTABLISHING_TUNNEL,
             StartupStage.STARTING_RUNTIME,
+            StartupStage.VERIFYING_RUNTIME,
             StartupStage.READY,
         )
 
@@ -23,7 +24,7 @@ class StartupProgressUiTest {
         assertTrue(models.zipWithNext().all { (left, right) -> left.progress < right.progress })
         assertTrue(models.all { it.progress in 0f..1f })
         assertEquals(1, models.first().step)
-        assertEquals(5, models.last().step)
+        assertEquals(6, models.last().step)
         assertEquals(1f, models.last().progress)
     }
 

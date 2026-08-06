@@ -15,14 +15,19 @@ import java.io.File
 class VeerApplication : Application() {
     override fun onCreate() {
         super.onCreate()
-        ThemePreference.initialize(this)
         val coreProcess = ProcessRole.isCoreProcess()
         VeerLog.init(File(filesDir, if (coreProcess) "logs/core" else "logs"))
-        ProfileManager.init(this)
         AppStateRepository.init()
         if (coreProcess) {
+            // Keep remote-process Application startup minimal. ContentProvider
+            // publication is subject to Android's process-start timeout; reading
+            // a large active profile here can make the system kill both the core
+            // and its waiting client. Profile initialization runs from bootCore
+            // after foreground-service promotion, on Dispatchers.IO.
             CoreStatePublisher.init(this)
         } else {
+            ThemePreference.initialize(this)
+            ProfileManager.init(this)
             SubscriptionRefreshHistory.init(this)
             SubscriptionRefreshScheduler.schedule(this)
             CoreStateClient.init(this)

@@ -8,6 +8,12 @@ require github.com/metacubex/mihomo v1.19.29
 
 replace github.com/metacubex/mihomo => ./third_party/mihomo
 
+// v0.4.21 wraps a nil detach dispatcher in LinkEndpointFilter, so Android's
+// fd-backed gVisor reader and packet processors survive every embedded restart.
+// Keep the exact tagged source locally with the one-line lifecycle fix recorded
+// in third_party/sing-tun/VEER_PATCH.md.
+replace github.com/metacubex/sing-tun => ./third_party/sing-tun
+
 require (
 	github.com/RyuaNerin/go-krypto v1.3.0 // indirect
 	github.com/Yawning/aez v0.0.0-20211027044916-e49e68abd344 // indirect

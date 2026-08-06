@@ -1,13 +1,10 @@
 package com.yamax.veer.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -18,12 +15,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import androidx.annotation.StringRes
 import com.yamax.veer.R
 import com.yamax.veer.core_compatibility.BackgroundRestrictionReason
 import com.yamax.veer.core_compatibility.BackgroundRestrictionStatus
 import com.yamax.veer.core_compatibility.BackgroundRisk
+import com.yamax.veer.ui.designsystem.components.VeerCard
+import com.yamax.veer.ui.designsystem.components.VeerSecondaryButton
+import com.yamax.veer.ui.designsystem.components.VeerStatus
+import com.yamax.veer.ui.designsystem.components.VeerStatusBadge
+import com.yamax.veer.ui.designsystem.theme.VeerSpacing
 
 @Composable
 fun BackgroundProtectionCard(
@@ -45,13 +46,11 @@ fun BackgroundProtectionCard(
         BackgroundRisk.READY -> MaterialTheme.colorScheme.surfaceVariant
     }
 
-    Column(
+    VeerCard(
         modifier = modifier
             .fillMaxWidth()
-            .testTag("background_protection_card")
-            .background(containerColor)
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+            .testTag("background_protection_card"),
+        containerColor = containerColor,
     ) {
         Row(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.weight(1f)) {
@@ -62,6 +61,20 @@ fun BackgroundProtectionCard(
                 Text(
                     text = stringResource(status.summaryRes()),
                     style = MaterialTheme.typography.bodySmall,
+                )
+                VeerStatusBadge(
+                    status = when (status.risk) {
+                        BackgroundRisk.RESTRICTED -> VeerStatus.Warning
+                        BackgroundRisk.ATTENTION -> VeerStatus.Warning
+                        BackgroundRisk.READY -> VeerStatus.Connected
+                    },
+                    label = stringResource(
+                        when (status.risk) {
+                            BackgroundRisk.RESTRICTED -> R.string.background_status_restricted
+                            BackgroundRisk.ATTENTION -> R.string.background_status_attention
+                            BackgroundRisk.READY -> R.string.background_status_ready
+                        },
+                    ),
                 )
             }
             TextButton(onClick = { expanded = !expanded }) {
@@ -88,26 +101,23 @@ fun BackgroundProtectionCard(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            OutlinedButton(
+            VeerSecondaryButton(
+                text = stringResource(R.string.background_battery_settings),
                 onClick = onOpenBatterySettings,
                 modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(stringResource(R.string.background_battery_settings))
-            }
+            )
             if (status.needsOemReview) {
-                OutlinedButton(
+                VeerSecondaryButton(
+                    text = stringResource(R.string.background_autostart_settings),
                     onClick = onOpenAutoStartSettings,
                     modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(stringResource(R.string.background_autostart_settings))
-                }
+                )
             }
-            TextButton(
+            VeerSecondaryButton(
+                text = stringResource(R.string.background_app_details),
                 onClick = onOpenApplicationDetails,
                 modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(stringResource(R.string.background_app_details))
-            }
+            )
         }
     }
 }

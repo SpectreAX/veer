@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"syscall"
 
@@ -28,6 +29,7 @@ import (
 	"github.com/metacubex/mihomo/listener"
 	LC "github.com/metacubex/mihomo/listener/config"
 	"github.com/metacubex/mihomo/log"
+	"github.com/metacubex/mihomo/transport/gun"
 	"github.com/metacubex/mihomo/tunnel"
 	"github.com/metacubex/mihomo/tunnel/statistic"
 )
@@ -265,6 +267,10 @@ func Stop() (err error) {
 			_ = proxy.Close()
 		}
 	}
+	// A provider health check can race with the proxy-map walk above after it
+	// has already obtained a Gun transport. Close the process-wide registry as
+	// the final generation barrier so no orphaned HTTP/2 read loop survives.
+	gun.CloseAllTransports()
 	// Close pooled DNS transports (including HTTP/2) that are not represented
 	// by statistic trackers. The embedded runtime must make this a synchronous
 	// generation barrier; upstream's asynchronous ResetConnection can otherwise
@@ -336,6 +342,25 @@ func ReloadRules(homeDir string, configName string) (err error) {
 	tunnel.UpdateRules(cfg.Rules, cfg.SubRules, cfg.RuleProviders)
 	log.Infoln("mihomo rules reloaded; count=%d", len(cfg.Rules))
 	return nil
+}
+
+// UpdateSystemDNS replaces Mihomo's Android system-resolver generation after
+// ConnectivityManager reports new LinkProperties. The comma-separated values
+// are already normalized as host:port pairs by the Kotlin network monitor.
+// Passing an empty string clears the resolver until an underlying network
+// becomes available again.
+func UpdateSystemDNS(servers string) {
+	defer func() { _ = recover() }()
+	var values []string
+	for _, value := range strings.Split(servers, ",") {
+		if value = strings.TrimSpace(value); value != "" {
+			values = append(values, value)
+		}
+	}
+	applySystemDNS(values)
+	resolver.ClearCache()
+	resolver.ResetConnectionSync()
+	log.Infoln("Android system DNS updated; count=%d", len(values))
 }
 
 // TrafficStats is the small, allocation-light runtime snapshot consumed by
@@ -453,5 +478,5 @@ func GetDashboardRoutingStats(defaultPolicy string) (stats *DashboardRoutingStat
 // Version returns a build identifier so the Kotlin layer can verify that the
 // .aar it loaded matches the wrapper sources.
 func Version() string {
-	return "veer-core/0.1.8+mihomo-1.19.29.cmfa.gvisor"
+	return "veer-core/0.1.9+mihomo-1.19.29.e26714a.cmfa.gvisor"
 }

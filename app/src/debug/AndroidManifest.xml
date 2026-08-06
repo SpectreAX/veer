@@ -11,6 +11,11 @@
             android:exported="true"
             android:label="Connectivity Timeline" />
 
+        <activity
+            android:name=".testing.UiReviewActivity"
+            android:exported="true"
+            android:label="Veer UI Review" />
+
         <!-- Explicit ADB-only hook used by live AI integration tests. -->
         <receiver
             android:name="com.yamax.veer.testing.DebugAiCommandReceiver"

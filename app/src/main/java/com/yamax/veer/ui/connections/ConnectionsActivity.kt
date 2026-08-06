@@ -5,30 +5,65 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import com.yamax.veer.R
 import com.yamax.veer.core_mihomo.MihomoRepository
+import com.yamax.veer.ui.designsystem.components.VeerCard
+import com.yamax.veer.ui.designsystem.components.VeerDialog
+import com.yamax.veer.ui.designsystem.components.VeerSecondaryButton
+import com.yamax.veer.ui.designsystem.components.VeerStateView
+import com.yamax.veer.ui.designsystem.components.VeerStatus
+import com.yamax.veer.ui.designsystem.components.VeerStatusBadge
+import com.yamax.veer.ui.designsystem.components.VeerTextField
+import com.yamax.veer.ui.designsystem.components.VeerTopAppBar
+import com.yamax.veer.ui.designsystem.preview.VeerPreview
+import com.yamax.veer.ui.designsystem.preview.VeerResponsivePreviews
+import com.yamax.veer.ui.designsystem.preview.VeerThemePreviews
+import com.yamax.veer.ui.designsystem.theme.VeerDimensions
+import com.yamax.veer.ui.designsystem.theme.VeerShapes
+import com.yamax.veer.ui.designsystem.theme.VeerSpacing
+import com.yamax.veer.ui.resolve
 import com.yamax.veer.ui.theme.VeerTheme
 import java.time.Duration
 import java.time.Instant
 import java.time.format.DateTimeParseException
+import java.util.Locale
 import kotlinx.coroutines.delay
 
 class ConnectionsActivity : ComponentActivity() {
@@ -57,134 +92,253 @@ class ConnectionsActivity : ComponentActivity() {
                     onSort = viewModel::updateSort,
                     onCloseConnection = viewModel::closeConnection,
                     onCloseAll = viewModel::closeAll,
-                    onDismissMessage = viewModel::clearMessage
+                    onDismissMessage = viewModel::clearMessage,
                 )
             }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ConnectionsScreen(
+internal fun ConnectionsScreen(
     state: ConnectionsUiState,
     onBack: () -> Unit,
     onSearch: (String) -> Unit,
     onSort: (SortMode) -> Unit,
     onCloseConnection: (String) -> Unit,
     onCloseAll: () -> Unit,
-    onDismissMessage: () -> Unit
+    onDismissMessage: () -> Unit,
 ) {
-    var searchVisible by remember { mutableStateOf(false) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
+    var confirmCloseAll by remember { mutableStateOf(false) }
+
+    if (confirmCloseAll) {
+        VeerDialog(
+            title = stringResource(R.string.connections_close_all_title),
+            body = stringResource(R.string.connections_close_all_description),
+            confirmText = stringResource(R.string.connections_close_all_confirm),
+            onConfirm = {
+                confirmCloseAll = false
+                onCloseAll()
+            },
+            dismissText = stringResource(R.string.common_cancel),
+            onDismiss = { confirmCloseAll = false },
+        )
+    }
 
     Scaffold(
+        modifier = Modifier
+            .fillMaxSize()
+            .testTag("connections_screen"),
         topBar = {
-            TopAppBar(
-                title = { Text("活跃连接") },
-                navigationIcon = {
-                    TextButton(onClick = onBack) { Text("返回") }
-                },
+            VeerTopAppBar(
+                title = stringResource(R.string.connections_title),
+                onBack = onBack,
+                backContentDescription = stringResource(R.string.common_back),
                 actions = {
-                    IconButton(onClick = { searchVisible = !searchVisible }) {
-                        Icon(Icons.Default.Search, contentDescription = "搜索")
-                    }
                     Box {
-                        TextButton(onClick = { sortMenuExpanded = true }) {
-                            Text("排序")
+                        IconButton(
+                            onClick = { sortMenuExpanded = true },
+                            enabled = state.running && state.connections.isNotEmpty(),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = stringResource(R.string.connections_sort),
+                            )
                         }
                         DropdownMenu(
                             expanded = sortMenuExpanded,
-                            onDismissRequest = { sortMenuExpanded = false }
+                            onDismissRequest = { sortMenuExpanded = false },
                         ) {
-                            DropdownMenuItem(
-                                text = { Text("按流量") },
-                                onClick = { onSort(SortMode.TRAFFIC_DESC); sortMenuExpanded = false }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("按时长") },
-                                onClick = { onSort(SortMode.DURATION_DESC); sortMenuExpanded = false }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("按域名") },
-                                onClick = { onSort(SortMode.HOST_ASC); sortMenuExpanded = false }
-                            )
-                        }
-                    }
-                    TextButton(
-                        onClick = onCloseAll,
-                        enabled = state.connections.isNotEmpty(),
-                    ) {
-                        Text("全部断开")
-                    }
-                }
-            )
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
-            AnimatedVisibility(visible = searchVisible) {
-                OutlinedTextField(
-                    value = state.searchQuery,
-                    onValueChange = onSearch,
-                    placeholder = { Text("搜索域名、规则或节点...") },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    singleLine = true,
-                    trailingIcon = {
-                        if (state.searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { onSearch("") }) {
-                                Icon(Icons.Default.Close, contentDescription = "清空")
+                            SortMode.entries.forEach { mode ->
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(mode.labelResource)) },
+                                    onClick = {
+                                        onSort(mode)
+                                        sortMenuExpanded = false
+                                    },
+                                )
                             }
                         }
                     }
-                )
-            }
+                },
+            )
+        },
+    ) { padding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+            contentAlignment = Alignment.TopCenter,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .widthIn(max = VeerDimensions.contentMaxWidth)
+                    .padding(horizontal = VeerSpacing.lg, vertical = VeerSpacing.md),
+                verticalArrangement = Arrangement.spacedBy(VeerSpacing.md),
+            ) {
+                ConnectionsSummary(state = state)
 
-            state.message?.let { message ->
-                Row(
+                VeerTextField(
+                    value = state.searchQuery,
+                    onValueChange = onSearch,
+                    label = stringResource(R.string.connections_search_label),
+                    placeholder = stringResource(R.string.connections_search_placeholder),
+                    enabled = state.running,
+                    singleLine = true,
+                    trailingIcon = if (state.searchQuery.isEmpty()) null else {
+                        {
+                            IconButton(onClick = { onSearch("") }) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = stringResource(R.string.common_clear),
+                                )
+                            }
+                        }
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                        .background(
-                            MaterialTheme.colorScheme.secondaryContainer,
-                            RoundedCornerShape(12.dp)
-                        )
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(message, modifier = Modifier.weight(1f))
-                    TextButton(onClick = onDismissMessage) { Text("关闭") }
-                }
-            }
-
-            if (!state.running) {
-                EmptyState("VPN 尚未连接")
-            } else if (state.loading && state.connections.isEmpty()) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
-            } else if (state.filteredConnections.isEmpty()) {
-                EmptyState(
-                    if (state.searchQuery.isBlank()) "暂无活跃连接" else "没有匹配的连接",
+                        .testTag("connections_search"),
                 )
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(VeerSpacing.sm),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    items(state.filteredConnections, key = { it.id }) { conn ->
-                        ConnectionRow(
-                            connection = conn,
-                            onClose = { onCloseConnection(conn.id) }
-                        )
+                    Text(
+                        text = stringResource(
+                            R.string.connections_sorted_by,
+                            stringResource(state.sortMode.labelResource),
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1f),
+                    )
+                    VeerSecondaryButton(
+                        text = stringResource(R.string.connections_close_all),
+                        onClick = { confirmCloseAll = true },
+                        enabled = state.running && state.connections.isNotEmpty(),
+                    )
+                }
+
+                state.message?.let { message ->
+                    VeerCard(
+                        modifier = Modifier.fillMaxWidth(),
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(VeerSpacing.sm),
+                        ) {
+                            Text(
+                                text = message.resolve(),
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f),
+                            )
+                            VeerSecondaryButton(
+                                text = stringResource(R.string.common_close),
+                                onClick = onDismissMessage,
+                            )
+                        }
                     }
                 }
+
+                ConnectionsContent(
+                    state = state,
+                    onClearSearch = { onSearch("") },
+                    onCloseConnection = onCloseConnection,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConnectionsSummary(state: ConnectionsUiState) {
+    VeerCard(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(VeerSpacing.md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            VeerStatusBadge(
+                status = when {
+                    state.loading -> VeerStatus.Loading
+                    state.running -> VeerStatus.Connected
+                    else -> VeerStatus.Disconnected
+                },
+                label = stringResource(
+                    when {
+                        state.loading -> R.string.connections_status_loading
+                        state.running -> R.string.connections_status_live
+                        else -> R.string.connections_status_stopped
+                    },
+                ),
+            )
+            Text(
+                text = stringResource(R.string.connections_count, state.connections.size),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ConnectionsContent(
+    state: ConnectionsUiState,
+    onClearSearch: () -> Unit,
+    onCloseConnection: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    when {
+        !state.running -> VeerStateView(
+            icon = Icons.Default.Info,
+            iconContentDescription = null,
+            title = stringResource(R.string.connections_vpn_stopped_title),
+            description = stringResource(R.string.connections_vpn_stopped_description),
+            modifier = modifier.fillMaxWidth(),
+        )
+
+        state.loading && state.connections.isEmpty() -> VeerStateView(
+            title = stringResource(R.string.connections_loading),
+            description = stringResource(R.string.connections_loading_description),
+            loading = true,
+            modifier = modifier.fillMaxWidth(),
+        )
+
+        state.filteredConnections.isEmpty() -> VeerStateView(
+            icon = Icons.Default.Info,
+            iconContentDescription = null,
+            title = stringResource(
+                if (state.searchQuery.isBlank()) R.string.connections_empty_title
+                else R.string.connections_filtered_empty_title,
+            ),
+            description = stringResource(
+                if (state.searchQuery.isBlank()) R.string.connections_empty_description
+                else R.string.connections_filtered_empty_description,
+            ),
+            actionText = if (state.searchQuery.isBlank()) null
+            else stringResource(R.string.connections_clear_search),
+            onAction = if (state.searchQuery.isBlank()) null else onClearSearch,
+            modifier = modifier.fillMaxWidth(),
+        )
+
+        else -> LazyColumn(
+            modifier = modifier
+                .fillMaxWidth()
+                .testTag("connections_list"),
+            verticalArrangement = Arrangement.spacedBy(VeerSpacing.sm),
+        ) {
+            items(state.filteredConnections, key = MihomoRepository.ConnectionInfo::id) { item ->
+                ConnectionRow(
+                    connection = item,
+                    onClose = { onCloseConnection(item.id) },
+                )
             }
         }
     }
@@ -193,91 +347,215 @@ private fun ConnectionsScreen(
 @Composable
 private fun ConnectionRow(
     connection: MihomoRepository.ConnectionInfo,
-    onClose: () -> Unit
+    onClose: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp)
+    val host = connection.host.ifBlank { connection.destinationIP }
+    val exitNode = connection.chains.lastOrNull()
+        ?: stringResource(R.string.connections_direct)
+    val rule = connection.rule.ifBlank { stringResource(R.string.connections_rule_unknown) }
+    val duration = durationText(connection.start)
+
+    VeerCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("connection_${connection.id}"),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
         Row(
-            modifier = Modifier
-                .padding(14.dp)
-                .fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(VeerSpacing.sm),
+            verticalAlignment = Alignment.Top,
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(VeerSpacing.xs),
+            ) {
+                Text(
+                    text = host,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(VeerSpacing.sm),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    ProtocolBadge(connection.network)
                     Text(
-                        text = connection.host.ifBlank { connection.destinationIP },
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.bodyLarge
+                        text = duration,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.labelMedium,
                     )
-                    Spacer(Modifier.width(8.dp))
-                    Surface(
-                        color = MaterialTheme.colorScheme.secondaryContainer,
-                        shape = RoundedCornerShape(4.dp)
-                    ) {
-                        Text(
-                            text = connection.network.uppercase(),
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
-                    }
                 }
-                Spacer(Modifier.height(4.dp))
-                val exitNode = connection.chains.lastOrNull() ?: "DIRECT"
-                Text(
-                    text = "${connection.rule} → $exitNode",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.height(4.dp))
-                val duration = parseDuration(connection.start)
-                Text(
-                    text = "↑${formatBytes(connection.upload)}  ↓${formatBytes(connection.download)} · $duration",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
             IconButton(onClick = onClose) {
-                Icon(Icons.Default.Close, contentDescription = "断开")
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = stringResource(R.string.connections_close_one),
+                )
             }
         }
+        Text(
+            text = stringResource(R.string.connections_route, rule, exitNode),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Text(
+            text = stringResource(
+                R.string.connections_traffic,
+                formatBytes(connection.upload),
+                formatBytes(connection.download),
+            ),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
 
 @Composable
-private fun EmptyState(text: String) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun ProtocolBadge(network: String) {
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        shape = VeerShapes.pill,
+    ) {
+        Text(
+            text = network.uppercase(Locale.ROOT),
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(horizontal = VeerSpacing.sm, vertical = VeerSpacing.xs),
+        )
     }
 }
 
+@Composable
+private fun durationText(startIso: String): String {
+    val duration = parseDuration(startIso)
+    return when {
+        duration.hours > 0 -> stringResource(
+            R.string.connections_duration_hms,
+            duration.hours,
+            duration.minutes,
+            duration.seconds,
+        )
+        duration.minutes > 0 -> stringResource(
+            R.string.connections_duration_ms,
+            duration.minutes,
+            duration.seconds,
+        )
+        else -> stringResource(R.string.connections_duration_s, duration.seconds)
+    }
+}
+
+private data class ConnectionDuration(
+    val hours: Long,
+    val minutes: Long,
+    val seconds: Long,
+)
+
+private fun parseDuration(startIso: String): ConnectionDuration {
+    if (startIso.isBlank()) return ConnectionDuration(0, 0, 0)
+    val totalSeconds = try {
+        Duration.between(Instant.parse(startIso), Instant.now()).seconds.coerceAtLeast(0L)
+    } catch (_: DateTimeParseException) {
+        0L
+    }
+    return ConnectionDuration(
+        hours = totalSeconds / 3_600,
+        minutes = (totalSeconds / 60) % 60,
+        seconds = totalSeconds % 60,
+    )
+}
+
 private fun formatBytes(bytes: Long): String = when {
-    bytes >= 1024L * 1024L * 1024L -> "%.1f GB".format(bytes / (1024.0 * 1024.0 * 1024.0))
-    bytes >= 1024L * 1024L -> "%.1f MB".format(bytes / (1024.0 * 1024.0))
-    bytes >= 1024L -> "%.1f KB".format(bytes / 1024.0)
+    bytes >= GIB -> String.format(Locale.US, "%.1f GB", bytes / GIB.toDouble())
+    bytes >= MIB -> String.format(Locale.US, "%.1f MB", bytes / MIB.toDouble())
+    bytes >= KIB -> String.format(Locale.US, "%.1f KB", bytes / KIB.toDouble())
     else -> "$bytes B"
 }
 
-private fun parseDuration(startIso: String): String {
-    if (startIso.isBlank()) return "0s"
-    return try {
-        val startInstant = Instant.parse(startIso)
-        val now = Instant.now()
-        val totalSeconds = Duration.between(startInstant, now).seconds.coerceAtLeast(0L)
-        val h = totalSeconds / 3_600
-        val m = (totalSeconds / 60) % 60
-        val s = totalSeconds % 60
-        when {
-            h > 0 -> "${h}h ${m}m ${s}s"
-            m > 0 -> "${m}m ${s}s"
-            else -> "${s}s"
-        }
-    } catch (e: DateTimeParseException) {
-        "0s"
+private val SortMode.labelResource: Int
+    get() = when (this) {
+        SortMode.TRAFFIC_DESC -> R.string.connections_sort_traffic
+        SortMode.DURATION_DESC -> R.string.connections_sort_duration
+        SortMode.HOST_ASC -> R.string.connections_sort_host
+    }
+
+private val PreviewConnections = listOf(
+    MihomoRepository.ConnectionInfo(
+        id = "preview-stream",
+        host = "very-long-streaming-service.example.com",
+        destinationIP = "203.0.113.42",
+        network = "tcp",
+        type = "HTTPS",
+        chains = listOf("Japan Tokyo premium streaming and AI route"),
+        rule = "Netflix and streaming services",
+        rulePayload = "",
+        download = 84L * MIB,
+        upload = 3L * MIB,
+        start = "",
+    ),
+    MihomoRepository.ConnectionInfo(
+        id = "preview-direct",
+        host = "updates.example.org",
+        destinationIP = "198.51.100.8",
+        network = "udp",
+        type = "QUIC",
+        chains = emptyList(),
+        rule = "DIRECT",
+        rulePayload = "",
+        download = 512L * KIB,
+        upload = 48L * KIB,
+        start = "",
+    ),
+)
+
+@VeerThemePreviews
+@Composable
+private fun ConnectionsNormalPreview() {
+    VeerPreview {
+        ConnectionsScreen(
+            state = ConnectionsUiState(
+                connections = PreviewConnections,
+                filteredConnections = PreviewConnections,
+                loading = false,
+                running = true,
+            ),
+            onBack = {}, onSearch = {}, onSort = {}, onCloseConnection = {},
+            onCloseAll = {}, onDismissMessage = {},
+        )
+    }
+}
+
+@VeerResponsivePreviews
+@Composable
+private fun ConnectionsResponsivePreview() {
+    VeerPreview {
+        ConnectionsScreen(
+            state = ConnectionsUiState(
+                connections = PreviewConnections,
+                filteredConnections = PreviewConnections,
+                loading = false,
+                running = true,
+            ),
+            onBack = {}, onSearch = {}, onSort = {}, onCloseConnection = {},
+            onCloseAll = {}, onDismissMessage = {},
+        )
+    }
+}
+
+@VeerThemePreviews
+@Composable
+private fun ConnectionsStoppedPreview() {
+    VeerPreview {
+        ConnectionsScreen(
+            state = ConnectionsUiState(loading = false, running = false),
+            onBack = {}, onSearch = {}, onSort = {}, onCloseConnection = {},
+            onCloseAll = {}, onDismissMessage = {},
+        )
     }
 }
 
 private const val CONNECTION_REFRESH_INTERVAL_MS = 2_000L
+private const val KIB = 1_024L
+private const val MIB = KIB * 1_024L
+private const val GIB = MIB * 1_024L

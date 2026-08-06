@@ -5,6 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.yamax.veer.app_state.AppStateRepository
 import com.yamax.veer.core_mihomo.EngineState
 import com.yamax.veer.core_mihomo.MihomoRepository
+import com.yamax.veer.R
+import com.yamax.veer.ui.UiText
+import com.yamax.veer.ui.uiText
 import java.time.Instant
 import java.time.format.DateTimeParseException
 import java.util.Locale
@@ -24,13 +27,13 @@ enum class SortMode {
     HOST_ASC,
 }
 
-data class ConnectionsUiState(
+internal data class ConnectionsUiState(
     val connections: List<MihomoRepository.ConnectionInfo> = emptyList(),
     val filteredConnections: List<MihomoRepository.ConnectionInfo> = emptyList(),
     val searchQuery: String = "",
     val sortMode: SortMode = SortMode.TRAFFIC_DESC,
     val loading: Boolean = true,
-    val message: String? = null,
+    val message: UiText? = null,
     val running: Boolean = false,
 )
 
@@ -53,7 +56,7 @@ private class MihomoConnectionsGateway(
         repository.closeAllConnections()
 }
 
-class ConnectionsViewModel internal constructor(
+internal class ConnectionsViewModel internal constructor(
     private val gateway: ConnectionsGateway,
     runningFlow: Flow<Boolean>,
 ) : ViewModel() {
@@ -122,7 +125,7 @@ class ConnectionsViewModel internal constructor(
                     _uiState.update {
                         it.copy(
                             loading = false,
-                            message = "刷新连接失败，请确认代理核心正在运行",
+                            message = uiText(R.string.connections_refresh_failed),
                         )
                     }
                 },
@@ -158,14 +161,14 @@ class ConnectionsViewModel internal constructor(
 
     fun closeConnection(id: String) {
         if (id.isBlank()) {
-            _uiState.update { it.copy(message = "无效的连接标识") }
+            _uiState.update { it.copy(message = uiText(R.string.connections_invalid_id)) }
             return
         }
         viewModelScope.launch {
             if (gateway.closeConnection(id)) {
                 removeConnections { it.id == id }
             } else {
-                _uiState.update { it.copy(message = "关闭连接失败") }
+                _uiState.update { it.copy(message = uiText(R.string.connections_close_failed)) }
             }
         }
     }
@@ -174,9 +177,11 @@ class ConnectionsViewModel internal constructor(
         viewModelScope.launch {
             if (gateway.closeAllConnections()) {
                 removeConnections { true }
-                _uiState.update { it.copy(message = "已关闭所有连接") }
+                _uiState.update { it.copy(message = uiText(R.string.connections_close_all_success)) }
             } else {
-                _uiState.update { it.copy(message = "关闭所有连接失败") }
+                _uiState.update {
+                    it.copy(message = uiText(R.string.connections_close_all_failed))
+                }
             }
         }
     }
