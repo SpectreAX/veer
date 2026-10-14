@@ -138,7 +138,7 @@
       "motion": "No custom animation or motion tokens",
       "previewPolicy": "Preserve native SwiftUI metadata. No HTML/CSS previews, sampled semantic-color hex, guessed system font sizes or synthesized tonal ramps; browser panel previews cannot faithfully express this native implementation.",
       "privacy": "Full imported source stays in local memory and loopback service, never AI context. AI receives anonymous outlets, regions and anonymized prompt. Prompt explicitly warns against secrets; arbitrary user-entered secrets cannot be guaranteed to be detected. Keychain status restores booleans only, never secret values into UI. Confirmation changes draft only; no Controller/VPN or proxy reload.",
-      "serviceDependency": "Separately running local rule service at 127.0.0.1:4317 is required",
+      "serviceDependency": "App bundles Node, editing service and placeholder validator; authenticated random 127.0.0.1 port; app owns lifecycle; external npm start no longer required",
       "evidence": {
         "date": "2026-10-14",
         "review": "Scoped independent native UI SHIP; mapped states and persistence approved, no pending mechanical UI findings. No browser/CSS detector used.",

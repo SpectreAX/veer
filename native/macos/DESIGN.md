@@ -140,7 +140,7 @@ composer、通用实底面板和操作层使用 panel 圆角；用户指令气�
 
 本轮 29 项 Swift Tests 通过（VeerMac 15 / VeerEditor 14），Release 构建及 ad-hoc 签名验证通过；保留用户另一个未保存旧窗口。无节点/无密钥夹具实际验证导入、多服务生成、确认与撤销守卫；范围展开→确认→关闭/重开仍为 on；紧凑审阅关闭前后历史滚动值均为 0.4880382775119617。完整副本 `/tmp/veer-native-opencode-edited-20261014.yaml` 经 YAML 解析确认含当前 Netflix/ChatGPT→美国 10 条服务规则与 MATCH，非 rules 前缀逐字保留，未覆盖来源文件。
 
-运行仍依赖单独启动的本机服务 `127.0.0.1:4317`。未调用真实 AI、未访问真实订阅、未读取钥匙串值；只有状态布尔值恢复。取消/失败有整合测试覆盖，但真实长耗时 AI、VoiceOver、macOS 14、系统 Reduce Transparency、真实网络可达性、公开签名/公证未实测。SHIP 是本次原生 UI 范围结论，不是公开分发或完整代理验证。
+以上 UI 验收时仍依赖单独启动的本机服务 `127.0.0.1:4317`；同日后续已将服务内置进 `.app`，采用会话认证随机本机端口与自有进程清理，界面构图不变，验证见 `../../docs/MACOS_BUNDLED_SERVICE_2026-10-14.md`。未调用真实 AI、未访问真实订阅、未读取钥匙串值；只有状态布尔值恢复。取消/失败有整合测试覆盖，但真实长耗时 AI、VoiceOver、macOS 14、系统 Reduce Transparency、真实网络可达性、公开签名/公证未实测。SHIP 是本次原生 UI 范围结论，不是公开分发或完整代理验证。
 
 ### Historical Evidence — superseded layouts
 

@@ -29,7 +29,7 @@ async function body(req) {
   try { return JSON.parse(Buffer.concat(chunks).toString()); } catch { throw new EditorError('请求格式无效。'); }
 }
 
-export function createEditorServer({ binary = process.env.MIHOMO_BIN || join(root, '.cache/mihomo'), aiResolver = resolveAi, keyStore = createKeyStore(), saveLegacySessionKeys = false } = {}) {
+export function createEditorServer({ binary = process.env.MIHOMO_BIN || join(root, '.cache/mihomo'), aiResolver = resolveAi, keyStore = createKeyStore(), saveLegacySessionKeys = false, authToken } = {}) {
   return createServer(async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -38,6 +38,7 @@ export function createEditorServer({ binary = process.env.MIHOMO_BIN || join(roo
       const port = req.socket.localPort;
       const validHosts = [`127.0.0.1:${port}`, `localhost:${port}`];
       if (!validHosts.includes(req.headers.host)) return send(res, 403, { error: '仅允许本机访问。' });
+      if (authToken && req.headers.authorization !== `Bearer ${authToken}`) return send(res, 403, { error: '本机编辑服务认证失败。请重新启动应用。' });
       const path = new URL(req.url, `http://${req.headers.host}`).pathname;
       if (req.method === 'GET' && assets.has(path)) {
         const [file, type] = assets.get(path);

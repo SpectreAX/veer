@@ -19,8 +19,11 @@ AI receives anonymous routing context. Confirmation changes only the draft,
 not a running proxy. Current verification: 29 Swift tests, Release build and
 ad-hoc signature checks, plus scoped native UI validation. Real AI requests,
 older macOS/accessibility runtime checks and public distribution notarization
-were not verified in this round. The local service on `127.0.0.1:4317` is still
-required; this is not yet a standalone distribution.
+were not verified in this round. The `.app` now bundles its own editor service,
+Node runtime, dependencies and rule validator: no external `npm start` is
+required. It uses an authenticated random loopback port and stops its owned
+service on exit. This remains an ad-hoc development build, not a notarized
+public distribution. See [`docs/MACOS_BUNDLED_SERVICE_2026-10-14.md`](docs/MACOS_BUNDLED_SERVICE_2026-10-14.md).
 
 Build from `native/macos` with `zsh scripts/build-app.sh`. Output is
 `native/macos/dist/Veer AI Editor.app` relative to **this checkout**, not to an

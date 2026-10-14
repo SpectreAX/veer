@@ -33,8 +33,11 @@ struct EditorView: View {
             if let issue = model.issue {
                 HStack(alignment: .top, spacing: EditorLayout.small) {
                     Image(systemName: "exclamationmark.triangle")
-                    Text(issue).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
-                    Spacer()
+                    ScrollView {
+                        Text(issue).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }.frame(height: WorkbenchStyle.composerHeight)
+                        .accessibilityLabel("错误详情，可滚动查看完整内容")
                     Button("关闭") { model.issue = nil }.buttonStyle(.plain)
                 }
                 .font(.callout).foregroundStyle(.red)

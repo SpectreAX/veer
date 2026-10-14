@@ -101,10 +101,13 @@ export function applyPlan(text, plan) {
     if (Object.keys(op).some(k => !fields.includes(k))) fail('AI 规则操作包含未支持字段，请重新生成。');
     validateMatch(op.matchType, op.match);
     const key = `${op.matchType},${op.match}`;
-    if (touched.has(key)) fail(`计划对 ${op.match} 有重复或冲突修改，请拆分指令。`);
-    touched.add(key);
-    const existing = ruleSeq.items.filter(node => ruleValues.get(node)?.startsWith(`${key},`));
-    ruleSeq.items = ruleSeq.items.filter(node => !ruleValues.get(node)?.startsWith(`${key},`));
+    // Mihomo matches domains, GEO codes and IPv6 text case-insensitively; compare the same way.
+    const prefix = `${key},`.toLowerCase();
+    if (touched.has(prefix)) fail(`计划对 ${op.match} 有重复或冲突修改，请拆分指令。`);
+    touched.add(prefix);
+    const sameMatch = node => ruleValues.get(node)?.toLowerCase().startsWith(prefix);
+    const existing = ruleSeq.items.filter(sameMatch);
+    ruleSeq.items = ruleSeq.items.filter(node => !sameMatch(node));
     if (op.kind === 'route') {
       const target = targetMap.get(op.targetId);
       if (!target) fail('AI 引用了当前配置中不存在的出口。');

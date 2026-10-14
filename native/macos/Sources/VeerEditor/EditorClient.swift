@@ -82,9 +82,11 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
 public struct EditorClient: Sendable {
     private let baseURL: URL
     private let session: URLSession
-    public init(port: Int = 4317) throws {
+    private let authToken: String?
+    public init(port: Int = 4317, authToken: String? = nil) throws {
         guard (1...65535).contains(port), let url = URL(string: "http://127.0.0.1:\(port)") else { throw EditorFailure("本机服务端口无效。") }
         baseURL = url
+        self.authToken = authToken
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 90
         config.timeoutIntervalForResource = 95
@@ -98,6 +100,7 @@ public struct EditorClient: Sendable {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(baseURL.absoluteString, forHTTPHeaderField: "Origin")
+        if let authToken { request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization") }
         request.httpBody = try JSONEncoder().encode(input)
         do {
             try Task.checkCancellation()
@@ -119,7 +122,7 @@ public struct EditorClient: Sendable {
         } catch is CancellationError { throw CancellationError() }
         catch let error as EditorFailure { throw error }
         catch let error as URLError where error.code == .cancelled { throw CancellationError() }
-        catch { throw EditorFailure("无法连接本机编辑服务。请在 prototype/ai-editor 中运行 npm start 后重试。") }
+        catch { throw EditorFailure("无法连接本机编辑服务。请重试操作；如仍失败，请重新启动 Veer。") }
     }
 
     public func importDocument(_ yaml: String) async throws -> Draft { try await post("document/import", DocumentRequest(yaml: yaml)) }

@@ -4,13 +4,12 @@ SwiftUI / AppKit 原生界面，无 WebView，不包含 VPN。最低 macOS 14，
 
 ## 开发运行
 
-先在另一个终端启动本机规则引擎：
+构建前准备生产依赖和本机规则校验器（这是开发步骤，使用者无需执行）：
 
 ```sh
 cd /Users/spectreax/Developer/Veer/prototype/ai-editor
 npm ci
 npm run build:validator
-npm start
 ```
 
 已有 `.cache/mihomo` 时不必重新构建校验器。然后：
@@ -22,9 +21,17 @@ zsh scripts/build-app.sh
 open "dist/Veer AI Editor.app"
 ```
 
-也可使用 Xcode 打开 `Package.swift`，选择 VeerMac target。当前版本不是独立分发包：需要另行启动固定 `127.0.0.1:4317` 的 Node 服务。服务未启动时明确显示错误，启动服务后重试即可，不会自动更改系统代理。
+`.app` 现已内置 Node 24.14.0、生产依赖、编辑服务与 Mihomo 规则校验器；双击即可运行，不再需要 `npm start`，也不依赖开发目录。启动时仅监听 127.0.0.1 的随机端口，用每次启动的认证 token 隔离请求；token 经 stdin 传递，不进入命令行、文件或日志。退出应用会关闭自有服务；父进程异常退出时 stdin EOF 也触发清理。不会连接既有 4317 服务，不会修改系统代理。
 
-`test-native.mjs` 启动隔离的随机端口测试服务，结束自动关闭，无需依赖正在运行的 4317 服务。直接 `swift test` 只运行纯 Swift 测试，明确跳过需要服务的两项集成测试。
+可以用 Xcode 打开 `Package.swift` 阅读/测试源码，但应用调试必须使用带 Resources 的 `.app` 构建。`VEER_NODE_BIN` 可指定自包含 Node（附带对应版本的 `Resources/Licenses/node-v<版本>-LICENSE`）；构建脚本拒绝依赖 Homebrew 外部 dylib 的 Node，检查当前架构和签名。当前产物是 arm64 本机构架开发包，不是 universal。
+
+打包后的服务验证：
+
+```sh
+VEER_BUNDLED_EDITOR_ROOT="$PWD/dist/Veer AI Editor.app/Contents/Resources/editor" node scripts/test-native.mjs
+```
+
+`test-native.mjs` 启动隔离的随机端口测试服务，结束自动关闭；设置上述变量还会验证真实打包服务的生命周期与失败重试。不需要任何正在运行的 4317 服务。直接 `swift test` 没有相应环境时不会覆盖服务整合测试；bundle 测试明确按条件禁用。
 
 ## 第一版工作流
 
@@ -48,4 +55,8 @@ AI 模式使用既有按地址隔离的 macOS 钥匙串记录，原生界面只�
 
 ## 分发限制
 
-脚本生成本机架构、ad-hoc 签名的开发 `.app`。没有 Developer ID、公证、App Store/TestFlight、自动更新或 universal 二进制。不要把当前开发构建冒充可公开安装的正式发行版。本轮不修改 Android 或 Mihomo 生命周期。
+脚本生成本机架构、ad-hoc 签名的开发 `.app`，约 164 MB（Node 约 113 MB，Mihomo 约 46 MB）。Node、yaml、diff 和 Mihomo 许可随包保留。Mihomo 为 Veer 本地 mirror，版本 `veer-editor-local-mirror`，只以 `-t` 运行占位规则校验，不开启 VPN/TUN。
+
+没有 Developer ID、公证、App Store/TestFlight、自动更新或 universal 二进制；公开发行前还需要审查对应源码交付与完整依赖许可。不要把当前开发构建冒充公开发行版。本轮不修改 Android 或代理内核运行逻辑。
+
+2026-10-14 内置服务验证：Web 46 项、Swift 32 项（失败/超时各一个参数化用例）通过；独立 `/tmp` 目录的 `.app` 原生导入→本地多服务候选→占位校验→确认→完整副本导出通过，非 rules 内容逐字保留，退出与再次启动通过。真实 AI、真实订阅、实际 Key 读取、Intel/旧系统、公证本轮未验证。详见 [内置服务记录](../../docs/MACOS_BUNDLED_SERVICE_2026-10-14.md)。

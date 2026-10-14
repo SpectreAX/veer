@@ -77,13 +77,20 @@ final class EditorModel {
         showingImport = true
     }
     @ObservationIgnored private var operation: Task<Void, Never>?
-    @ObservationIgnored private let client: EditorClient
+    @ObservationIgnored private var client: EditorClient
+    @ObservationIgnored private let service: BundledEditorService?
     @ObservationIgnored private var keyRevision = 0
 
     init(client: EditorClient? = nil) {
-        // The fixed loopback port is a programmer-controlled valid constant.
+        // Tests inject a client. The application never sends requests to this placeholder.
         self.client = client ?? (try! EditorClient(port: 4317))
+        service = client == nil ? BundledEditorService(root: (Bundle.main.resourceURL ?? Bundle.main.bundleURL).appendingPathComponent("editor")) : nil
     }
+    private func ensureService() async throws {
+        if let service { client = try await service.start() }
+        try Task.checkCancellation()
+    }
+    func stopService() { cancel(); service?.stop() }
     var canGenerate: Bool { hasDocument && !busy && !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     func chooseFile() {
         guard !busy else { return }
@@ -142,7 +149,7 @@ final class EditorModel {
         busy = true; isError = false; issue = nil; status = message; session.endEditing()
         operation = Task {
             defer { busy = false; operation = nil }
-            do { try await action() }
+            do { try await self.ensureService(); try await action() }
             catch is CancellationError {
                 status = "已取消，规则稿未改变。"
                 if let id = activeTurn { updateTurn(id) { if $0.state.isRunning { $0.state = .cancelled; $0.message = "本次生成已取消，草稿未改变。" } } }
@@ -270,6 +277,7 @@ final class EditorModel {
     func restoreKeyStatus() async {
         let url = settings.baseUrl, revision = keyRevision
         do {
+            try await ensureService()
             let result = try await client.keyStatus(url)
             try Task.checkCancellation()
             guard url == settings.baseUrl, revision == keyRevision else { return }

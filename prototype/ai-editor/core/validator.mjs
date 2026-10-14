@@ -4,14 +4,36 @@ import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { readConfig } from './editor.mjs';
 
+const active = new Set();
+const jobs = new Set();
+let stopping = false;
+export async function stopValidationProcesses() {
+  stopping = true;
+  await Promise.all([...active].map(child => new Promise(resolve => {
+    if (child.exitCode !== null || child.signalCode !== null) return resolve();
+    child.once('close', resolve);
+    child.kill('SIGKILL');
+  })));
+  await Promise.allSettled([...jobs]);
+}
+
 export async function validateCore(yaml, binary) {
+  const job = runValidation(yaml, binary);
+  jobs.add(job);
+  try { return await job; } finally { jobs.delete(job); }
+}
+
+async function runValidation(yaml, binary) {
   const { config } = readConfig(yaml);
   try { if (!binary) throw new Error(); await access(binary); }
   catch { return { status: 'unavailable', message: '已通过编辑器结构检查；未配置 Mihomo 校验器，尚未通过内核语义校验。' }; }
   const dir = await mkdtemp(join(tmpdir(), 'veer-editor-'));
   try {
     const result = await new Promise(resolve => {
+      if (stopping) return resolve({ status: 'unavailable', message: '编辑服务正在退出，校验已取消。' });
       const child = spawn(binary, ['-t', '-d', dir, '-f', '-'], { env: { PATH: process.env.PATH, HOME: dir, TMPDIR: dir }, stdio: ['pipe', 'pipe', 'pipe'] });
+      active.add(child);
+      child.once('close', () => active.delete(child));
       let output = '', timedOut = false;
       const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, 20000);
       const collect = chunk => { output = (output + chunk.toString()).slice(-12000); };

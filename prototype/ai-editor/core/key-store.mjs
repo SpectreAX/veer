@@ -3,6 +3,15 @@ import { createHash } from 'node:crypto';
 import { EditorError } from './editor.mjs';
 
 const SERVICE = 'com.yamax.veer.ai-editor.api-key';
+const active = new Set();
+let stopping = false;
+export async function stopKeyStoreProcesses() {
+  stopping = true;
+  await Promise.all([...active].map(child => new Promise(resolve => {
+    if (child.exitCode !== null || child.signalCode !== null) return resolve();
+    child.once('close', resolve); child.kill('SIGKILL');
+  })));
+}
 export function keyAccount(baseUrl) {
   let url;
   try { url = new URL(baseUrl); } catch { throw new EditorError('API 地址无效，无法保存 Key。'); }
@@ -11,8 +20,11 @@ export function keyAccount(baseUrl) {
 }
 
 function security(args, input) {
+  if (stopping) return Promise.reject(new EditorError('编辑服务正在退出，钥匙串操作已取消。'));
   return new Promise((resolve, reject) => {
     const child = spawn('/usr/bin/security', args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    active.add(child);
+    child.once('close', () => active.delete(child));
     let output = '', failed = false;
     const timeout = setTimeout(() => { failed = true; child.kill('SIGKILL'); }, 15000);
     child.stdout.on('data', chunk => { output += chunk; if (output.length > 20000) { failed = true; child.kill('SIGKILL'); } });

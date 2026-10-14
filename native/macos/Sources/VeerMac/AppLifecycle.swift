@@ -35,6 +35,7 @@ final class AppLifecycle: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         mayDiscard("退出") ? .terminateNow : .terminateCancel
     }
+    func applicationWillTerminate(_ notification: Notification) { model?.stopService() }
 
     // Keep SwiftUI's own delegate behavior for selectors this guard does not handle.
     nonisolated override func responds(to selector: Selector!) -> Bool {

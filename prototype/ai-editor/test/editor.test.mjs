@@ -131,3 +131,14 @@ test('本地解析拒绝否定、互斥动作和完整名称冲突，整批不�
   }
   assert.equal(resolveLocal('Netflix 走日本，example.com 直连', targets).operations.length, 7);
 });
+
+test('大小写不同的同一匹配被替换或删除，而不是留下重复规则', () => {
+  const config = 'proxy-groups:\n  - name: 日本出口\n    type: select\n    proxies: [DIRECT]\nrules:\n  - DOMAIN-SUFFIX,Netflix.COM,DIRECT\n  - MATCH,DIRECT\n';
+  const target = inspectConfig(config).targets.find(t => t.name === '日本出口').id;
+  const routed = applyPlan(config, plan([route('netflix.com', target)]));
+  assert.deepEqual(readConfig(routed.candidate).config.rules, ['DOMAIN-SUFFIX,netflix.com,日本出口', 'MATCH,DIRECT']);
+  assert.deepEqual(routed.summaries[0].before, ['DOMAIN-SUFFIX,Netflix.COM,DIRECT']);
+  const removed = applyPlan(config, plan([{ kind: 'remove_rule', matchType: 'DOMAIN-SUFFIX', match: 'netflix.com' }]));
+  assert.deepEqual(readConfig(removed.candidate).config.rules, ['MATCH,DIRECT']);
+  assert.throws(() => applyPlan(config, plan([route('netflix.com', target), route('NETFLIX.com', target)])), /重复或冲突/);
+});
