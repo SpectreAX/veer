@@ -16,10 +16,14 @@ final class AppLifecycle: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func mayDiscard(_ action: String) -> Bool {
-        guard let model, model.session.hasUnsavedChanges || model.busy else { return true }
+        guard let model else { return true }
+        // With encrypted sessions, drafts survive quitting; only an in-flight request is lost.
+        guard model.busy || (!model.persistsSessions && model.session.hasUnsavedChanges) else { return true }
         let alert = NSAlert()
         alert.messageText = "\(action) Veer 编辑器？"
-        alert.informativeText = "未导出的规则和登记组名只在内存中。规则导出不包含组名地区登记；请确认已保存需要的内容。进行中的请求也会停止等待。"
+        alert.informativeText = model.persistsSessions
+            ? "进行中的请求会停止，不会写入草稿。会话与已写入的草稿已加密保存在本机。"
+            : "未导出的规则和登记组名只在内存中。规则导出不包含组名地区登记；请确认已保存需要的内容。进行中的请求也会停止等待。"
         alert.alertStyle = .warning
         alert.addButton(withTitle: "继续编辑")
         alert.addButton(withTitle: "放弃并\(action)")
@@ -35,7 +39,7 @@ final class AppLifecycle: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         mayDiscard("退出") ? .terminateNow : .terminateCancel
     }
-    func applicationWillTerminate(_ notification: Notification) { model?.stopService() }
+    func applicationWillTerminate(_ notification: Notification) { model?.flushSave(); model?.stopService() }
 
     // Keep SwiftUI's own delegate behavior for selectors this guard does not handle.
     nonisolated override func responds(to selector: Selector!) -> Bool {

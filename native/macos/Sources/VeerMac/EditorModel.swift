@@ -3,12 +3,18 @@ import Observation
 import UniformTypeIdentifiers
 import VeerEditor
 
+enum ServiceState: Equatable {
+    case idle, starting, ready
+    case unavailable(String)
+}
+
 @Observable
 final class EditorModel {
     var section: WorkbenchSection? = .editor
     var session = DraftSession()
-    var prompt = "" { didSet { if prompt != oldValue { invalidatePreview() } } }
-    var mode = "local" { didSet { if mode != oldValue { invalidatePreview() } } }
+    // Typing or switching mode leaves a pending candidate reviewable; sending the next prompt supersedes it.
+    var prompt = ""
+    var mode = "local"
     var settings = AISettings()
     var groupName = ""
     var groupRegion = "UNKNOWN"
@@ -21,12 +27,31 @@ final class EditorModel {
     var busy = false
     var ruleCount: Int?
     var showingImport = false
+    var showingExport = false
+    /// Bundled editor service lifecycle; stays `.idle` when tests inject a client.
+    private(set) var serviceState = ServiceState.idle
     var importURL = ""
-    private(set) var importedSource: String?
-    private(set) var importedName = ""
-    private var importedFileURL: URL?
+    var importedSource: String?
+    var importedName = ""
+    var importedFileURL: URL?
     var hasDocument: Bool { importedSource != nil }
     var conversation: [ConversationTurn] = []
+    // Saved sessions: one per imported configuration, encrypted on disk when a store is configured.
+    var sessions: [StoredSession] = []
+    var activeSessionID: UUID?
+    var sessionQuery = ""
+    var storeMessage: String?
+    var persistsSessions: Bool { store != nil }
+    // Inspector: parsed rules for the draft (and a pending candidate), filter and domain test.
+    var ruleList: [String]?
+    var candidateRuleList: [String]?
+    var ruleFilter = ""
+    var testDomain = ""
+    var testedDomain = ""
+    // Composer completion menu and the caret the text view should move to after a choice.
+    var completion: CompletionState?
+    var pendingCaret: Int?
+    var composerHeight: CGFloat = 44
     var conversationScroll = ConversationScrollState()
     var review = ConversationReviewState()
     var reviewedTurn: ConversationTurn? { conversation.first { $0.id == review.selectedTurnID } }
@@ -49,12 +74,12 @@ final class EditorModel {
         return token == session.undoToken
     }
     func undoTurn(_ id: UUID) { guard canUndoTurn(id) else { return }; undo() }
-    private var activeTurn: UUID?
+    var activeTurn: UUID?
     private func invalidatePreview() {
         session.invalidate()
         for index in conversation.indices { conversation[index].invalidate() }
     }
-    private func updateTurn(_ id: UUID, _ update: (inout ConversationTurn) -> Void) {
+    func updateTurn(_ id: UUID, _ update: (inout ConversationTurn) -> Void) {
         guard let index = conversation.firstIndex(where: { $0.id == id }) else { return }
         update(&conversation[index])
     }
@@ -64,12 +89,13 @@ final class EditorModel {
     func setDisclosure(_ id: UUID, steps: Bool? = nil, diff: Bool? = nil) {
         updateTurn(id) { if let steps { $0.showsSteps = steps }; if let diff { $0.showsDiff = diff } }
     }
+    /// Each import becomes a new session; the current one is kept in the sidebar.
     func requestImport() {
         guard !busy else { return }
-        if session.hasUnsavedChanges {
+        if !persistsSessions, session.hasUnsavedChanges {
             let alert = NSAlert()
             alert.messageText = "重新导入配置？"
-            alert.informativeText = "导入成功后会替换当前草稿与撤销记录。请先导出需要保留的修改。导入失败时当前草稿不会改变。"
+            alert.informativeText = "会话未能保存到本机，导入后会替换当前草稿与撤销记录。请先导出需要保留的修改。"
             alert.addButton(withTitle: "取消")
             alert.addButton(withTitle: "选择新配置")
             guard alert.runModal() == .alertSecondButtonReturn else { return }
@@ -77,21 +103,49 @@ final class EditorModel {
         showingImport = true
     }
     @ObservationIgnored private var operation: Task<Void, Never>?
-    @ObservationIgnored private var client: EditorClient
+    @ObservationIgnored var client: EditorClient
     @ObservationIgnored private let service: BundledEditorService?
     @ObservationIgnored private var keyRevision = 0
+    @ObservationIgnored let store: SessionStore?
+    @ObservationIgnored var saveTask: Task<Void, Never>?
+    @ObservationIgnored var inspectTask: Task<Void, Never>?
 
-    init(client: EditorClient? = nil) {
-        // Tests inject a client. The application never sends requests to this placeholder.
+    /// Tests inject a client and no store, so they never touch the keychain or Application Support.
+    init(client: EditorClient? = nil, store: SessionStore? = nil) {
+        // The application never sends requests to this placeholder client; it starts the bundled service.
         self.client = client ?? (try! EditorClient(port: 4317))
+        self.store = store
         service = client == nil ? BundledEditorService(root: (Bundle.main.resourceURL ?? Bundle.main.bundleURL).appendingPathComponent("editor")) : nil
     }
-    private func ensureService() async throws {
-        if let service { client = try await service.start() }
+    func ensureService() async throws {
+        if let service {
+            if serviceState != .ready { serviceState = .starting }
+            do {
+                client = try await service.start()
+                serviceState = .ready
+            } catch is CancellationError {
+                if serviceState == .starting { serviceState = .idle }
+                throw CancellationError()
+            } catch {
+                serviceState = .unavailable(error.localizedDescription)
+                throw error
+            }
+        }
         try Task.checkCancellation()
     }
     func stopService() { cancel(); service?.stop() }
-    var canGenerate: Bool { hasDocument && !busy && !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    func restartService() {
+        guard let service, !busy else { return }
+        service.stop()
+        serviceState = .idle
+        Task { try? await self.ensureService() }
+    }
+    /// AI mode cannot send without a session key or a saved key for this API address.
+    var needsKey: Bool { mode == "ai" && settings.apiKey.isEmpty && !settings.useSavedKey }
+    var canGenerate: Bool { hasDocument && !busy && !needsKey && !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    /// Imported groups whose region could not be inferred from the name.
+    var unknownRegionGroups: [StrategyGroup] { hasDocument ? session.draft.groups.filter { $0.region == "UNKNOWN" } : [] }
+    var unexportedChanges: LineChangeCount { lineChangeCount(from: session.exportedRules, to: session.draft.rules) }
     func chooseFile() {
         guard !busy else { return }
         let revision = session.revision
@@ -122,18 +176,24 @@ final class EditorModel {
     func acceptImport(_ yaml: String, name: String, revision: Int, fileURL: URL? = nil) async throws {
         let draft = try await client.importDocument(yaml)
         try requireCurrent(revision)
+        stashActiveSession()
+        activeSessionID = UUID()
+        session = DraftSession()
         session.loadDocument(draft); importedSource = yaml; importedName = name
         importedFileURL = fileURL
         prompt = ""; importURL = ""; showingImport = false; section = .editor
         conversation = []
         conversationScroll = ConversationScrollState()
         review = ConversationReviewState()
-        ruleCount = nil; status = "导入成功，现在可以对话修改规则。地区根据名称推断，未实测。"
+        ruleCount = nil; ruleList = nil; candidateRuleList = nil; testedDomain = ""; ruleFilter = ""
+        status = "导入成功，现在可以对话修改规则。地区根据名称推断，未实测。"
+        scheduleSave()
     }
     func setRules(_ rules: String) {
         guard !busy, rules != session.draft.rules else { return }
         for index in conversation.indices { conversation[index].invalidate() }
-        session.editRules(rules); ruleCount = nil
+        session.editRules(rules); ruleCount = nil; ruleList = nil
+        scheduleSave()
     }
     func setBaseURL(_ url: String) {
         guard url != settings.baseUrl else { return }
@@ -144,12 +204,17 @@ final class EditorModel {
     func setModel(_ model: String) { settings.model = model; invalidatePreview() }
     func setKey(_ key: String) { settings.apiKey = key; invalidatePreview() }
 
-    private func perform(_ message: String, action: @escaping @MainActor () async throws -> Void) {
+    func perform(_ message: String, action: @escaping @MainActor () async throws -> Void) {
         guard !busy else { return }
         busy = true; isError = false; issue = nil; status = message; session.endEditing()
         operation = Task {
             defer { busy = false; operation = nil }
             do { try await self.ensureService(); try await action() }
+            catch let failure as EditorFailure where failure.isClarification {
+                // A question from the AI is a reply. Keep the draft and ask the user to answer it.
+                status = "AI 需要澄清，未生成候选。"
+                if let id = activeTurn { updateTurn(id) { if $0.state.isRunning { $0.state = .clarify; $0.message = failure.message; $0.steps.append("AI 请求澄清；没有生成候选。") } } }
+            }
             catch is CancellationError {
                 status = "已取消，规则稿未改变。"
                 if let id = activeTurn { updateTurn(id) { if $0.state.isRunning { $0.state = .cancelled; $0.message = "本次生成已取消，草稿未改变。" } } }
@@ -165,7 +230,7 @@ final class EditorModel {
         guard !busy, generation == statusGeneration else { return }
         status = ""
     }
-    private func requireCurrent(_ revision: Int) throws {
+    func requireCurrent(_ revision: Int) throws {
         try Task.checkCancellation()
         guard session.revision == revision else { throw EditorFailure("输入已变化，旧结果已丢弃。请重新生成或检查。") }
     }
@@ -220,9 +285,12 @@ final class EditorModel {
         var draft = session.draft
         draft.groups[index] = StrategyGroup(name: name, region: region)
         invalidatePreview(); session.replace(draft)
+        scheduleSave()
     }
     func generate() {
         guard canGenerate else { return }
+        invalidatePreview()
+        completion = nil
         let draft = session.draft
         let prompt = prompt, mode = mode, settings = settings
         self.prompt = ""
@@ -242,11 +310,13 @@ final class EditorModel {
                 $0.preview = result
                 $0.diffLines = conversationDiffLines(result.diff)
                 $0.steps.append("已收到规则差异与校验结果：" + result.validation.message)
-                $0.state = result.validation.status == "failed" ? .failed : result.changed ? .pending : .unchanged
-                $0.message = result.validation.status == "failed" ? "规则检查失败，不能确认。" : result.changed ? "已准备 \(result.summaries.count) 条规则修改，等待你确认。" : "规则已存在，无需修改。"
+                $0.state = result.validation.status == "failed" ? .blocked : result.changed ? .pending : .unchanged
+                $0.message = result.validation.status == "failed" ? "已生成修改，但校验没有通过，此候选不能确认。" : result.changed ? "生成了 \(routingReviewGroups(result.summaries).count) 项修改（\(result.summaries.count) 条规则）。逐项接受或拒绝，然后写入草稿。" : "规则已存在，无需修改。"
             }
             if self.conversationScroll.following { self.review.open(id) }
-            self.status = result.validation.status == "failed" ? "规则测试失败，不能确认。" : result.changed ? "预览已生成，尚未确认到规则稿。" : "规则已存在，无需修改。"
+            self.candidateRuleList = nil
+            self.scheduleSave()
+            self.status = result.validation.status == "failed" ? "规则测试失败，不能确认。" : result.changed ? "已生成修改，等待逐项审批；草稿尚未改变。" : "规则已存在，无需修改。"
             self.isError = result.validation.status == "failed"
             if self.isError { self.issue = result.validation.message }
         }
@@ -256,12 +326,14 @@ final class EditorModel {
         let token = session.undoToken
         updateTurn(id) { $0.state = .confirmed; $0.undoToken = token; $0.message = "已写入草稿，尚未应用到代理。" }
         prompt = ""
-        ruleCount = nil; status = "已确认到规则稿，尚未应用到代理。"; isError = false; issue = nil
+        ruleCount = nil; ruleList = nil; status = "已写入草稿，尚未应用到代理。"; isError = false; issue = nil
+        scheduleSave()
     }
     func discard() {
         guard !busy else { return }
         if let id = activeTurn { updateTurn(id) { if $0.state == .pending { $0.state = .discarded; $0.message = "用户放弃，未写入草稿。" } } }
-        session.invalidate(); status = "预览已放弃，规则稿未改变。"; isError = false; issue = nil
+        session.invalidate(); status = "已全部拒绝，规则稿未改变。"; isError = false; issue = nil
+        scheduleSave()
     }
     func undo() {
         let token = session.undoToken
@@ -272,7 +344,8 @@ final class EditorModel {
                 conversation[index].state = .undone; conversation[index].message = "已撤销该次修改，草稿恢复到上一快照。"
             }
         }
-        ruleCount = nil; status = "已撤销草稿修改。"; isError = false; issue = nil
+        ruleCount = nil; ruleList = nil; status = "已撤销草稿修改。"; isError = false; issue = nil
+        scheduleSave()
     }
     func restoreKeyStatus() async {
         let url = settings.baseUrl, revision = keyRevision
@@ -303,7 +376,12 @@ final class EditorModel {
             self.status = "Key 已保存到对应 API 地址的系统钥匙串。"
         }
     }
+    func requestExport() {
+        guard !busy else { return }
+        showingExport = true
+    }
     func exportRules() {
+        showingExport = false
         let draft = session.draft, revision = session.revision
         perform("正在检查导出规则…") {
             let contents: String
@@ -319,6 +397,7 @@ final class EditorModel {
             try ConfigurationImport.verifyExportDestination(url, importedFile: self.importedFileURL)
             try contents.write(to: url, atomically: true, encoding: .utf8)
             self.session.markRulesExported(draft.rules)
+            self.scheduleSave()
             self.status = self.hasDocument ? "已导出完整配置；原文件未覆盖。请由代理客户端校验后使用。" : "已导出 rules 片段。请由代理客户端合并并校验，勿覆盖完整配置。"
         }
     }

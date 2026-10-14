@@ -1,13 +1,14 @@
 import Foundation
 
-public struct DraftSession: Sendable {
+public struct DraftSession: Codable, Sendable {
     public private(set) var draft = Draft()
     public private(set) var revision = 0
     public private(set) var preview: Preview?
-    private var history: [(id: UUID, draft: Draft)] = []
+    private struct Snapshot: Codable, Sendable { let id: UUID; let draft: Draft }
+    private var history: [Snapshot] = []
     public var undoToken: UUID? { history.last?.id }
     private var manualEditing = false
-    private var exportedRules = Draft().rules
+    public private(set) var exportedRules = Draft().rules
     private var imported = false
     private var importedGroups: [StrategyGroup] = []
     public init() {}
@@ -23,7 +24,7 @@ public struct DraftSession: Sendable {
 
     public mutating func invalidate() { revision += 1; preview = nil }
     private mutating func remember() {
-        history.append((UUID(), draft))
+        history.append(Snapshot(id: UUID(), draft: draft))
         if history.count > 20 { history.removeFirst() }
     }
     public mutating func replace(_ newDraft: Draft) {

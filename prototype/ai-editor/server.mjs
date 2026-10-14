@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { resolve, join } from 'node:path';
-import { EditorError, inspectConfig, readConfig, applyPlan, resolveLocal, MAX_CONFIG_BYTES } from './core/editor.mjs';
+import { EditorError, ClarificationError, inspectConfig, readConfig, applyPlan, resolveLocal, MAX_CONFIG_BYTES } from './core/editor.mjs';
 import { resolveAi } from './core/llm.mjs';
 import { validateCore } from './core/validator.mjs';
 import { readPrivateInput, anonymizePrompt, applyPrivatePlan, resolvePrivateLocal } from './core/private-editor.mjs';
@@ -57,13 +57,18 @@ export function createEditorServer({ binary = process.env.MIHOMO_BIN || join(roo
         return send(res, 404, { error: '接口不存在。' });
       }
       if (path.startsWith('/api/private/')) {
-        if (Object.keys(input).some(k => !['groups', 'rules', 'prompt', 'mode', 'settings'].includes(k))) throw new EditorError('独立规则接口不接收完整配置或节点字段。');
+        if (Object.keys(input).some(k => !['groups', 'rules', 'prompt', 'mode', 'settings', 'plan'].includes(k))) throw new EditorError('独立规则接口不接收完整配置或节点字段。');
         const draft = { groups: input.groups, rules: input.rules };
         const context = readPrivateInput(draft);
-        if (path === '/api/private/inspect') return send(res, 200, { count: context.rules.length });
+        if (path === '/api/private/inspect') return send(res, 200, { count: context.rules.length, rules: context.rules });
         if (path === '/api/private/validate') {
           const validation = await validateCore(context.synthetic, binary);
           return send(res, 200, privateValidation(validation));
+        }
+        if (path === '/api/private/apply') {
+          // A subset of a previously returned plan, re-checked exactly like a model plan.
+          const { synthetic, ...result } = applyPrivatePlan(draft, input.plan);
+          return send(res, 200, { ...result, validation: privateValidation(await validateCore(synthetic, binary)), plan: input.plan });
         }
         if (path !== '/api/private/plan') return send(res, 404, { error: '接口不存在。' });
         if (typeof input.prompt !== 'string' || !input.prompt.trim() || input.prompt.length > 8000 || !['local', 'ai'].includes(input.mode)) throw new EditorError('请填写有效指令并选择解析模式。');
@@ -71,25 +76,29 @@ export function createEditorServer({ binary = process.env.MIHOMO_BIN || join(roo
         const plan = input.mode === 'ai' ? await aiResolver(prompt, context.anonymousTargets, await aiSettings(input.settings, keyStore, saveLegacySessionKeys)) : resolvePrivateLocal(input.prompt, context);
         const { synthetic, ...result } = applyPrivatePlan(draft, plan);
         const validation = privateValidation(await validateCore(synthetic, binary));
-        return send(res, 200, { ...result, validation, mode: input.mode });
+        return send(res, 200, { ...result, validation, mode: input.mode, plan });
       }
       if (path.startsWith('/api/document/')) {
         if (req.headers.origin !== `http://${req.headers.host}`) return send(res, 403, { error: '配置操作仅允许从本机编辑器发起。' });
         if (path === '/api/document/import') return send(res, 200, openDocument(input.yaml));
         const context = documentContext(input);
         const validation = { status: 'unavailable', message: '规则 YAML 与修改范围检查通过；完整配置尚未经过 Mihomo 语义校验，导出后请由代理客户端检查。' };
-        if (path === '/api/document/inspect') return send(res, 200, { count: context.config.rules?.length ?? 0 });
+        if (path === '/api/document/inspect') return send(res, 200, { count: context.config.rules?.length ?? 0, rules: context.config.rules ?? [] });
         if (path === '/api/document/validate') return send(res, 200, validation);
         if (path === '/api/document/export') return send(res, 200, { yaml: context.yaml });
-        if (path !== '/api/document/plan') return send(res, 404, { error: '接口不存在。' });
-        if (typeof input.prompt !== 'string' || !input.prompt.trim() || input.prompt.length > 8000 || !['local', 'ai'].includes(input.mode)) throw new EditorError('请填写有效指令并选择解析模式。');
-        const prompt = anonymizePrompt(input.prompt, context.targets, context.anonymousTargets);
-        const plan = input.mode === 'ai' ? await aiResolver(prompt, context.anonymousTargets, await aiSettings(input.settings, keyStore, false)) : resolveLocal(prompt, context.anonymousTargets);
+        if (!['/api/document/plan', '/api/document/apply'].includes(path)) return send(res, 404, { error: '接口不存在。' });
+        let plan;
+        if (path === '/api/document/apply') plan = input.plan; // A subset of a returned plan; applyPlan validates it like a model plan.
+        else {
+          if (typeof input.prompt !== 'string' || !input.prompt.trim() || input.prompt.length > 8000 || !['local', 'ai'].includes(input.mode)) throw new EditorError('请填写有效指令并选择解析模式。');
+          const prompt = anonymizePrompt(input.prompt, context.targets, context.anonymousTargets);
+          plan = input.mode === 'ai' ? await aiResolver(prompt, context.anonymousTargets, await aiSettings(input.settings, keyStore, false)) : resolveLocal(prompt, context.anonymousTargets);
+        }
         const result = applyDocumentPlan(input, context, plan);
         // Test only changed rules against placeholders. Never load real providers or secrets into a running core.
         const synthetic = stringify({ 'proxy-groups': context.targets.filter(t => t.kind !== 'builtin').map(t => ({ name: t.name, type: 'select', proxies: ['DIRECT'] })), rules: result.summaries.flatMap(s => s.after ? [s.after] : []) });
         const checked = await validateCore(synthetic, binary);
-        return send(res, 200, { ...result, validation: { ...checked, message: `${checked.message} 此检查仅覆盖修改规则的占位出口，不验证原配置、Provider 或实际网络。` } });
+        return send(res, 200, { ...result, plan, validation: { ...checked, message: `${checked.message} 此检查仅覆盖修改规则的占位出口，不验证原配置、Provider 或实际网络。` } });
       }
       if (path === '/api/inspect') return send(res, 200, inspectConfig(input.yaml));
       if (path === '/api/validate') return send(res, 200, await validateCore(input.yaml, binary));
@@ -102,6 +111,7 @@ export function createEditorServer({ binary = process.env.MIHOMO_BIN || join(roo
       const validation = await validateCore(result.candidate, binary);
       send(res, 200, { ...result, validation, mode: input.mode });
     } catch (error) {
+      if (error instanceof ClarificationError) return send(res, 422, { error: error.message, kind: 'clarification' });
       send(res, error instanceof EditorError ? 422 : 500, { error: error instanceof EditorError ? error.message : '编辑器处理失败，请检查配置后重试。' });
     }
   });

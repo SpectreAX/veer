@@ -40,7 +40,7 @@ import VeerEditor
     #expect(model.issue == "出口未登记，请先添加策略组。")
 }
 
-@Test @MainActor func navigationPreservesSharedDraftAndInputInvalidatesPreviewRevision() {
+@Test @MainActor func navigationAndTypingPreserveDraftAndPreviewRevision() {
     let model = EditorModel()
     model.setRules("rules:\n  - MATCH,DIRECT\n")
     let revision = model.session.revision
@@ -49,9 +49,9 @@ import VeerEditor
     model.section = .editor
     #expect(model.session.draft.rules == "rules:\n  - MATCH,DIRECT\n")
     #expect(model.session.revision == revision)
+    // Typing the next prompt keeps a pending candidate reviewable; only sending supersedes it.
     model.prompt = "Netflix go hk"
-    #expect(model.session.revision > revision)
-    #expect(model.session.preview == nil)
+    #expect(model.session.revision == revision)
 }
 
 @Test @MainActor func appearanceAndNavigationMatchNativePrototype() {

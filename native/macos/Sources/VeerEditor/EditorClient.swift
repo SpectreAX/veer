@@ -25,7 +25,7 @@ public struct Validation: Codable, Equatable, Sendable {
     public let message: String
 }
 
-public struct RuleChange: Codable, Sendable {
+public struct RuleChange: Codable, Equatable, Sendable {
     public let kind: String
     public let matchType: String
     public let match: String
@@ -34,9 +34,23 @@ public struct RuleChange: Codable, Sendable {
     public let after: String?
 }
 
-public struct DiffPart: Codable, Sendable {
+public struct DiffPart: Codable, Equatable, Sendable {
     public let kind: String
     public let text: String
+}
+
+public struct PlanOperation: Codable, Equatable, Sendable {
+    public let kind: String
+    public let matchType: String
+    public let match: String
+    public let targetId: String?
+}
+
+/// The service's anonymous plan. Sending a subset back re-applies and re-validates only those operations.
+public struct EditPlan: Codable, Equatable, Sendable {
+    public let schemaVersion: Int
+    public let operations: [PlanOperation]
+    public init(schemaVersion: Int = 1, operations: [PlanOperation]) { self.schemaVersion = schemaVersion; self.operations = operations }
 }
 
 public struct Preview: Codable, Sendable {
@@ -46,11 +60,17 @@ public struct Preview: Codable, Sendable {
     public let diff: [DiffPart]
     public let changed: Bool
     public let validation: Validation
+    /// Present on current services; one operation per summary, in order.
+    public let plan: EditPlan?
 }
 
-public struct InspectResult: Codable, Sendable { public let count: Int }
+public struct InspectResult: Codable, Sendable {
+    public let count: Int
+    /// Parsed rule strings in match order; absent on older services.
+    public let rules: [String]?
+}
 public struct KeyStatus: Codable, Sendable { public let saved: Bool }
-private struct APIError: Decodable { let error: String }
+private struct APIError: Decodable { let error: String; let kind: String? }
 private struct KeyRequest: Encodable { let baseUrl: String; var apiKey: String? }
 private struct PlanRequest: Encodable {
     let groups: [StrategyGroup]
@@ -66,13 +86,21 @@ private struct DocumentRequest: Encodable {
     var prompt: String = ""
     var mode: String = "local"
     var settings: AISettings?
+    var plan: EditPlan?
+}
+private struct ApplyRequest: Encodable {
+    let groups: [StrategyGroup]
+    let rules: String
+    let plan: EditPlan
 }
 private struct ExportedDocument: Decodable { let yaml: String }
 
 public struct EditorFailure: LocalizedError, Sendable {
     public let message: String
+    /// The AI asked a question instead of proposing a change. Show it as a reply, not an error.
+    public let isClarification: Bool
     public var errorDescription: String? { message }
-    public init(_ message: String) { self.message = message }
+    public init(_ message: String, isClarification: Bool = false) { self.message = message; self.isClarification = isClarification }
 }
 
 private final class NoRedirect: NSObject, URLSessionTaskDelegate {
@@ -114,7 +142,7 @@ public struct EditorClient: Sendable {
                 data.append(byte)
             }
             guard http.statusCode == 200 else {
-                if let error = try? JSONDecoder().decode(APIError.self, from: data) { throw EditorFailure(String(error.error.prefix(500))) }
+                if let error = try? JSONDecoder().decode(APIError.self, from: data) { throw EditorFailure(String(error.error.prefix(500)), isClarification: error.kind == "clarification") }
                 throw EditorFailure("本机服务返回 HTTP \(http.statusCode)，请检查编辑服务。")
             }
             guard let result = try? JSONDecoder().decode(Output.self, from: data) else { throw EditorFailure("编辑服务协议不匹配，请更新并重启本机服务。") }
@@ -141,6 +169,11 @@ public struct EditorClient: Sendable {
     public func generate(_ draft: Draft, prompt: String, mode: String, settings: AISettings, source: String? = nil) async throws -> Preview {
         if let source { return try await post("document/plan", DocumentRequest(yaml: source, groups: draft.groups, rules: draft.rules, prompt: prompt, mode: mode, settings: mode == "ai" ? settings : nil)) }
         return try await post("private/plan", PlanRequest(groups: draft.groups, rules: draft.rules, prompt: prompt, mode: mode, settings: mode == "ai" ? settings : nil))
+    }
+    /// Apply a subset of a plan this service returned for the same draft.
+    public func apply(_ draft: Draft, plan: EditPlan, source: String? = nil) async throws -> Preview {
+        if let source { return try await post("document/apply", DocumentRequest(yaml: source, groups: draft.groups, rules: draft.rules, plan: plan)) }
+        return try await post("private/apply", ApplyRequest(groups: draft.groups, rules: draft.rules, plan: plan))
     }
     public func keyStatus(_ baseUrl: String) async throws -> KeyStatus { try await post("key/status", KeyRequest(baseUrl: baseUrl)) }
     public func saveKey(_ settings: AISettings) async throws -> KeyStatus { try await post("key/save", KeyRequest(baseUrl: settings.baseUrl, apiKey: settings.apiKey)) }

@@ -1,9 +1,10 @@
 import SwiftUI
+import VeerEditor
 
 @main
 struct VeerApp: App {
     @NSApplicationDelegateAdaptor(AppLifecycle.self) private var lifecycle
-    private let model = EditorModel()
+    private let model = EditorModel(store: SessionStore(url: SessionStore.defaultURL))
     var body: some Scene {
         Window("Veer AI 编辑器", id: "editor") {
             EditorView(model: model).tint(Color(nsColor: .systemGreen))

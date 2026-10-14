@@ -4,6 +4,8 @@ import { parseDocument, isSeq } from 'yaml';
 import { diffLines } from 'diff';
 
 export class EditorError extends Error {}
+// The model asked a question instead of proposing a plan; clients show it as a reply, not a failure.
+export class ClarificationError extends EditorError {}
 export const MAX_CONFIG_BYTES = 2 * 1024 * 1024;
 const MATCH_TYPES = new Set(['DOMAIN', 'DOMAIN-SUFFIX', 'DOMAIN-KEYWORD', 'IP-CIDR', 'IP-CIDR6', 'GEOSITE', 'GEOIP']);
 const SPECIAL = new Set(['DIRECT', 'REJECT', 'REJECT-DROP', 'PASS', 'COMPATIBLE']);

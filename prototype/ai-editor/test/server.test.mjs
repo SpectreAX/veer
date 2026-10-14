@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createEditorServer } from '../server.mjs';
 import { validateCore } from '../core/validator.mjs';
+import { EditorError, ClarificationError } from '../core/editor.mjs';
 const yaml = await readFile(new URL('../public/sample.yaml', import.meta.url), 'utf8');
 
 test('HTTP 导入与多服务预览；服务只返回草稿，不自动应用', async t => {
@@ -49,4 +50,44 @@ test('两个编辑入口均拒绝异常模型计划，不返回部分候选，�
     plan = { schemaVersion: 1, operations: [op] };
     assert.equal((await post()).status, 200);
   }
+});
+
+test('AI 澄清以 kind=clarification 返回，普通错误不带该标记', async t => {
+  let fail;
+  const server = createEditorServer({ binary: '/missing', aiResolver: async () => { throw fail; } });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const post = () => fetch(`http://127.0.0.1:${server.address().port}/api/plan`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ yaml, mode: 'ai', prompt: '节点太卡', settings: {} }) });
+  fail = new ClarificationError('你想把哪项服务固定到哪个地区？');
+  let response = await post();
+  assert.equal(response.status, 422);
+  assert.deepEqual(await response.json(), { error: '你想把哪项服务固定到哪个地区？', kind: 'clarification' });
+  fail = new EditorError('AI 服务返回 HTTP 429');
+  response = await post();
+  assert.equal((await response.json()).kind, undefined);
+});
+
+test('文档模式返回计划，可只写入其中一部分并重新校验；inspect 返回规则列表', async t => {
+  const server = createEditorServer({ binary: '/missing' });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const post = (path, body) => fetch(base + path, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base }, body: JSON.stringify(body) });
+  const source = 'proxy-groups:\n  - name: 日本出口\n    type: select\n    proxies: [DIRECT]\n  - name: 美国出口\n    type: select\n    proxies: [DIRECT]\nrules:\n  - MATCH,DIRECT\n';
+  const draft = await (await post('/api/document/import', { yaml: source })).json();
+  const doc = { yaml: source, groups: draft.groups, rules: draft.rules };
+  const inspected = await (await post('/api/document/inspect', doc)).json();
+  assert.deepEqual(inspected.rules, ['MATCH,DIRECT']);
+  const preview = await (await post('/api/document/plan', { ...doc, prompt: 'Netflix 走日本，ChatGPT 走美国', mode: 'local' })).json();
+  assert.equal(preview.plan.operations.length, 10);
+  const netflixOnly = { schemaVersion: 1, operations: preview.plan.operations.filter(op => op.match.includes('netflix') || op.match.startsWith('nflx')) };
+  const applied = await (await post('/api/document/apply', { ...doc, plan: netflixOnly })).json();
+  assert.equal(applied.summaries.length, 6);
+  assert.ok(applied.candidate.includes('netflix.com,日本出口'));
+  assert.ok(!applied.candidate.includes('chatgpt.com'));
+  assert.equal((await post('/api/document/apply', { ...doc, plan: { schemaVersion: 1, operations: [] } })).status, 422);
+  const fragment = { groups: [{ name: '日本出口', region: 'JP' }], rules: 'rules: []' };
+  const privatePreview = await (await post('/api/private/plan', { ...fragment, prompt: 'Netflix 走日本', mode: 'local' })).json();
+  const privateApplied = await (await post('/api/private/apply', { ...fragment, plan: { schemaVersion: 1, operations: privatePreview.plan.operations.slice(0, 1) } })).json();
+  assert.equal(privateApplied.summaries.length, 1);
 });

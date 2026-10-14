@@ -76,9 +76,13 @@ func conversationRealLocalServiceLifecycle() async throws {
     #expect(model.session.draft.rules == first)
     model.prompt = "Netflix go hk"; model.generate()
     try await waitForOperation(model)
+    let pendingID = try #require(model.conversation.last?.id)
     model.prompt = "ChatGPT go us"
-    #expect(model.conversation.last?.state == .superseded)
-    #expect(!model.session.canConfirm)
+    #expect(model.conversation.last?.state == .pending) // typing alone keeps it reviewable
+    model.generate()
+    #expect(model.conversation.first { $0.id == pendingID }?.state == .superseded)
+    try await waitForOperation(model)
+    model.discard()
     model.prompt = "Netflix go hk"; model.generate(); model.cancel()
     try await waitForOperation(model)
     #expect(model.conversation.last?.state == .cancelled)

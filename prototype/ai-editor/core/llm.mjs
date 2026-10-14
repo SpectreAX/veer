@@ -1,4 +1,4 @@
-import { EditorError, buildSystemPrompt } from './editor.mjs';
+import { EditorError, ClarificationError, buildSystemPrompt } from './editor.mjs';
 
 export async function resolveAi(prompt, targets, settings, fetchImpl = fetch) {
   if (typeof settings?.apiKey !== 'string' || !settings.apiKey.trim()) throw new EditorError('请输入 AI API Key。Key 只用于本次请求。');
@@ -44,7 +44,7 @@ export async function resolveAi(prompt, targets, settings, fetchImpl = fetch) {
   try { plan = JSON.parse(content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')); } catch { throw new EditorError('AI 没有返回有效的结构化计划，请重新表达指令。'); }
   if (typeof plan?.clarification === 'string') {
     if (Object.keys(plan).length !== 1 || !plan.clarification.trim()) throw new EditorError('AI 返回了混合或空澄清响应，请重新生成。');
-    throw new EditorError(plan.clarification.slice(0, 500));
+    throw new ClarificationError(plan.clarification.slice(0, 500));
   }
   return plan;
 }
