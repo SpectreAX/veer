@@ -107,3 +107,44 @@ func sessionsPersistEncryptedAndResumeAfterRelaunch() async throws {
     relaunched.flushSave()
     #expect(try store.load().map(\.name) == ["first.yaml"])
 }
+
+@Test @MainActor func historyCarriesPromptsAndRepliesButSkipsUnfinishedTurns() {
+    var asked = ConversationTurn(prompt: "bahamut 走台湾和香港", mode: "ai", fileName: "a.yaml", groups: [])
+    asked.state = .clarify; asked.message = "请指定 bahamut 要使用的单个出口。"
+    var cancelled = ConversationTurn(prompt: "忽略这条", mode: "ai", fileName: "a.yaml", groups: [])
+    cancelled.state = .cancelled
+    var running = ConversationTurn(prompt: "进行中", mode: "ai", fileName: "a.yaml", groups: [])
+    running.state = .requesting
+    let history = conversationHistory([asked, cancelled, running])
+    #expect(history == [ChatMessage(role: "user", content: "bahamut 走台湾和香港"), ChatMessage(role: "assistant", content: "请指定 bahamut 要使用的单个出口。")])
+    let many = (0..<10).map { index -> ConversationTurn in
+        var turn = ConversationTurn(prompt: "第 \(index) 轮", mode: "ai", fileName: "a.yaml", groups: [])
+        turn.state = .failed; turn.message = "失败"
+        return turn
+    }
+    let recent = conversationHistory(many)
+    #expect(recent.count == 12 && recent.first?.content == "第 4 轮")
+}
+
+/// End to end through the real service with a loopback fake AI: a bare "台湾"
+/// resolves only because the earlier bahamut turn travels with it.
+@Test(.enabled(if: ProcessInfo.processInfo.environment["VEER_TEST_PORT"] != nil && ProcessInfo.processInfo.environment["VEER_FAKE_AI_URL"] != nil)) @MainActor
+func followUpAnswerKeepsSessionContext() async throws {
+    let raw = try #require(ProcessInfo.processInfo.environment["VEER_TEST_PORT"])
+    let model = EditorModel(client: try EditorClient(port: try #require(Int(raw))))
+    let yaml = "proxy-groups:\n  - name: 台湾家宽\n    type: select\n    proxies: [DIRECT]\n  - name: 香港 IPLC\n    type: select\n    proxies: [DIRECT]\nrules:\n  - MATCH,DIRECT\n"
+    try await model.acceptImport(yaml, name: "sub.yaml", revision: model.session.revision)
+    model.mode = "ai"
+    model.setBaseURL(try #require(ProcessInfo.processInfo.environment["VEER_FAKE_AI_URL"]))
+    model.setModel("fake")
+    model.setKey("test-only")
+    model.prompt = "bahamut 走台湾和香港"; model.generate()
+    try await idle(model)
+    #expect(model.conversation.last?.state == .clarify)
+    model.prompt = "台湾"; model.generate()
+    try await idle(model)
+    let turn = try #require(model.conversation.last)
+    #expect(turn.state == .pending)
+    #expect(turn.preview?.candidate.contains("GEOSITE,bahamut,台湾家宽") == true)
+    #expect(turn.steps.contains { $0.contains("前 1 轮匿名上文") })
+}

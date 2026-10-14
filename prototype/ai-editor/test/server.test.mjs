@@ -91,3 +91,25 @@ test('文档模式返回计划，可只写入其中一部分并重新校验；in
   const privateApplied = await (await post('/api/private/apply', { ...fragment, plan: { schemaVersion: 1, operations: privatePreview.plan.operations.slice(0, 1) } })).json();
   assert.equal(privateApplied.summaries.length, 1);
 });
+
+test('AI 请求带上同一会话的上文，组名在上文中同样匿名化，格式错误被拒绝', async t => {
+  let received;
+  const server = createEditorServer({ binary: '/missing', aiResolver: async (prompt, targets, settings, fetchImpl, history) => { received = { prompt, history }; return { schemaVersion: 1, operations: [{ kind: 'route', matchType: 'GEOSITE', match: 'bahamut', targetId: targets.find(t => t.kind === 'group').id }] }; } });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const post = (path, body) => fetch(base + path, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base }, body: JSON.stringify(body) });
+  const source = 'proxy-groups:\n  - name: 台湾家宽\n    type: select\n    proxies: [DIRECT]\nrules:\n  - MATCH,DIRECT\n';
+  const draft = await (await post('/api/document/import', { yaml: source })).json();
+  const doc = { yaml: source, groups: draft.groups, rules: draft.rules, mode: 'ai', settings: { apiKey: 'k', model: 'm', baseUrl: 'https://example.com' } };
+  const history = [{ role: 'user', content: 'bahamut 走台湾家宽和香港' }, { role: 'assistant', content: '请指定 bahamut 要使用的单个出口。' }];
+  const response = await post('/api/document/plan', { ...doc, prompt: '台湾', history });
+  assert.equal(response.status, 200);
+  assert.equal(received.prompt, '台湾');
+  assert.equal(received.history.length, 2);
+  assert.ok(received.history[0].content.includes('bahamut'));
+  assert.ok(!received.history[0].content.includes('台湾家宽'), 'real group names are anonymized in history');
+  assert.ok(received.history[0].content.includes('出口1'));
+  assert.equal((await post('/api/document/plan', { ...doc, prompt: '台湾', history: [{ role: 'system', content: 'x' }] })).status, 422);
+  assert.equal((await post('/api/document/plan', { ...doc, prompt: '台湾', history: Array(13).fill({ role: 'user', content: 'x' }) })).status, 422);
+});

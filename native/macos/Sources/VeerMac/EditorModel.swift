@@ -293,6 +293,8 @@ final class EditorModel {
         completion = nil
         let draft = session.draft
         let prompt = prompt, mode = mode, settings = settings
+        // Earlier turns of this session, so "台湾" can answer the previous question about bahamut.
+        let history = mode == "ai" ? conversationHistory(conversation) : []
         self.prompt = ""
         let expected = session.revision
         var turn = ConversationTurn(prompt: prompt, mode: mode, fileName: importedName, groups: draft.groups)
@@ -301,8 +303,8 @@ final class EditorModel {
         conversation.append(turn); activeTurn = id
         conversationScroll.resume()
         perform("正在生成并校验修改，规则稿保持不变…") {
-            self.updateTurn(id) { $0.state = .requesting; $0.steps.append(mode == "ai" ? "已发送 AI 请求，等待本机服务返回生成与校验结果。" : "已请求本地解析，等待生成与校验结果。") }
-            let result = try await self.client.generate(draft, prompt: prompt, mode: mode, settings: settings, source: self.importedSource)
+            self.updateTurn(id) { $0.state = .requesting; $0.steps.append(mode == "ai" ? (history.isEmpty ? "已发送 AI 请求，等待本机服务返回生成与校验结果。" : "已发送 AI 请求，附带本会话前 \(history.count / 2) 轮匿名上文。") : "已请求本地解析，等待生成与校验结果。") }
+            let result = try await self.client.generate(draft, prompt: prompt, mode: mode, settings: settings, source: self.importedSource, history: history)
             try self.requireCurrent(expected)
             self.updateTurn(id) { $0.state = .reviewing }
             self.session.receive(result, revision: expected)

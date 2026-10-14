@@ -57,7 +57,7 @@ export function createEditorServer({ binary = process.env.MIHOMO_BIN || join(roo
         return send(res, 404, { error: '接口不存在。' });
       }
       if (path.startsWith('/api/private/')) {
-        if (Object.keys(input).some(k => !['groups', 'rules', 'prompt', 'mode', 'settings', 'plan'].includes(k))) throw new EditorError('独立规则接口不接收完整配置或节点字段。');
+        if (Object.keys(input).some(k => !['groups', 'rules', 'prompt', 'mode', 'settings', 'plan', 'history'].includes(k))) throw new EditorError('独立规则接口不接收完整配置或节点字段。');
         const draft = { groups: input.groups, rules: input.rules };
         const context = readPrivateInput(draft);
         if (path === '/api/private/inspect') return send(res, 200, { count: context.rules.length, rules: context.rules });
@@ -73,7 +73,7 @@ export function createEditorServer({ binary = process.env.MIHOMO_BIN || join(roo
         if (path !== '/api/private/plan') return send(res, 404, { error: '接口不存在。' });
         if (typeof input.prompt !== 'string' || !input.prompt.trim() || input.prompt.length > 8000 || !['local', 'ai'].includes(input.mode)) throw new EditorError('请填写有效指令并选择解析模式。');
         const prompt = anonymizePrompt(input.prompt, context.targets, context.anonymousTargets);
-        const plan = input.mode === 'ai' ? await aiResolver(prompt, context.anonymousTargets, await aiSettings(input.settings, keyStore, saveLegacySessionKeys)) : resolvePrivateLocal(input.prompt, context);
+        const plan = input.mode === 'ai' ? await aiResolver(prompt, context.anonymousTargets, await aiSettings(input.settings, keyStore, saveLegacySessionKeys), undefined, readHistory(input.history, context)) : resolvePrivateLocal(input.prompt, context);
         const { synthetic, ...result } = applyPrivatePlan(draft, plan);
         const validation = privateValidation(await validateCore(synthetic, binary));
         return send(res, 200, { ...result, validation, mode: input.mode, plan });
@@ -92,7 +92,7 @@ export function createEditorServer({ binary = process.env.MIHOMO_BIN || join(roo
         else {
           if (typeof input.prompt !== 'string' || !input.prompt.trim() || input.prompt.length > 8000 || !['local', 'ai'].includes(input.mode)) throw new EditorError('请填写有效指令并选择解析模式。');
           const prompt = anonymizePrompt(input.prompt, context.targets, context.anonymousTargets);
-          plan = input.mode === 'ai' ? await aiResolver(prompt, context.anonymousTargets, await aiSettings(input.settings, keyStore, false)) : resolveLocal(prompt, context.anonymousTargets);
+          plan = input.mode === 'ai' ? await aiResolver(prompt, context.anonymousTargets, await aiSettings(input.settings, keyStore, false), undefined, readHistory(input.history, context)) : resolveLocal(prompt, context.anonymousTargets);
         }
         const result = applyDocumentPlan(input, context, plan);
         // Test only changed rules against placeholders. Never load real providers or secrets into a running core.
@@ -127,6 +127,16 @@ async function aiSettings(settings, keyStore, saveLegacySessionKeys) {
     return { baseUrl: settings.baseUrl, model: settings.model, apiKey: key };
   }
   return settings;
+}
+
+// Earlier turns of the same session, anonymized exactly like the prompt so real exit names never reach the model.
+function readHistory(history, context) {
+  if (history === undefined) return [];
+  if (!Array.isArray(history) || history.length > 12) throw new EditorError('对话上下文格式无效。');
+  return history.map(message => {
+    if (!message || typeof message !== 'object' || Object.keys(message).some(k => !['role', 'content'].includes(k)) || !['user', 'assistant'].includes(message.role) || typeof message.content !== 'string' || !message.content.trim() || message.content.length > 2000) throw new EditorError('对话上下文格式无效。');
+    return { role: message.role, content: anonymizePrompt(message.content, context.targets, context.anonymousTargets) };
+  });
 }
 
 function privateValidation(result) {

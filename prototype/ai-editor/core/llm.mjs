@@ -1,6 +1,7 @@
 import { EditorError, ClarificationError, buildSystemPrompt } from './editor.mjs';
 
-export async function resolveAi(prompt, targets, settings, fetchImpl = fetch) {
+// `history` is earlier turns of the same session, already anonymized by the caller.
+export async function resolveAi(prompt, targets, settings, fetchImpl = fetch, history = []) {
   if (typeof settings?.apiKey !== 'string' || !settings.apiKey.trim()) throw new EditorError('请输入 AI API Key。Key 只用于本次请求。');
   if (typeof settings.model !== 'string' || !settings.model.trim()) throw new EditorError('请输入模型名称。');
   if (targets.length > 2500) throw new EditorError('出口数量超过原型的 AI 上下文限制（2500 个），请先缩小配置。');
@@ -14,7 +15,7 @@ export async function resolveAi(prompt, targets, settings, fetchImpl = fetch) {
     response = await fetchImpl(url, {
       method: 'POST', redirect: 'error', signal: AbortSignal.timeout(60000),
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${settings.apiKey}` },
-      body: JSON.stringify({ model: settings.model, temperature: 0, stream: false, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: buildSystemPrompt(targets) }, { role: 'user', content: prompt }] }),
+      body: JSON.stringify({ model: settings.model, temperature: 0, stream: false, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: buildSystemPrompt(targets) }, ...history, { role: 'user', content: prompt }] }),
     });
   } catch { throw new EditorError('无法连接 AI 服务或请求超时，请检查 API 地址与网络。'); }
   if (!response.ok) throw new EditorError(`AI 服务返回 HTTP ${response.status}，请检查 Key、模型和额度。`);

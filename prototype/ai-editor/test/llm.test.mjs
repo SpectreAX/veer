@@ -54,3 +54,15 @@ test('分块合法响应可读取，混合及空澄清响应拒绝', async () =>
     await assert.rejects(() => resolveAi('x', targets, settings, async () => Response.json({ choices: [{ message: { content: JSON.stringify(plan) } }] })), /混合或空/);
   }
 });
+
+test('会话上文按顺序位于系统提示与当前指令之间', async () => {
+  const history = [{ role: 'user', content: 'bahamut 走台湾和香港' }, { role: 'assistant', content: '请指定单个出口。' }];
+  await resolveAi('台湾', targets, settings, async (url, request) => {
+    const { messages } = JSON.parse(request.body);
+    assert.deepEqual(messages.map(m => m.role), ['system', 'user', 'assistant', 'user']);
+    assert.equal(messages[1].content, 'bahamut 走台湾和香港');
+    assert.equal(messages.at(-1).content, '台湾');
+    assert.match(messages[0].content, /same editing session/);
+    return Response.json({ choices: [{ message: { content: '{"schemaVersion":1,"operations":[{"kind":"route","matchType":"GEOSITE","match":"bahamut","targetId":"target-0"}]}' } }] });
+  }, history);
+});

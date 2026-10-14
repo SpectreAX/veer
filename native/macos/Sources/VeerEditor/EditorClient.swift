@@ -64,6 +64,14 @@ public struct Preview: Codable, Sendable {
     public let plan: EditPlan?
 }
 
+/// One earlier turn of the same session, sent with AI requests so follow-ups keep context.
+/// The service anonymizes exit names in it exactly like the prompt.
+public struct ChatMessage: Codable, Equatable, Sendable {
+    public let role: String
+    public let content: String
+    public init(role: String, content: String) { self.role = role; self.content = content }
+}
+
 public struct InspectResult: Codable, Sendable {
     public let count: Int
     /// Parsed rule strings in match order; absent on older services.
@@ -78,6 +86,7 @@ private struct PlanRequest: Encodable {
     let prompt: String
     let mode: String
     let settings: AISettings?
+    let history: [ChatMessage]?
 }
 private struct DocumentRequest: Encodable {
     let yaml: String
@@ -87,6 +96,7 @@ private struct DocumentRequest: Encodable {
     var mode: String = "local"
     var settings: AISettings?
     var plan: EditPlan?
+    var history: [ChatMessage]?
 }
 private struct ApplyRequest: Encodable {
     let groups: [StrategyGroup]
@@ -166,9 +176,11 @@ public struct EditorClient: Sendable {
         if let source { return try await post("document/validate", DocumentRequest(yaml: source, groups: draft.groups, rules: draft.rules)) }
         return try await post("private/validate", draft)
     }
-    public func generate(_ draft: Draft, prompt: String, mode: String, settings: AISettings, source: String? = nil) async throws -> Preview {
-        if let source { return try await post("document/plan", DocumentRequest(yaml: source, groups: draft.groups, rules: draft.rules, prompt: prompt, mode: mode, settings: mode == "ai" ? settings : nil)) }
-        return try await post("private/plan", PlanRequest(groups: draft.groups, rules: draft.rules, prompt: prompt, mode: mode, settings: mode == "ai" ? settings : nil))
+    public func generate(_ draft: Draft, prompt: String, mode: String, settings: AISettings, source: String? = nil, history: [ChatMessage] = []) async throws -> Preview {
+        // Only AI mode uses context; local parsing reads the current prompt alone.
+        let context = mode == "ai" && !history.isEmpty ? history : nil
+        if let source { return try await post("document/plan", DocumentRequest(yaml: source, groups: draft.groups, rules: draft.rules, prompt: prompt, mode: mode, settings: mode == "ai" ? settings : nil, history: context)) }
+        return try await post("private/plan", PlanRequest(groups: draft.groups, rules: draft.rules, prompt: prompt, mode: mode, settings: mode == "ai" ? settings : nil, history: context))
     }
     /// Apply a subset of a plan this service returned for the same draft.
     public func apply(_ draft: Draft, plan: EditPlan, source: String? = nil) async throws -> Preview {

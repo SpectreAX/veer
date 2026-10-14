@@ -113,3 +113,31 @@ func lineChangeCount(from old: String, to new: String) -> LineChangeCount {
     }
     return count
 }
+
+/// Recent turns as chat context for the next AI request: each prompt, then what the
+/// editor replied (a clarification, an error, or the changes and their state).
+/// Running and cancelled turns carry no answer and are skipped.
+nonisolated func conversationHistory(_ turns: [ConversationTurn], limit: Int = 6) -> [ChatMessage] {
+    let clip = { (text: String) in String(text.prefix(1000)) }
+    var messages: [ChatMessage] = []
+    for turn in turns.filter({ !$0.state.isRunning && $0.state != .cancelled }).suffix(limit) {
+        let reply: String
+        if turn.state == .clarify {
+            reply = turn.message
+        } else if turn.state == .failed {
+            reply = "未完成：" + turn.message
+        } else if turn.preview != nil {
+            let changes = turn.routeGroups.map { group -> String in
+                let target = group.id.kind == "remove_rule" ? "删除规则" : group.id.target ?? "未知出口"
+                return "\(group.id.service) → \(target)" + (turn.rejectedRoutes.contains(group.id) ? "（已拒绝）" : "")
+            }
+            reply = "生成修改：" + changes.joined(separator: "；") + "。状态：" + turn.state.title + "。"
+        } else {
+            reply = turn.message
+        }
+        guard !turn.prompt.isEmpty, !reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+        messages.append(ChatMessage(role: "user", content: clip(turn.prompt)))
+        messages.append(ChatMessage(role: "assistant", content: clip(reply)))
+    }
+    return messages
+}
