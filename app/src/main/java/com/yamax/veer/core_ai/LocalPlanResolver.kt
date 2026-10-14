@@ -1,6 +1,7 @@
 package com.yamax.veer.core_ai
 
 import com.yamax.veer.core_mihomo.MihomoRepository
+import com.yamax.veer.core_profile.SubscriptionMetadata
 
 /**
  * Conservative parser for commands whose meaning is deterministic. Returning
@@ -104,10 +105,14 @@ internal object LocalPlanResolver {
         if (DOMAIN_REGEX.containsMatchIn(text)) return null
         if (SERVICE_ALIASES.keys.any { text.contains(it, ignoreCase = true) }) return null
         if (!LOW_LATENCY_PHRASES.any { it.containsMatchIn(text) }) return null
-        val selector = preferredSelector
+        val preferred = preferredSelector
             ?.let(snapshot.proxies::get)
             ?.takeIf { it.type == "Selector" }
-            ?: snapshot.selectorGroups.firstOrNull { it.name != "GLOBAL" }
+        val selector = preferred
+            ?.let { deepestLatencySelector(snapshot, it) }
+            ?: snapshot.selectorGroups.firstOrNull {
+                it.name != "GLOBAL" && snapshot.switchCandidates(it.name).isNotEmpty()
+            }
             ?: return null
         val intent = AiIntent(
             action = AiIntent.Action.SWITCH_PROXY,
@@ -118,6 +123,20 @@ internal object LocalPlanResolver {
             replyMessage = "正在切换到低延迟节点。",
         )
         return AiPlan.single(intent)
+    }
+
+    private fun deepestLatencySelector(
+        snapshot: MihomoRepository.RoutingSnapshot,
+        start: MihomoRepository.ProxyState,
+    ): MihomoRepository.ProxyState? {
+        val visited = mutableSetOf<String>()
+        var current: MihomoRepository.ProxyState? = start
+        var candidate: MihomoRepository.ProxyState? = null
+        while (current?.type == "Selector" && visited.add(current.name)) {
+            if (snapshot.switchCandidates(current.name).isNotEmpty()) candidate = current
+            current = current.now?.let(snapshot.proxies::get)
+        }
+        return candidate
     }
 
     private fun resolveRegionalRouting(
@@ -163,20 +182,54 @@ internal object LocalPlanResolver {
         val domains = domainsIn(text)
         if (services.isEmpty() && domains.isEmpty()) return null
 
-        val node = lowestDelayNode(snapshot, region) ?: return null
-        val targets =
-            domains.map { it to AiIntent.MatchType.DOMAIN_SUFFIX } +
-                services.map { it to AiIntent.MatchType.GEOSITE }
-        return targets.map { (target, matchType) ->
+        val node = lowestDelayNode(snapshot, region)
+        val domainOperations = domains.map { target ->
+            val selected = node ?: return null
             AiIntent(
                 action = AiIntent.Action.ADD_RULE,
                 target = target,
-                matchType = matchType,
-                proxyGroup = node.name,
+                matchType = AiIntent.MatchType.DOMAIN_SUFFIX,
+                proxyGroup = selected.name,
                 selectionMode = AiIntent.SelectionMode.NONE,
-                replyMessage = "已将 $target 路由至 ${node.name}。",
+                replyMessage = "已将 $target 路由至 ${selected.name}。",
             )
         }
+        val serviceOperations = services.map { service ->
+            serviceSelectorSwitch(snapshot, service, region) ?: run {
+                val selected = node ?: return null
+                AiIntent(
+                    action = AiIntent.Action.ADD_RULE,
+                    target = service,
+                    matchType = AiIntent.MatchType.GEOSITE,
+                    proxyGroup = selected.name,
+                    selectionMode = AiIntent.SelectionMode.NONE,
+                    replyMessage = "已将 $service 路由至 ${selected.name}。",
+                )
+            }
+        }
+        return domainOperations + serviceOperations
+    }
+
+    private fun serviceSelectorSwitch(
+        snapshot: MihomoRepository.RoutingSnapshot,
+        service: String,
+        region: String,
+    ): AiIntent? {
+        val selector = snapshot.selectorGroups
+            .firstOrNull { it.name.equals(service, ignoreCase = true) }
+            ?: return null
+        val regionalMember = selector.members.firstOrNull { member ->
+            snapshot.proxies[member]?.regionCode == region &&
+                !snapshot.isKnownUnavailable(member)
+        } ?: return null
+        return AiIntent(
+            action = AiIntent.Action.SWITCH_PROXY,
+            target = selector.name,
+            matchType = AiIntent.MatchType.NONE,
+            proxyGroup = regionalMember,
+            selectionMode = AiIntent.SelectionMode.SPECIFIED,
+            replyMessage = "已将 ${selector.name} 策略组切换至 $regionalMember。",
+        )
     }
 
     private fun lowestDelayNode(
@@ -185,6 +238,7 @@ internal object LocalPlanResolver {
     ): MihomoRepository.ProxyState? =
         snapshot.proxies.values.asSequence()
             .filter { it.members.isEmpty() }
+            .filterNot { SubscriptionMetadata.isLikelyMetadataName(it.name) }
             .filter { it.regionCode == region }
             .filter { it.alive != false && it.delayMs != UNAVAILABLE_DELAY_MS }
             .minWithOrNull(

@@ -282,6 +282,19 @@ class ConfigManagerTest {
     }
 
     @Test
+    fun `raw delete removes a two-part Mihomo fallback rule`() {
+        val original = AiRuleStore(
+            enabled = listOf("MATCH,DIRECT", "DOMAIN-SUFFIX,example.com,PROXY"),
+            disabled = listOf("MATCH,REJECT"),
+        )
+
+        val deleted = ConfigManager.deleteRuleByRaw(original, " MATCH , DIRECT ")
+
+        assertEquals(listOf("DOMAIN-SUFFIX,example.com,PROXY"), deleted.enabled)
+        assertEquals(listOf("MATCH,REJECT"), deleted.disabled)
+    }
+
+    @Test
     fun `rule parser keeps trailing Mihomo modifiers when policy changes`() {
         val raw = "IP-CIDR,203.0.113.0/24,PROXY,no-resolve"
         val parsed = ConfigManager.parseAiRule(raw)!!

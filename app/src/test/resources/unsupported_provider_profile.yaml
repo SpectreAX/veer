@@ -1,0 +1,17 @@
+proxies:
+  - name: TEST
+    type: http
+    server: 127.0.0.1
+    port: 65535
+proxy-providers:
+  remote:
+    type: http
+    url: https://example.invalid/nodes
+    path: ./remote.yaml
+proxy-groups:
+  - name: PROXY
+    type: select
+    proxies: [DIRECT]
+    use: [remote]
+rules:
+  - MATCH,PROXY

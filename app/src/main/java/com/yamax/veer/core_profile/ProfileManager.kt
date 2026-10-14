@@ -5,6 +5,7 @@ import com.yamax.veer.BuildConfig
 import com.yamax.veer.core_logging.VeerLog
 import com.yamax.veer.core_mihomo.EngineState
 import com.yamax.veer.core_mihomo.MihomoEngine
+import com.yamax.veer.core_mihomo.ProfileSelectionStore
 import com.yamax.veer.core_profile.internal.parser.ImportLogBuilder
 import com.yamax.veer.core_profile.internal.parser.ImportResult
 import com.yamax.veer.core_profile.internal.parser.PipelineStage
@@ -72,8 +73,24 @@ internal object ProfileManager {
 
         scope.launch {
             val index = ProfileStore.loadIndex(appCtx)
-            _profiles.value = index.profiles
-            _active.value   = index.active
+            val sanitizedProfiles = index.profiles.map { metadata ->
+                val source = metadata.source as? ProfileSource.SubscriptionUrl
+                if (source == null) metadata else metadata.copy(
+                    displayName = ProfileParser.sanitizeSubscriptionDisplayName(
+                        metadata.displayName,
+                        source.url,
+                    ),
+                )
+            }
+            val sanitizedIndex = if (sanitizedProfiles == index.profiles) {
+                index
+            } else {
+                index.copy(profiles = sanitizedProfiles).also {
+                    ProfileStore.saveIndex(appCtx, it)
+                }
+            }
+            _profiles.value = sanitizedIndex.profiles
+            _active.value   = sanitizedIndex.active
         }
     }
 
@@ -143,8 +160,16 @@ internal object ProfileManager {
                 }
                 val meta = result.profile.metadata.let { refreshed ->
                     val preserved = if (priorMeta != null) {
+                        val preservedName = when (val source = refreshed.source) {
+                            is ProfileSource.SubscriptionUrl ->
+                                ProfileParser.sanitizeSubscriptionDisplayName(
+                                    priorMeta.displayName,
+                                    source.url,
+                                )
+                            else -> priorMeta.displayName
+                        }
                         refreshed.copy(
-                            displayName = priorMeta.displayName,
+                            displayName = preservedName,
                             importedAtMs = priorMeta.importedAtMs,
                             subscriptionUsage =
                                 refreshed.subscriptionUsage ?: priorMeta.subscriptionUsage,
@@ -352,6 +377,7 @@ internal object ProfileManager {
                 ProfileStore.clearLastKnownGood(appCtx)
             }
             ConfigManager.deleteProfileAiRules(appCtx, id.value)
+            ProfileSelectionStore.removeProfile(id.value)
             val current = ProfileStore.loadIndex(appCtx)
             val updated = current.copy(
                 profiles = current.profiles.filter { it.id != id },

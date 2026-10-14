@@ -25,6 +25,7 @@ private val SUPPORTED_PROXY_TYPES = setOf(
     "http",
     "tuic",
     "hysteria",
+    "anytls",
 )
 
 /** Proxy fields stored explicitly on [NormalizedProxy]; excluded from [NormalizedProxy.extras]. */
@@ -41,6 +42,7 @@ private val REQUIRED_FIELDS: Map<String, Set<String>> = mapOf(
     "hysteria"    to setOf("auth-str"),
     "wireguard"   to setOf("private-key"),
     "tuic"        to setOf("uuid", "password"),
+    "anytls"      to setOf("password"),
     "socks5"      to emptySet(),
     "http"        to emptySet(),
 )

@@ -1,6 +1,7 @@
 package com.yamax.veer.core_ai
 
 import com.yamax.veer.core_mihomo.MihomoRepository
+import com.yamax.veer.core_profile.SubscriptionMetadata
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
@@ -135,7 +136,11 @@ class LlmClient(
     ): String {
         // JSON encoding prevents subscription-controlled names from escaping
         // the runtime context or altering the surrounding instructions.
-        val targets = (routingSnapshot.proxies.keys + listOf("DIRECT", "REJECT")).distinct()
+        val targets = (
+            routingSnapshot.proxies.keys
+                .filterNot(SubscriptionMetadata::isLikelyMetadataName) +
+                listOf("DIRECT", "REJECT")
+            ).distinct()
         val targetsRendered = json.encodeToString(targets)
         val selectorsRendered = buildJsonArray {
             routingSnapshot.selectorGroups.forEach { group ->
@@ -143,7 +148,9 @@ class LlmClient(
                     put("name", group.name)
                     put("current", group.now.orEmpty())
                     putJsonArray("members") {
-                        group.members.forEach { add(JsonPrimitive(it)) }
+                        group.members
+                            .filterNot(SubscriptionMetadata::isLikelyMetadataName)
+                            .forEach { add(JsonPrimitive(it)) }
                     }
                 })
             }
@@ -180,8 +187,10 @@ $selectorsRendered
 ## 三、字段逻辑与约束（必须遵守）
 
 1. action (动作类型):
-   - 用户指定网站、App、流媒体或域名的分流方向：设为 "add_rule"。
-   - 只要用户输入里包含域名（例如 skk.moe、ip.skk.moe、google.com）或明确网站/服务名，同时又说“切换到/走/使用/路由到某地区或节点”，这仍然是站点分流，必须设为 "add_rule"，绝不能设为 "switch_proxy"。
+   - 用户指定具体域名（例如 skk.moe、ip.skk.moe、google.com）的分流方向：设为 "add_rule"。
+   - 用户指定网站/App/流媒体和地区时，如果上下文存在同名服务 Selector，且其 members
+     包含对应地区成员，优先设为 "switch_proxy"，切换该服务组；没有对应 Selector 时才设为
+     "add_rule"。例如 OpenAI 组包含 US 时，"ChatGPT go us" 必须切换 OpenAI → US。
    - 用户没有指定网站/App，只要求全局换节点、当前节点太卡、选择低延迟节点：设为 "switch_proxy"。
    - 询问网络不通/请求诊断：设为 "diagnose"。
    - 指令缺少网站、策略组、地区或具体动作，存在多个合理解释，或请求修改 DNS：
@@ -190,13 +199,15 @@ $selectorsRendered
      或引导用户前往“自定义 DNS”页面。
 
 2. switch_proxy（运行时切换）:
-   - target 必须是 Selector 上下文中的真实组名，不能是节点名。用户未说组名时，选择非 GLOBAL 的主代理 Selector；除非用户明确说 GLOBAL，否则不能选 GLOBAL。
+   - target 必须是 Selector 上下文中的真实组名，不能是节点名。服务 + 地区请求优先选择
+     同名服务 Selector；全局换节点且用户未说组名时，选择非 GLOBAL 的主代理 Selector。
+     除非用户明确说 GLOBAL，否则不能选 GLOBAL。
    - “节点太卡了换一个”“换个快的”“选最低延迟”：selection_mode="lowest_latency"，proxy_group="NONE"。本地执行器会根据真实延迟选出不同于当前节点的最低延迟节点，模型绝不能猜延迟。
    - 用户明确指定节点时：selection_mode="specified"，proxy_group 必须是 target 组 members 中的真实完整名称。
    - switch_proxy 时 match_type="NONE"。
 
 3. match_type 与 target 映射规则 (针对 add_rule):
-   - 【优先级最高】如果用户给出知名服务名称（如 Google, Netflix, YouTube, OpenAI, GitHub, Spotify 等），你必须使用 "GEOSITE"，并将 target 转换为纯小写且不带后缀的服务名（如 target: "netflix", match_type: "GEOSITE"）。
+   - add_rule 且用户给出知名服务名称（如 Google, Netflix, YouTube, OpenAI, GitHub, Spotify 等）时，使用 "GEOSITE"，并将 target 转换为纯小写且不带后缀的服务名（如 target: "netflix", match_type: "GEOSITE"）。
    - GEOSITE target 使用 geosite 的规范小写标签。Disney+、DisneyPlus、迪士尼必须规范化为 "disney"，ChatGPT 必须规范化为 "openai"。不要输出 "disneyplus"。
    - 如果用户明确给出了域名后缀（如 v2ex.com），使用 "DOMAIN-SUFFIX"，target 保持原样（如 target: "v2ex.com"）。
    - 如果用户给出了具体的 IP 或国家，使用 "GEOIP" 或 "IP-CIDR"。
@@ -207,7 +218,9 @@ $selectorsRendered
    - 你必须从【当前环境上下文】的列表中，通过语义模糊匹配找到最合适的真实名称。
    - 用户指定国家、地区或节点时，优先匹配具体代理节点。例如用户说"走日本节点"，列表中有"🇯🇵日本 01"，必须输出"🇯🇵日本 01"，不能退回机场总组或通用策略组。
    - 绝不能把用户指定的地区静默替换成别的地区。如果上下文没有该地区节点，也不得选择近似地区或其它可用节点。
-   - 网站/App + 地区是分流需求，不是全局切换。例如“我想看 Netflix 日区”必须 add_rule + GEOSITE netflix + 真实日本节点，不能 switch_proxy，不能输出机场总组。
+   - 网站/App + 地区不能修改主代理组。如果存在对应服务 Selector，例如 Netflix 组包含 JP，
+     “我想看 Netflix 日区”必须 switch_proxy：Netflix → JP。没有服务 Selector 时才用
+     add_rule + GEOSITE netflix + 真实日本节点。
    - 域名 + 地区/节点也是分流需求。例如“把 skk.moe 切换到美国节点”必须 add_rule + DOMAIN-SUFFIX skk.moe + 真实美国节点，不能 switch_proxy。
    - 只有用户没有指定地区/节点时，才可以选择机场总组、自动选择等通用策略组。
    - 特殊指令：如果用户说"直连"、"不走代理"，必须输出 "DIRECT"；如果说"拦截"、"去广告"，必须输出 "REJECT"（即使列表中没有这两个词）。
@@ -244,11 +257,11 @@ $selectorsRendered
 [严格输出]：
 {"schema_version":1,"operations":[{"action":"switch_proxy","target":"PROXIES","match_type":"NONE","proxy_group":"NONE","selection_mode":"lowest_latency","reply_message":"正在切换到低延迟节点。"}],"reply_message":"已完成低延迟节点切换。"}
 
-#示例5：流媒体地区分流
-[上下文列表]：["PROXIES", "🇯🇵日本 01", "🇺🇸美国 01"]
+#示例5：流媒体服务策略组切换
+[Selector 上下文]：[{"name":"Netflix","current":"PROXIES","members":["PROXIES","JP","US"]}]
 [用户输入]："我想看 Netflix 日区"
 [严格输出]：
-{"schema_version":1,"operations":[{"action":"add_rule","target":"netflix","match_type":"GEOSITE","proxy_group":"🇯🇵日本 01","selection_mode":"none","reply_message":"已将 Netflix 路由至 🇯🇵日本 01。"}],"reply_message":"已完成 Netflix 日区分流。"}
+{"schema_version":1,"operations":[{"action":"switch_proxy","target":"Netflix","match_type":"NONE","proxy_group":"JP","selection_mode":"specified","reply_message":"已将 Netflix 策略组切换至 JP。"}],"reply_message":"已完成 Netflix 日区切换。"}
 
 #示例6：域名地区分流，不是全局切换
 [上下文列表]：["千速云", "🇯🇵日本 01", "🇺🇸美国 01"]
@@ -256,11 +269,11 @@ $selectorsRendered
 [严格输出]：
 {"schema_version":1,"operations":[{"action":"add_rule","target":"skk.moe","match_type":"DOMAIN-SUFFIX","proxy_group":"🇺🇸美国 01","selection_mode":"none","reply_message":"已将 skk.moe 路由至 🇺🇸美国 01。"}],"reply_message":"已完成 skk.moe 美国分流。"}
 
-#示例7：一次完成多个服务分流
-[上下文列表]：["千速云", "🇯🇵日本 01", "🇺🇸美国 01"]
+#示例7：一次完成多个服务策略组切换
+[Selector 上下文]：[{"name":"Netflix","current":"PROXIES","members":["JP","US"]},{"name":"YouTube","current":"PROXIES","members":["JP","US"]}]
 [用户输入]："Netflix 走日本，YouTube 走美国"
 [严格输出]：
-{"schema_version":1,"operations":[{"action":"add_rule","target":"netflix","match_type":"GEOSITE","proxy_group":"🇯🇵日本 01","selection_mode":"none","reply_message":"已将 Netflix 路由至 🇯🇵日本 01。"},{"action":"add_rule","target":"youtube","match_type":"GEOSITE","proxy_group":"🇺🇸美国 01","selection_mode":"none","reply_message":"已将 YouTube 路由至 🇺🇸美国 01。"}],"reply_message":"已完成 Netflix 日本和 YouTube 美国分流。"}
+{"schema_version":1,"operations":[{"action":"switch_proxy","target":"Netflix","match_type":"NONE","proxy_group":"JP","selection_mode":"specified","reply_message":"已将 Netflix 策略组切换至 JP。"},{"action":"switch_proxy","target":"YouTube","match_type":"NONE","proxy_group":"US","selection_mode":"specified","reply_message":"已将 YouTube 策略组切换至 US。"}],"reply_message":"已完成 Netflix 日本和 YouTube 美国切换。"}
 
 #示例8：含糊指令必须澄清，不能修改配置
 [用户输入]："帮我优化一下"

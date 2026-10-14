@@ -14,7 +14,6 @@ import com.yamax.veer.core_mihomo.MihomoEngine
 import com.yamax.veer.core_mihomo.MihomoRepository
 import com.yamax.veer.core_mihomo.VeerVpnService
 import com.yamax.veer.core_profile.ProfileManager
-import com.yamax.veer.core_profile.SubscriptionRefreshScheduler
 import com.yamax.veer.core_profile.internal.parser.ImportResult
 import com.yamax.veer.core_profile.internal.parser.ProfileInput
 import com.yamax.veer.core_profile.internal.storage.ProfileStore
@@ -111,9 +110,8 @@ class DebugRuntimeReceiver : BroadcastReceiver() {
                 val pending = goAsync()
                 scope.launch {
                     val rule = intent.getStringExtra(EXTRA_RULE)?.trim().orEmpty()
-                    val ruleId = ConfigManager.parseAiRule(rule)?.id
-                    val changed = ruleId != null &&
-                        ConfigManager.deleteAiRule(context, ruleId)
+                    val changed = rule.isNotEmpty() &&
+                        ConfigManager.deleteAiRuleRaw(context, rule)
                     val config = ConfigManager.materializeBaseConfig(context)
                     val reload = if (MihomoEngine.state.value is
                         com.yamax.veer.core_mihomo.EngineState.Running
@@ -144,10 +142,6 @@ class DebugRuntimeReceiver : BroadcastReceiver() {
                     }
                 }
                 Log.i(TAG, "auto recovery configured mode=$mode")
-            }
-            ACTION_REFRESH_SUBSCRIPTIONS -> {
-                SubscriptionRefreshScheduler.enqueueNow(context)
-                Log.i(TAG, "subscription refresh enqueued")
             }
             ACTION_VERIFY_REFRESH_FAILURE_SAFETY -> {
                 val pending = goAsync()
@@ -235,8 +229,6 @@ class DebugRuntimeReceiver : BroadcastReceiver() {
         const val ACTION_REMOVE_TEST_RULE = "com.yamax.veer.debug.REMOVE_TEST_RULE"
         const val ACTION_CONFIGURE_AUTO_RECOVERY =
             "com.yamax.veer.debug.CONFIGURE_AUTO_RECOVERY"
-        const val ACTION_REFRESH_SUBSCRIPTIONS =
-            "com.yamax.veer.debug.REFRESH_SUBSCRIPTIONS"
         const val ACTION_VERIFY_REFRESH_FAILURE_SAFETY =
             "com.yamax.veer.debug.VERIFY_REFRESH_FAILURE_SAFETY"
         const val ACTION_VERIFY_LOG_REDACTION =

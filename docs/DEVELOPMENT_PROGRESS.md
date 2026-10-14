@@ -1,6 +1,24 @@
 # Veer 功能开发进度汇总
 
-> 更新于 2026-07-31 22:42
+> 当前编辑器进度更新于 2026-10-14；以下 Android 轮次为历史记录。
+
+## 当前方向：AI 配置编辑器
+
+已从完整 VPN 客户端转向先验证 AI 编辑能力，保留 Android 客户端代码，不在本轮更改代理内核。Web 本机编辑服务与 macOS 原生 SwiftUI 客户端已落地，支持完整 YAML 文件／订阅 URL 导入、匿名出口上下文、网站／服务分流候选、Diff、确认到草稿、撤销和完整副本导出；API Key 按 API 地址保存到 macOS 钥匙串，不回传其值。
+
+2026-10-14 已按用户确认的 OpenCode 参考原型完成原生主对话＋按需审阅：宽窗口并排、窄窗口单区域，保留历史位置与每轮范围披露，旧候选只读，撤销受栈顶令牌保护。29 项 Swift Tests（VeerMac 15／VeerEditor 14）、Release 与 ad-hoc 签名通过；无节点／无密钥夹具完成浅深色、最小窗口和导出检查，非 rules 内容逐字保留。独立终审仅对本轮原生 UI 给出 ship。
+
+本机编辑服务仍需单独启动（127.0.0.1:4317）。真实 AI／订阅、VoiceOver、旧 OS、减少透明度、公开发行签名／公证未在本轮实测；Android 的既有改动作为开发快照同步，不宣称本轮重新验收。后续优先考虑独立应用打包、会话持久化与真实 AI 流程验收。
+
+详情：[原生落地验收](MACOS_OPENCODE_IMPLEMENTATION_2026-10-14.md)、[原生运行说明](../native/macos/README.md)、[UI 改造计划](OPENCODE_UI_ADOPTION_PLAN_2026-10-14.md)。
+
+## GitHub 同步与路径核对
+
+同步目标为 `SpectreAX/veer-android` 的现有 `agent/ui-refactor-sync` 分支。同步前发现仓库公开，已按用户要求改为私有并通过 GitHub API 确认 `isPrivate=true`。不改写 Git 历史，不强推，不自动合并到 main。
+
+当前实际 checkout 为 `/Users/spectreax/Developer/Veer`；`/Users/spectreax/Documents/Veer` 不是 Git 仓库。新版应用实际路径为 `/Users/spectreax/Developer/Veer/native/macos/dist/Veer AI Editor.app`，已核对可执行文件并在 Finder 中定位。GitHub 同步源码、测试与文档；`.app`、构建缓存、依赖与本机密钥不提交。
+
+推送前复跑：Web 编辑服务 43 项、交互原型 5 项、Swift 29 项，合计 77 项通过；现有 `.app` 签名复核通过。暂存内容敏感模式扫描仅命中明确的合成日志脱敏夹具，未发现真实 Key、订阅 token 或私钥；本次同步包括 8 张无节点／无密钥原生验收截图。历史设备报告的 Markdown 换行和安装技能参考资料的 EOF 空行保留，不做无关格式改写。
 
 ---
 

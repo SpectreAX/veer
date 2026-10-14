@@ -8,6 +8,7 @@ import android.os.Looper
 import android.os.Process
 import android.util.Log
 import com.yamax.veer.core_logging.VeerLog
+import com.yamax.veer.core_profile.SubscriptionRefreshScheduler
 import com.yamax.veer.ui.logs.LogSource
 import com.yamax.veer.ui.logs.LogViewerRepository
 import java.io.File
@@ -39,12 +40,18 @@ class DebugUiProcessReceiver : BroadcastReceiver() {
                 )
                 Log.i(TAG, "log viewer snapshot lines=${lines.size}")
             }
+            ACTION_REFRESH_SUBSCRIPTIONS -> {
+                SubscriptionRefreshScheduler.enqueueNow(context)
+                Log.i(TAG, "subscription refresh enqueued")
+            }
         }
     }
 
     companion object {
         const val ACTION_KILL_UI_PROCESS = "com.yamax.veer.debug.KILL_UI_PROCESS"
         const val ACTION_DUMP_LOG_VIEWER = "com.yamax.veer.debug.DUMP_LOG_VIEWER"
+        const val ACTION_REFRESH_SUBSCRIPTIONS =
+            "com.yamax.veer.debug.REFRESH_SUBSCRIPTIONS"
         const val LOG_VIEWER_OUTPUT_FILE = "debug_log_viewer.txt"
         private const val TAG = "VeerDebugUi"
     }

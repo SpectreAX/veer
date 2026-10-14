@@ -28,8 +28,12 @@ internal object SubscriptionMetadata {
         "重置订阅",
         "trafficleft",
         "remainingtraffic",
+        "traffic:",
+        "traffic：",
         "expiredate",
         "expirationdate",
+        "expire:",
+        "expire：",
         "updatesubscription",
     )
 }

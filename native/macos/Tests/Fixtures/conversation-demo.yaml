@@ -1,0 +1,13 @@
+# 无节点、密钥或订阅的界面验收配置；不代表实际代理出口。
+proxy-groups:
+  - name: 日本出口
+    type: select
+    proxies: [DIRECT]
+  - name: 美国出口
+    type: select
+    proxies: [DIRECT]
+  - name: 香港出口
+    type: select
+    proxies: [DIRECT]
+rules:
+  - MATCH,DIRECT

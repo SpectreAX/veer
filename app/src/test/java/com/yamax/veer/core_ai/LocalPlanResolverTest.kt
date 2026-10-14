@@ -92,6 +92,37 @@ class LocalPlanResolverTest {
     }
 
     @Test
+    fun `slow node command follows delegated default to active leaf selector`() {
+        val proxies = listOf(
+            MihomoRepository.ProxyState(
+                "Final", "Selector", "Proxies", listOf("Proxies", "DIRECT"), null,
+            ),
+            MihomoRepository.ProxyState(
+                "Proxies", "Selector", "HK", listOf("HK", "US"), null,
+            ),
+            MihomoRepository.ProxyState(
+                "HK", "Selector", "HK-1", listOf("HK-1", "HK-2"), null,
+            ),
+            MihomoRepository.ProxyState("HK-1", "Trojan", null, emptyList(), 80, true),
+            MihomoRepository.ProxyState("HK-2", "Trojan", null, emptyList(), 40, true),
+            MihomoRepository.ProxyState(
+                "US", "Selector", "US-1", listOf("US-1"), null,
+            ),
+            MihomoRepository.ProxyState("US-1", "Trojan", null, emptyList(), 90, true),
+            MihomoRepository.ProxyState("DIRECT", "Direct", null, emptyList(), null, true),
+        ).associateBy { it.name }
+
+        val operation = LocalPlanResolver.resolve(
+            "节点太卡了换一个",
+            MihomoRepository.RoutingSnapshot(proxies),
+            preferredSelector = "Final",
+        )!!.operations.single()
+
+        assertEquals("HK", operation.target)
+        assertEquals(AiIntent.SelectionMode.LOWEST_LATENCY, operation.selectionMode)
+    }
+
+    @Test
     fun `service region command picks lowest-delay explicitly healthy node`() {
         val operation = LocalPlanResolver.resolve(
             "Netflix走香港",
@@ -111,6 +142,52 @@ class LocalPlanResolverTest {
         )!!.operations.single()
 
         assertEquals("netflix", operation.target)
+        assertEquals("🇭🇰香港 02", operation.proxyGroup)
+    }
+
+    @Test
+    fun `service region switches matching subscription selector when available`() {
+        val proxies = snapshot().proxies.toMutableMap()
+        proxies["OpenAI"] = MihomoRepository.ProxyState(
+            "OpenAI", "Selector", "HK", listOf("HK", "US"), null, true,
+        )
+        proxies["HK"] = MihomoRepository.ProxyState(
+            "HK", "Selector", "🇭🇰香港 02", listOf("🇭🇰香港 02"), null, true,
+        )
+        proxies["US"] = MihomoRepository.ProxyState(
+            "US", "Selector", "🇺🇸 United States | 01",
+            listOf("🇺🇸 United States | 01"), null, true,
+        )
+        proxies["🇺🇸 United States | 01"] = MihomoRepository.ProxyState(
+            "🇺🇸 United States | 01", "Trojan", null, emptyList(), null, true,
+        )
+
+        val operation = LocalPlanResolver.resolve(
+            "ChatGPT go us",
+            MihomoRepository.RoutingSnapshot(proxies),
+        )!!.operations.single()
+
+        assertEquals(AiIntent.Action.SWITCH_PROXY, operation.action)
+        assertEquals("OpenAI", operation.target)
+        assertEquals(AiIntent.MatchType.NONE, operation.matchType)
+        assertEquals("US", operation.proxyGroup)
+        assertEquals(AiIntent.SelectionMode.SPECIFIED, operation.selectionMode)
+    }
+
+    @Test
+    fun `domain region remains a rule when service selectors exist`() {
+        val proxies = snapshot().proxies.toMutableMap()
+        proxies["Netflix"] = MihomoRepository.ProxyState(
+            "Netflix", "Selector", "HK", listOf("HK", "JP"), null, true,
+        )
+
+        val operation = LocalPlanResolver.resolve(
+            "example.com go HK",
+            MihomoRepository.RoutingSnapshot(proxies),
+        )!!.operations.single()
+
+        assertEquals(AiIntent.Action.ADD_RULE, operation.action)
+        assertEquals(AiIntent.MatchType.DOMAIN_SUFFIX, operation.matchType)
         assertEquals("🇭🇰香港 02", operation.proxyGroup)
     }
 
@@ -160,6 +237,21 @@ class LocalPlanResolverTest {
         assertEquals(
             setOf("GB"),
             LocalPlanResolver.requestedRoutingRegionCodes("我想看DisneyPlus英区"),
+        )
+    }
+
+    @Test
+    fun `quota metadata containing GB is never treated as a UK node`() {
+        val proxies = snapshot().proxies.toMutableMap()
+        proxies["Traffic: 56.9 GB / 200 GB"] = MihomoRepository.ProxyState(
+            "Traffic: 56.9 GB / 200 GB", "Trojan", null, emptyList(), 20, true,
+        )
+
+        assertNull(
+            LocalPlanResolver.resolve(
+                "Netflix go uk",
+                MihomoRepository.RoutingSnapshot(proxies),
+            ),
         )
     }
 

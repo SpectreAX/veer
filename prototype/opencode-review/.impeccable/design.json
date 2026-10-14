@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-14T12:52:03Z",
+  "title": "Design System: Veer OpenCode 参考原型",
+  "extensions": {
+    "shadows": [
+      { "name": "import-light", "value": "0 8px 28px #26322612", "purpose": "默认浅色导入入口；对应 --shadow。" },
+      { "name": "import-dark", "value": "0 8px 28px #0003", "purpose": "深色导入入口；对应 --shadow 覆盖。" }
+    ],
+    "breakpoints": [
+      { "name": "single-region-review-max", "value": "1199px" },
+      { "name": "mobile-max", "value": "700px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "确认修改",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "pending 候选的主动作；这里只呈现控件，不执行状态写入。",
+      "html": "<button class=\"ds-primary\">确认修改</button>",
+      "css": ".ds-primary{font:600 14px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;cursor:pointer;border:1px solid transparent;border-radius:var(--s);padding:var(--s) var(--m);min-height:36px;background:var(--accent);color:var(--surface)}.ds-primary:hover:not(:disabled){filter:brightness(.95)}.ds-primary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}.ds-primary:disabled{cursor:default;opacity:.45}"
+    },
+    {
+      "name": "放弃 / 撤销",
+      "kind": "button",
+      "description": "细边框次动作；业务状态决定可用性。",
+      "html": "<button class=\"ds-secondary\">放弃</button>",
+      "css": ".ds-secondary{font:14px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;cursor:pointer;border:1px solid var(--line);border-radius:var(--s);padding:var(--s) var(--m);background:none;color:var(--ink)}.ds-secondary:hover:not(:disabled){background:var(--selected)}.ds-secondary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}.ds-secondary:disabled{cursor:default;opacity:.45}"
+    },
+    {
+      "name": "玻璃工具按钮",
+      "kind": "button",
+      "refersTo": "button-glass",
+      "description": "网页半透明操作层；不代表原生 Liquid Glass。",
+      "html": "<button class=\"ds-glass\" aria-label=\"导入配置\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 4v16M4 12h16\"/></svg></button>",
+      "css": ".ds-glass{cursor:pointer;color:var(--ink);width:var(--control);height:var(--control);padding:0;border:1px solid var(--line);background:var(--glass);backdrop-filter:blur(16px);border-radius:var(--round);display:inline-flex;align-items:center;justify-content:center}.ds-glass svg{width:20px;height:20px}.ds-glass:hover:not(:disabled){background:var(--surface)}.ds-glass:focus-visible{outline:2px solid var(--accent);outline-offset:3px}.ds-glass:disabled{cursor:default;opacity:.45}@media(max-width:700px){.ds-glass{width:34px;height:34px}}@media(prefers-reduced-transparency:reduce){.ds-glass{backdrop-filter:none;background:var(--surface)}}@media(forced-colors:active){.ds-glass{border:1px solid ButtonText}}"
+    },
+    {
+      "name": "固定演示 URL",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "导入弹窗中的只读内置示例地址；不发送网络请求。",
+      "html": "<input class=\"ds-input\" aria-label=\"从 URL 导入 · 演示\" value=\"https://example.invalid/veer-demo.yaml\" readonly>",
+      "css": ".ds-input{font:12px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--ink);width:100%;padding:var(--s);border:1px solid var(--line);border-radius:var(--s);background:var(--quiet)}.ds-input:focus-visible{outline:2px solid var(--accent);outline-offset:3px}"
+    },
+    {
+      "name": "独立对话输入区",
+      "kind": "custom",
+      "refersTo": "composer",
+      "description": "实底输入容器；输入焦点以容器边界表达，不重建演示业务。",
+      "html": "<div class=\"ds-composer\"><textarea aria-label=\"对话修改配置\" rows=\"3\" maxlength=\"1000\" placeholder=\"描述你想修改的分流规则…\"></textarea><p>仅合成演示，不读取文件、不访问订阅或 AI。请勿输入真实密钥。</p></div>",
+      "css": ".ds-composer{color:var(--ink);border:1px solid var(--line);border-radius:var(--round);padding:var(--m);background:var(--surface);font:14px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.ds-composer:focus-within{border-color:var(--accent)}.ds-composer textarea{font:inherit;color:inherit;width:100%;resize:none;border:0;outline:none;background:transparent;line-height:1.7;min-height:72px;padding:0;caret-color:var(--accent)}.ds-composer textarea::placeholder{color:var(--muted);opacity:1}.ds-composer textarea:focus-visible{outline:none}.ds-composer p{font-size:12px;line-height:1.65;color:var(--muted);margin:var(--s) 0 0}@media(max-width:700px){.ds-composer{padding:12px}}@media(forced-colors:active){.ds-composer{border:1px solid ButtonText}}"
+    },
+    {
+      "name": "紧凑文件变更",
+      "kind": "custom",
+      "refersTo": "file-change",
+      "description": "对话中的审阅入口；真实应用按 turn 打开对应候选。",
+      "html": "<button class=\"ds-file-change\"><span class=\"ds-file-label\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M14 2H5v20h14V7Zm0 0v5h5M8 12h8M8 16h8\"/></svg><strong>veer-demo.yaml</strong></span><small>候选修改 · 尚未写入 <svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m9 5 7 7-7 7\"/></svg></small></button>",
+      "css": ".ds-file-change{font:14px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--ink);cursor:pointer;width:100%;display:inline-flex;align-items:center;justify-content:space-between;gap:var(--s);background:var(--quiet);border:1px solid var(--line);border-radius:var(--s);padding:var(--m);margin:var(--s) 0}.ds-file-change:hover:not(:disabled){background:var(--selected)}.ds-file-change:focus-visible{outline:2px solid var(--accent);outline-offset:3px}.ds-file-change:disabled{cursor:default;opacity:.45}.ds-file-label{display:flex;gap:var(--s);align-items:center;min-width:0}.ds-file-change strong{font-size:12px;overflow-wrap:anywhere;text-align:left}.ds-file-change small{font-size:12px;color:var(--muted);line-height:1.6;white-space:nowrap}.ds-file-change svg{width:20px;height:20px;flex-shrink:0}.ds-file-change small svg{display:inline-block;vertical-align:middle;margin-left:var(--s)}@media(max-width:700px){.ds-file-change{padding:12px}}@media(forced-colors:active){.ds-file-change{border:1px solid ButtonText}}"
+    },
+    {
+      "name": "当前配置导航",
+      "kind": "nav",
+      "refersTo": "navigation-current",
+      "description": "宽屏工作台当前项；移动端由配置菜单承接导航。",
+      "html": "<button class=\"ds-nav-current\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4 4h16v12H9l-5 4Zm4 4h8M8 12h5\"/></svg>AI 工作台</button>",
+      "css": ".ds-nav-current{font:600 14px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;cursor:pointer;width:100%;min-height:var(--control);display:inline-flex;align-items:center;justify-content:flex-start;gap:var(--s);border:1px solid transparent;border-radius:var(--s);padding:var(--s) var(--m);background:var(--selected);color:var(--accent)}.ds-nav-current svg{width:20px;height:20px;flex-shrink:0}.ds-nav-current:hover:not(:disabled){background:var(--selected)}.ds-nav-current:focus-visible{outline:2px solid var(--accent);outline-offset:3px}.ds-nav-current:disabled{cursor:default;opacity:.45}"
+    }
+  ],
+  "narrative": {
+    "northStar": "清晰、安静、可靠的工作台",
+    "overview": "沿用 Veer 的绿色标识、系统字体和等宽规则文本。用户已确认主对话＋可收起的右侧审阅，窄窗口以单区域切换；保留未导入首页。构图与参考已固定，采用 code-led 实现，不另造视觉身份。\n\n本文件只描述 `prototype/opencode-review` 的 buildless HTML/CSS/JS 合成原型。`native/macos/PRODUCT.md` 是产品约束输入，不是本原型已实现的能力证明；没有真实文件读取、订阅下载、AI 请求、Key 存储、内核验证或代理控制。CSS 玻璃是网页近似，不是 macOS Liquid Glass。原生程序、原生 DESIGN/sidecar 及既有漂移均未改动。",
+    "keyCharacteristics": [
+      "中性实底承载正文；玻璃仅用于操作层和导入入口。",
+      "摘要、处理记录、紧凑文件变更与完整审阅分层呈现。",
+      "候选、已确认到草稿与未应用代理始终明确区分。"
+    ],
+    "rules": [],
+    "dos": [
+      "Do 保持主对话＋按需审阅、窄窗口单区域与独立输入区。",
+      "Do 将 pending、草稿确认、撤销、放弃与失效状态写清，保留阅读位置与逐 turn 披露。",
+      "Do 保持两套主题语义一致、Diff 单行横向滚动和长文本可读。"
+    ],
+    "donts": [
+      "Don't 将网页玻璃、演示校验或地区标签写成原生材料、真实内核测试或网络可达证明。",
+      "Don't 把合成导出写成完整真实配置导出，或复制 OpenCode 商标、字体、图标与源码。",
+      "Don't 借本原型修改原生应用或刷新其既有设计文档/sidecar。"
+    ]
+  }
+}

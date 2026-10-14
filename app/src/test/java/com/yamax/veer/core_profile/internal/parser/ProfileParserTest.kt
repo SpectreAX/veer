@@ -11,6 +11,30 @@ import org.yaml.snakeyaml.constructor.SafeConstructor
 
 class ProfileParserTest {
     @Test
+    fun subscriptionDisplayNameDoesNotExposePathQueryOrNestedUrl() {
+        val url = "https://api.example.com/sub?target=clash&url=https%3A%2F%2Fsecret.example%2Ftoken"
+
+        assertEquals("api.example.com", ProfileParser.subscriptionDisplayName(url))
+    }
+
+    @Test
+    fun legacyLeakingSubscriptionDisplayNameIsSanitizedButCustomNameIsPreserved() {
+        val url = "https://api.example.com/sub?token=secret"
+
+        assertEquals(
+            "api.example.com",
+            ProfileParser.sanitizeSubscriptionDisplayName(
+                "sub?target=clash&url=https%3A%2F%2Fsecret.example%2Ftoken",
+                url,
+            ),
+        )
+        assertEquals(
+            "My Airport",
+            ProfileParser.sanitizeSubscriptionDisplayName("My Airport", url),
+        )
+    }
+
+    @Test
     fun plaintextProviderDnsIsHardenedAgainstFallbackPollution() = runBlocking {
         val yaml = """
             proxies:
@@ -145,6 +169,47 @@ class ProfileParserTest {
         assertTrue(result is ImportResult.Failure)
         val errors = (result as ImportResult.Failure).errors
         assertTrue(errors.any { it is ValidationError.BrokenGroupReference })
+    }
+
+    @Test
+    fun anyTlsNodeKeepsItsRequiredCredentialAndTlsOptions() = runBlocking {
+        val yaml = """
+            proxies:
+              - name: AnyTLS-01
+                type: anytls
+                server: example.com
+                port: 443
+                password: test-password
+                sni: edge.example.com
+                client-fingerprint: chrome
+            proxy-groups:
+              - name: PROXY
+                type: select
+                proxies: [AnyTLS-01, DIRECT]
+            rules:
+              - MATCH,PROXY
+        """.trimIndent()
+
+        val result = ProfileParser.parse(ProfileInput.YamlBytes(yaml.toByteArray(), "anytls.yaml"))
+
+        assertTrue(result.toString(), result is ImportResult.Success)
+        val generated = Yaml(SafeConstructor(LoaderOptions()))
+            .load<Map<String, Any>>((result as ImportResult.Success).generatedYaml)
+        val proxy = (generated["proxies"] as List<*>).first() as Map<*, *>
+        assertEquals("anytls", proxy["type"])
+        assertEquals("test-password", proxy["password"])
+        assertEquals("edge.example.com", proxy["sni"])
+        assertEquals("chrome", proxy["client-fingerprint"])
+        val missingPassword = ProfileParser.parse(
+            ProfileInput.YamlBytes(
+                yaml.replace("password: test-password", "").toByteArray(),
+                "anytls-missing-password.yaml",
+            ),
+        )
+        assertTrue(missingPassword is ImportResult.Failure)
+        assertTrue((missingPassword as ImportResult.Failure).errors.any {
+            it is ValidationError.MissingRequiredField
+        })
     }
 
     @Test

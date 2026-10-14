@@ -1,7 +1,9 @@
 package com.yamax.veer.core_ai
 
 import android.content.ContextWrapper
+import com.yamax.veer.core_diagnostics.NetworkDiagnosticExecutor
 import com.yamax.veer.core_mihomo.MihomoRepository
+import okhttp3.OkHttpClient
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -12,11 +14,16 @@ class AiControllerExecutionTest {
     private val context = object : ContextWrapper(null) {
         override fun getApplicationContext() = this
     }
-    private val unavailableRepository = MihomoRepository(controllerPort = 1)
+    private val unavailableRepository = MihomoRepository(controllerPort = 1, secret = "test")
+    private val offlineDiagnostics = NetworkDiagnosticExecutor(
+        context, unavailableRepository, OkHttpClient(),
+    )
 
     @Test
     fun `clarification returns feedback without pretending to mutate configuration`() = runTest {
-        val controller = AiController(context, mihomo = unavailableRepository)
+        val controller = AiController(
+            context, mihomo = unavailableRepository, diagnosticExecutor = offlineDiagnostics,
+        )
         val intent = AiIntent(
             action = AiIntent.Action.CLARIFY,
             target = "user",
@@ -36,7 +43,9 @@ class AiControllerExecutionTest {
 
     @Test
     fun `unsupported dns operation fails before reporting success`() = runTest {
-        val controller = AiController(context, mihomo = unavailableRepository)
+        val controller = AiController(
+            context, mihomo = unavailableRepository, diagnosticExecutor = offlineDiagnostics,
+        )
         val intent = AiIntent(
             action = AiIntent.Action.DNS_CHANGE,
             target = "1.1.1.1",
@@ -70,7 +79,9 @@ class AiControllerExecutionTest {
 
     @Test
     fun `clarification cannot be mixed with mutating operations`() = runTest {
-        val controller = AiController(context, mihomo = unavailableRepository)
+        val controller = AiController(
+            context, mihomo = unavailableRepository, diagnosticExecutor = offlineDiagnostics,
+        )
         val clarify = AiIntent(
             action = AiIntent.Action.CLARIFY,
             target = "user",

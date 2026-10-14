@@ -3,6 +3,8 @@ package com.yamax.veer
 import android.app.Application
 import com.yamax.veer.app_state.AppStateRepository
 import com.yamax.veer.core_logging.VeerLog
+import com.yamax.veer.core_mihomo.ControllerSecretStore
+import com.yamax.veer.core_mihomo.ProfileSelectionStore
 import com.yamax.veer.core_mihomo.ipc.CoreStateClient
 import com.yamax.veer.core_mihomo.ipc.CoreStatePublisher
 import com.yamax.veer.core_mihomo.ipc.ProcessRole
@@ -15,6 +17,8 @@ import java.io.File
 class VeerApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        ControllerSecretStore.initialize(this)
+        ProfileSelectionStore.initialize(this)
         val coreProcess = ProcessRole.isCoreProcess()
         VeerLog.init(File(filesDir, if (coreProcess) "logs/core" else "logs"))
         AppStateRepository.init()

@@ -1,6 +1,7 @@
 package com.yamax.veer.core_mihomo
 
 import com.yamax.veer.core_profile.SubscriptionMetadata
+import com.yamax.veer.core_logging.VeerLog
 import com.yamax.veer.core_mihomo.ipc.CoreStateClient
 import com.yamax.veer.core_mihomo.ipc.ProcessRole
 import kotlinx.coroutines.Dispatchers
@@ -28,6 +29,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import java.io.File
 import java.io.IOException
+import java.net.Proxy
 import java.util.concurrent.TimeUnit
 import veercore.Veercore
 
@@ -35,11 +37,8 @@ import veercore.Veercore
  * Single funnel for every call into the Mihomo local REST API.
  *
  * Callers — including the AI controller and any future UI — interact with
- * this class and never see `127.0.0.1`, `9090`, OkHttp, or path strings.
- * That isolation matters because some Android ROMs (MIUI / HyperOS in
- * particular) clamp localhost traffic in ways that may force us to move the
- * controller (e.g. abstract Unix socket, in-process gRPC) without touching
- * the rest of the app.
+ * this class and never see OkHttp or the app-private Unix socket path. The
+ * HTTP URL is only a virtual authority: production requests never open TCP.
  *
  * Thread-safety: all suspend functions hop to `Dispatchers.IO` internally
  * and the underlying OkHttpClient is safe for concurrent use.
@@ -47,11 +46,20 @@ import veercore.Veercore
 class MihomoRepository internal constructor(
     private val controllerHost: String = DEFAULT_HOST,
     private val controllerPort: Int = DEFAULT_PORT,
-    private val secret: String = "",
+    private val secret: String = ControllerSecretStore.getOrCreate(),
     private val client: OkHttpClient = defaultClient(),
 ) {
 
-    constructor() : this(DEFAULT_HOST, DEFAULT_PORT)
+    init {
+        require(secret.isNotBlank()) { "Mihomo Controller credential is required" }
+    }
+
+    constructor() : this(
+        DEFAULT_HOST,
+        DEFAULT_PORT,
+        ControllerSecretStore.getOrCreate(),
+        unixClient(ControllerSecretStore.socketPath()),
+    )
 
     private val baseUrl: String = "http://$controllerHost:$controllerPort"
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
@@ -400,6 +408,13 @@ class MihomoRepository internal constructor(
                 client.newCall(req).execute().use {
                     it.isSuccessful.also { success ->
                         if (success) {
+                            runCatching { ProfileSelectionStore.recordActive(groupName, proxyName) }
+                                .onFailure {
+                                    VeerLog.profile(
+                                        "failed to persist proxy selection: ${it.message}",
+                                        VeerLog.Level.WARN,
+                                    )
+                                }
                             CoreRuntimeEvents.publish(
                                 CoreRuntimeMutation.ROUTE_SELECTION_CHANGED,
                             )
@@ -732,8 +747,8 @@ class MihomoRepository internal constructor(
     companion object {
         const val AI_OVERRIDE_PROVIDER = "ai_override_provider"
 
-        private const val DEFAULT_HOST = "127.0.0.1"
-        private const val DEFAULT_PORT = 9090
+        private const val DEFAULT_HOST = "localhost"
+        private const val DEFAULT_PORT = 80
         private const val DEFAULT_DELAY_TIMEOUT_MS = 2500
         private const val DEFAULT_DELAY_PROBE_CONCURRENCY = 4
         private const val DEFAULT_DELAY_PROBE_URL = "https://www.gstatic.com/generate_204"
@@ -744,6 +759,13 @@ class MihomoRepository internal constructor(
         private val DEFAULT_TARGETS = listOf("PROXY", "DIRECT", "REJECT")
 
         private fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
+            .connectTimeout(2, TimeUnit.SECONDS)
+            .readTimeout(5, TimeUnit.SECONDS)
+            .build()
+
+        private fun unixClient(socketPath: String): OkHttpClient = OkHttpClient.Builder()
+            .proxy(Proxy.NO_PROXY)
+            .socketFactory(UnixControllerSocketFactory(socketPath))
             .connectTimeout(2, TimeUnit.SECONDS)
             .readTimeout(5, TimeUnit.SECONDS)
             .build()
