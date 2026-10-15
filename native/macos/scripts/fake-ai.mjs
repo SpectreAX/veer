@@ -13,7 +13,9 @@ createServer(async (req, res) => {
   const earlier = messages.slice(1, -1).map(m => m.content).join('\n');
   const target = (messages[0].content.match(/"id":"(target-\d+)","label":"[^"]*台湾/) ?? [])[1];
   let answer;
-  if (/bahamut/i.test(latest)) answer = { clarification: '请指定 bahamut 要使用的单个出口：台湾或香港。' };
+  const firstGroup = (messages[0].content.match(/"id":"(target-\d+)","label":"[^"]*","kind":"group"/) ?? [])[1];
+  if (/youtube/i.test(latest) && firstGroup) answer = { schemaVersion: 1, operations: [{ kind: 'rule_set', source: 'metacubex-geosite', name: 'youtube', targetId: firstGroup }] };
+  else if (/bahamut/i.test(latest)) answer = { clarification: '请指定 bahamut 要使用的单个出口：台湾或香港。' };
   else if (/台湾/.test(latest) && /bahamut/i.test(earlier) && target) answer = { schemaVersion: 1, operations: [{ kind: 'route', matchType: 'GEOSITE', match: 'bahamut', targetId: target }] };
   else answer = { clarification: '请明确要为哪个域名或服务添加规则。' };
   res.writeHead(200, { 'Content-Type': 'application/json' });

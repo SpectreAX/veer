@@ -148,3 +148,33 @@ func followUpAnswerKeepsSessionContext() async throws {
     #expect(turn.preview?.candidate.contains("GEOSITE,bahamut,台湾家宽") == true)
     #expect(turn.steps.contains { $0.contains("前 1 轮匿名上文") })
 }
+
+/// A rule-set plan adds a rule-provider and a RULE-SET rule; the provider travels in the draft.
+@Test(.enabled(if: ProcessInfo.processInfo.environment["VEER_TEST_PORT"] != nil && ProcessInfo.processInfo.environment["VEER_FAKE_AI_URL"] != nil)) @MainActor
+func ruleSetPlanAddsProviderAndRule() async throws {
+    let raw = try #require(ProcessInfo.processInfo.environment["VEER_TEST_PORT"])
+    let model = EditorModel(client: try EditorClient(port: try #require(Int(raw))))
+    let yaml = "proxy-groups:\n  - name: 🚀 节点选择\n    type: select\n    proxies: [DIRECT]\nrules:\n  - MATCH,DIRECT\n"
+    try await model.acceptImport(yaml, name: "sub.yaml", revision: model.session.revision)
+    model.mode = "ai"
+    model.setBaseURL(try #require(ProcessInfo.processInfo.environment["VEER_FAKE_AI_URL"]))
+    model.setModel("fake"); model.setKey("test-only")
+    model.prompt = "YouTube 走 🚀 节点选择"; model.generate()
+    try await idle(model)
+    let turn = try #require(model.conversation.last)
+    #expect(turn.state == .pending, "\(turn.state): \(turn.message)")
+    let change = try #require(turn.preview?.summaries.first)
+    #expect(change.kind == "rule_set" && change.after == "RULE-SET,youtube,🚀 节点选择")
+    #expect(change.provider?.url == "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/youtube.mrs")
+    #expect(change.provider?.format == "mrs" && change.provider?.behavior == "domain" && change.provider?.verified != nil)
+    model.applyTurn(turn.id)
+    try await idle(model)
+    #expect(model.session.draft.rules.contains("rule-providers:"))
+    #expect(model.session.draft.rules.contains("path: ./rule_provider/youtube.mrs"))
+    model.refreshRuleList()
+    let deadline = Date().addingTimeInterval(5)
+    while model.ruleList == nil && Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(model.ruleList?.first == "RULE-SET,youtube,🚀 节点选择")
+    let match = try #require(RuleMatcher.match(rules: model.ruleList ?? [], domain: "www.youtube.com"))
+    #expect(match.skipped.contains("RULE-SET,youtube,🚀 节点选择") && match.rule == "MATCH,DIRECT")
+}

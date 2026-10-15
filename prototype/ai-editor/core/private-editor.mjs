@@ -40,6 +40,8 @@ export function anonymizePrompt(prompt, targets, anonymousTargets) {
 }
 
 export function applyPrivatePlan(input, plan) {
+  // A rules-only fragment has nowhere to declare rule-providers.
+  if (plan?.operations?.some?.(op => op?.kind === 'rule_set')) fail('独立规则片段不能添加规则集。请导入完整配置后再添加。');
   const context = readPrivateInput(input);
   const result = applyPlan(context.synthetic, plan);
   const candidate = stringify({ rules: readConfig(result.candidate).config.rules });

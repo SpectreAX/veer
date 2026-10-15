@@ -99,7 +99,7 @@ struct ApprovalCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: EditorLayout.small) {
             HStack(alignment: .firstTextBaseline, spacing: EditorLayout.small) {
-                Text(group.id.kind == "remove_rule" ? "删除" : "路由")
+                Text(group.id.kind == "remove_rule" ? "删除" : group.id.kind == "rule_set" ? "规则集" : "路由")
                     .font(.caption).foregroundStyle(group.id.kind == "remove_rule" ? Color.red : .secondary)
                     .padding(.horizontal, 6).padding(.vertical, 1)
                     .overlay { Capsule().strokeBorder(Color(nsColor: .separatorColor)) }
@@ -110,17 +110,20 @@ struct ApprovalCard: View {
                 Spacer(minLength: EditorLayout.small)
                 decision
             }.textSelection(.enabled)
+            if let provider = group.changes.first?.provider { RuleProviderDetail(provider: provider) }
             VStack(alignment: .leading, spacing: 2) {
                 ForEach(Array(before.enumerated()), id: \.offset) { Text("− " + $0.element).foregroundStyle(.red) }
                 ForEach(Array(after.prefix(2).enumerated()), id: \.offset) { Text("+ " + $0.element).foregroundStyle(.green) }
                 if after.count > 2 { Text("以及另外 \(after.count - 2) 条").foregroundStyle(.secondary) }
             }.font(.caption.monospaced()).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+            if group.id.kind != "rule_set" {
             DisclosureGroup("\(group.changes.count) 个域名 · 匹配范围", isExpanded: Binding(
                 get: { turn.expandedRoutes.contains(group.id) },
                 set: { model.setRouteDisclosure(turn.id, group: group.id, expanded: $0) }
             )) {
                 ForEach(group.changes, id: \.match) { Text($0.match).font(.caption.monospaced()).frame(maxWidth: .infinity, alignment: .leading) }
             }.font(.caption)
+            }
         }
         .padding(EditorLayout.section)
         .opacity(rejected ? 0.6 : 1)
@@ -147,5 +150,28 @@ struct ApprovalCard: View {
             Label(label.0, systemImage: label.1).font(.caption)
                 .foregroundStyle(turn.state == .confirmed && !rejected ? Color.green : .secondary)
         }
+    }
+}
+
+/// Where a rule set comes from and whether its address was checked.
+struct RuleProviderDetail: View {
+    let provider: RuleProviderInfo
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(provider.url).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: EditorLayout.small) {
+                Text("\(behaviorTitle) · \(provider.format) · \(provider.reused ? "复用配置中已有的规则集" : "新增 rule-provider：\(provider.name)")")
+                    .font(.caption).foregroundStyle(.secondary)
+                if provider.verified == true {
+                    Label("地址已验证", systemImage: "checkmark.seal").font(.caption).foregroundStyle(.green)
+                } else {
+                    Label("未能联网验证地址，请在浏览器打开确认", systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange)
+                }
+            }
+        }
+    }
+    private var behaviorTitle: String {
+        switch provider.behavior { case "domain": "域名"; case "ipcidr": "IP 段"; default: "混合规则" }
     }
 }

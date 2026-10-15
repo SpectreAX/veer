@@ -25,6 +25,18 @@ public struct Validation: Codable, Equatable, Sendable {
     public let message: String
 }
 
+/// A Mihomo rule-provider the change adds or reuses, with the service's address check.
+public struct RuleProviderInfo: Codable, Equatable, Sendable {
+    public let name: String
+    public let url: String
+    public let behavior: String
+    public let format: String
+    public let path: String?
+    public let reused: Bool
+    /// True when the service fetched the address successfully; false when it could not check.
+    public let verified: Bool?
+}
+
 public struct RuleChange: Codable, Equatable, Sendable {
     public let kind: String
     public let matchType: String
@@ -32,6 +44,7 @@ public struct RuleChange: Codable, Equatable, Sendable {
     public let target: String?
     public let before: [String]
     public let after: String?
+    public let provider: RuleProviderInfo?
 }
 
 public struct DiffPart: Codable, Equatable, Sendable {
@@ -39,11 +52,18 @@ public struct DiffPart: Codable, Equatable, Sendable {
     public let text: String
 }
 
+/// One plan operation exactly as the service returned it. Fields depend on `kind`
+/// (route / remove_rule use matchType+match; rule_set uses source+name or url+behavior),
+/// and nil fields are omitted when a subset is sent back for re-validation.
 public struct PlanOperation: Codable, Equatable, Sendable {
     public let kind: String
-    public let matchType: String
-    public let match: String
+    public let matchType: String?
+    public let match: String?
     public let targetId: String?
+    public let source: String?
+    public let name: String?
+    public let url: String?
+    public let behavior: String?
 }
 
 /// The service's anonymous plan. Sending a subset back re-applies and re-validates only those operations.

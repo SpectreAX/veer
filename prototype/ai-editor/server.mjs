@@ -9,6 +9,7 @@ import { readPrivateInput, anonymizePrompt, applyPrivatePlan, resolvePrivateLoca
 import { createKeyStore } from './core/key-store.mjs';
 import { openDocument, documentContext, applyDocumentPlan } from './core/document.mjs';
 import { stringify } from 'yaml';
+import { ruleSetSpec, verifyRuleSetUrls } from './core/rule-sets.mjs';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
 const assets = new Map([['/', ['private.html', 'text/html']], ['/private', ['private.html', 'text/html']], ['/private.js', ['private.js', 'text/javascript']], ['/advanced', ['index.html', 'text/html']], ['/app.js', ['app.js', 'text/javascript']], ['/style.css', ['style.css', 'text/css']], ['/sample.yaml', ['sample.yaml', 'text/yaml']]]);
@@ -29,7 +30,7 @@ async function body(req) {
   try { return JSON.parse(Buffer.concat(chunks).toString()); } catch { throw new EditorError('请求格式无效。'); }
 }
 
-export function createEditorServer({ binary = process.env.MIHOMO_BIN || join(root, '.cache/mihomo'), aiResolver = resolveAi, keyStore = createKeyStore(), saveLegacySessionKeys = false, authToken } = {}) {
+export function createEditorServer({ binary = process.env.MIHOMO_BIN || join(root, '.cache/mihomo'), aiResolver = resolveAi, keyStore = createKeyStore(), saveLegacySessionKeys = false, authToken, ruleSetFetch = fetch } = {}) {
   return createServer(async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -94,11 +95,16 @@ export function createEditorServer({ binary = process.env.MIHOMO_BIN || join(roo
           const prompt = anonymizePrompt(input.prompt, context.targets, context.anonymousTargets);
           plan = input.mode === 'ai' ? await aiResolver(prompt, context.anonymousTargets, await aiSettings(input.settings, keyStore, false), undefined, readHistory(input.history, context)) : resolveLocal(prompt, context.anonymousTargets);
         }
-        const result = applyDocumentPlan(input, context, plan);
+        const verified = await verifyPlanRuleSets(plan, ruleSetFetch);
+        const result = annotateRuleSets(applyDocumentPlan(input, context, plan), verified);
         // Test only changed rules against placeholders. Never load real providers or secrets into a running core.
-        const synthetic = stringify({ 'proxy-groups': context.targets.filter(t => t.kind !== 'builtin').map(t => ({ name: t.name, type: 'select', proxies: ['DIRECT'] })), rules: result.summaries.flatMap(s => s.after ? [s.after] : []) });
+        // RULE-SET contents are downloaded by the client at runtime, so they are left out of this check.
+        const tested = result.summaries.filter(s => s.after && s.kind !== 'rule_set').map(s => s.after);
+        const ruleSetNote = result.summaries.some(s => s.kind === 'rule_set') ? ' 规则集内容由客户端运行时下载，本机未做内核测试。' : '';
+        if (!tested.length) return send(res, 200, { ...result, plan, validation: { status: 'unavailable', message: `规则集与规则结构检查通过。${ruleSetNote.trim()}` } });
+        const synthetic = stringify({ 'proxy-groups': context.targets.filter(t => t.kind !== 'builtin').map(t => ({ name: t.name, type: 'select', proxies: ['DIRECT'] })), rules: tested });
         const checked = await validateCore(synthetic, binary);
-        return send(res, 200, { ...result, plan, validation: { ...checked, message: `${checked.message} 此检查仅覆盖修改规则的占位出口，不验证原配置、Provider 或实际网络。` } });
+        return send(res, 200, { ...result, plan, validation: { ...checked, message: `${checked.message} 此检查仅覆盖修改规则的占位出口，不验证原配置、Provider 或实际网络。${ruleSetNote}` } });
       }
       if (path === '/api/inspect') return send(res, 200, inspectConfig(input.yaml));
       if (path === '/api/validate') return send(res, 200, await validateCore(input.yaml, binary));
@@ -107,7 +113,7 @@ export function createEditorServer({ binary = process.env.MIHOMO_BIN || join(roo
       const { targets } = readConfig(input.yaml);
       if (!['local', 'ai'].includes(input.mode)) throw new EditorError('请选择本地解析或 AI 模式。');
       const plan = input.mode === 'ai' ? await aiResolver(input.prompt, targets, await aiSettings(input.settings, keyStore, saveLegacySessionKeys)) : resolveLocal(input.prompt, targets);
-      const result = applyPlan(input.yaml, plan);
+      const result = annotateRuleSets(applyPlan(input.yaml, plan), await verifyPlanRuleSets(plan, ruleSetFetch));
       const validation = await validateCore(result.candidate, binary);
       send(res, 200, { ...result, validation, mode: input.mode });
     } catch (error) {
@@ -127,6 +133,17 @@ async function aiSettings(settings, keyStore, saveLegacySessionKeys) {
     return { baseUrl: settings.baseUrl, model: settings.model, apiKey: key };
   }
   return settings;
+}
+
+// Check every rule-set address before anything is applied: a 404 rejects the plan.
+async function verifyPlanRuleSets(plan, fetchImpl) {
+  const ops = Array.isArray(plan?.operations) ? plan.operations.filter(op => op?.kind === 'rule_set') : [];
+  if (!ops.length) return new Map();
+  return verifyRuleSetUrls(ops.map(op => ruleSetSpec(op).url), fetchImpl);
+}
+
+function annotateRuleSets(result, verified) {
+  return { ...result, summaries: result.summaries.map(s => s.provider ? { ...s, provider: { ...s.provider, verified: verified.get(s.provider.url) === 'verified' } } : s) };
 }
 
 // Earlier turns of the same session, anonymized exactly like the prompt so real exit names never reach the model.

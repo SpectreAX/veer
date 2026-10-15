@@ -31,7 +31,8 @@ public enum RuleMatcher {
             let parts = rule.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
             guard let type = parts.first else { continue }
             let value = parts.count > 1 ? parts[1].lowercased() : ""
-            if ["GEOSITE", "GEOIP", "IP-CIDR", "IP-CIDR6"].contains(type) { skipped.append(rule); continue }
+            // RULE-SET contents are downloaded by the client at runtime, so they cannot be evaluated here either.
+            if ["GEOSITE", "GEOIP", "IP-CIDR", "IP-CIDR6", "RULE-SET"].contains(type) { skipped.append(rule); continue }
             let hit: Bool
             switch type {
             case "DOMAIN": hit = domain == value

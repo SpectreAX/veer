@@ -33,6 +33,16 @@ VEER_BUNDLED_EDITOR_ROOT="$PWD/dist/Veer AI Editor.app/Contents/Resources/editor
 
 `test-native.mjs` 启动隔离的随机端口测试服务，结束自动关闭；设置上述变量还会验证真实打包服务的生命周期与失败重试。不需要任何正在运行的 4317 服务。直接 `swift test` 没有相应环境时不会覆盖服务整合测试；bundle 测试明确按条件禁用。
 
+## 规则集（rule-providers）
+
+AI 理解模式可以为服务或类别添加 Mihomo 规则集，而不只是逐条域名规则：
+
+- AI 只给出来源与名称（`metacubex-geosite`、`metacubex-geoip`、`acl4ssr`、`blackmatrix7`），地址由编辑服务按仓库规则拼出；用户粘贴的地址只接受 raw.githubusercontent.com 或 cdn.jsdelivr.net 上的 .mrs/.list/.yaml。格式、类型、路径（`./rule_provider/名称.扩展名`）与 `interval: 86400` 由服务决定，mrs 不接受混合规则。
+- 每个地址在显示前用 HEAD 请求检查：404 直接拒绝并给出仓库查找指引；无法联网时标为“未验证”，卡片提醒用户在浏览器确认。
+- 写入时同时新增 `rule-providers` 条目与 `RULE-SET,名称,出口` 规则；相同地址复用已有规则集，重名时自动改名，绝不修改配置中已有的规则集。新增的规则集随草稿保存，导出时合并进完整配置，不再被引用时自动移除。
+- 规则集内容由客户端运行时下载，本机不做内核测试；域名测试会把 RULE-SET 标为跳过。独立规则片段模式不能添加规则集。
+- 未指定出口（如“走代理”）时 AI 会先询问，可用 @ 选择完整的策略组或节点名。
+
 ## Editor Studio 重设计（2026-10-15）
 
 按已确认的 `prototype/editor-studio` 移植到原生界面：
