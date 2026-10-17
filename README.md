@@ -6,6 +6,14 @@ and Diff, confirm to a draft, and export a copy. The macOS interface is native
 SwiftUI; it does not start or control a VPN. The earlier Android Mihomo client
 remains in this repository for future full-client development.
 
+## Native rebuild (2026-10-17)
+
+A ground-up native macOS rebuild lives in [`native/macos-editor`](native/macos-editor/README.md):
+one Swift process with no Node runtime and no listening ports, built from the spec
+[`docs/VEER_AI_EDITOR_SPEC_2026-10-17.md`](docs/VEER_AI_EDITOR_SPEC_2026-10-17.md) and the Open Design
+prototype in [`prototype/editor-rebuild`](prototype/editor-rebuild/README.md). The older editor below is kept
+for comparison until the rebuild replaces it.
+
 ## Current editor development (2026-10-14)
 
 - Native macOS: [`native/macos/README.md`](native/macos/README.md).
