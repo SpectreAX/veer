@@ -553,6 +553,13 @@ class VeerVpnService : VpnService() {
                 }
                 connectivityMonitor = monitor.also { it.start(initialConnectivity) }
 
+                runCatching { ProfileSelectionStore.restoreActive(MihomoRepository.get()) }
+                    .onFailure {
+                        VeerLog.profile(
+                            "failed to restore profile selections: ${it.message}",
+                            VeerLog.Level.WARN,
+                        )
+                    }
                 runCatching { ProfileManager.markActiveAsLastKnownGood(applicationContext) }
                     .onFailure {
                         VeerLog.profile(

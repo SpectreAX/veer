@@ -78,7 +78,16 @@ internal object ProfileParser {
 
                 // 2. Parse YAML
                 log.beginStage(PipelineStage.YAML_PARSE)
-                val resolvedName = displayName.ifBlank { inferName(input, source) }
+                val unsupportedPaths = ConfigCompatibilityAudit.audit(rawYaml)
+                if (unsupportedPaths.isNotEmpty()) {
+                    val error = ValidationError.UnsupportedConfigFeatures(unsupportedPaths)
+                    log.log(PipelineStage.YAML_PARSE, LogLevel.ERROR, error.message())
+                    return@withContext ImportResult.Failure(
+                        errors = listOf(error),
+                        log = log.build(),
+                    )
+                }
+                val resolvedName = displayName.ifBlank { inferName(input) }
                 val parseResult = ClashYamlParser.parse(rawYaml, id, source, resolvedName)
                 if (parseResult.isFailure) {
                     val msg = parseResult.exceptionOrNull()?.message ?: "unknown parse error"
@@ -234,9 +243,23 @@ internal object ProfileParser {
         return base64Chars.matches(trimmed) && !trimmed.startsWith("proxies")
     }
 
-    private fun inferName(input: ProfileInput, source: ProfileSource): String = when (input) {
+    private fun inferName(input: ProfileInput): String = when (input) {
         is ProfileInput.YamlBytes       -> input.fileName.removeSuffix(".yaml").removeSuffix(".yml")
-        is ProfileInput.SubscriptionUrl -> input.url.substringAfterLast('/').ifBlank { input.url.substringAfterLast("//").substringBefore('/') }
+        is ProfileInput.SubscriptionUrl -> subscriptionDisplayName(input.url)
         is ProfileInput.Base64Text      -> "Imported Profile"
+    }
+
+    internal fun subscriptionDisplayName(url: String): String =
+        runCatching { java.net.URL(url).host }
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() }
+            ?: "Subscription"
+
+    internal fun sanitizeSubscriptionDisplayName(current: String, url: String): String {
+        val leaksUrlData = current.contains("://", ignoreCase = true) ||
+            current.contains("%2f", ignoreCase = true) ||
+            current.contains('?') ||
+            current.length > 96
+        return if (leaksUrlData) subscriptionDisplayName(url) else current
     }
 }

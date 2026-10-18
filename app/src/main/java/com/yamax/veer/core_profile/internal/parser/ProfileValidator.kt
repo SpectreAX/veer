@@ -26,6 +26,11 @@ internal object ProfileValidator {
         checkDuplicateProxies(profile.proxies, errors)
         checkProxyFields(profile.proxies, errors)
         checkProxyGroups(profile.proxyGroups, validTargets, errors)
+        profile.rules.forEach { rule ->
+            if (rule.target !in validTargets) {
+                errors += ValidationError.BrokenRuleReference(rule.target)
+            }
+        }
 
         return errors
     }

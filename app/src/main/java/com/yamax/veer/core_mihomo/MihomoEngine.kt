@@ -82,7 +82,9 @@ object MihomoEngine {
     /** Applies the core process's authoritative status without inventing metadata. */
     internal fun syncStatus(remote: EngineStatus) {
         activeOperationId = remote.operationId
-        stateObserver?.invoke(remote.state)
+        if (_state.value != remote.state) {
+            stateObserver?.invoke(remote.state)
+        }
         _state.value = remote.state
         _status.value = remote
     }

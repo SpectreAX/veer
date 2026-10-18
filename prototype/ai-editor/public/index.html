@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Veer · AI 配置编辑器</title>
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.js"></script>
+  <script type="module" src="/key-settings.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Veer 编辑器首页"><svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><path d="M4 5l10 18L24 5M14 23V13l6-8" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/></svg><span>Veer</span><span class="brand-detail">AI 配置编辑器</span></a>
+    <label class="theme-control">外观<select id="theme" aria-label="外观"><option value="auto">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></label>
+  </header>
+  <main>
+    <div class="page-heading"><div><h1>把分流意图，变成可检查的规则。</h1><p>高级模式会在本地读取完整配置。AI 接收真实出口名称，不接收节点凭证。<a href="/private" target="_blank" rel="noopener">打开独立规则模式（不读取节点）</a></p></div><span class="stage-label">高级模式</span></div>
+    <div class="workspace">
+      <section class="document-pane" aria-labelledby="document-title">
+        <div class="pane-heading"><h2 id="document-title">当前编辑稿</h2><span id="filename">未导入配置</span></div>
+        <div class="document-actions"><button id="import" class="primary">导入 YAML</button><button id="sample">载入演示配置</button><input id="file" type="file" accept=".yaml,.yml,.txt" hidden></div>
+        <label class="sr-only" for="yaml">Mihomo YAML 配置，可直接粘贴或编辑</label>
+        <textarea id="yaml" class="code-editor" spellcheck="false" autocapitalize="off" placeholder="# 在这里粘贴 Mihomo YAML，或导入本地文件。&#10;# 原型只修改分流规则；请保留原配置备份。"></textarea>
+        <div id="config-info" class="config-info">支持文件导入和直接粘贴。关闭页面后编辑稿不会保留。</div>
+        <div class="document-footer"><div><button id="validate" disabled>检查配置</button><button id="undo" disabled>撤销</button></div><button id="export" disabled>导出 YAML</button></div>
+      </section>
+      <section class="assistant-pane" aria-labelledby="assistant-title">
+        <div class="pane-heading"><h2 id="assistant-title">分流指令</h2><label class="mode-control"><span class="sr-only">解析模式</span><select id="mode"><option value="local">本地解析 · 无需 Key</option><option value="ai">AI 理解 · API</option></select></label></div>
+        <div class="assistant-body">
+          <div id="local-note" class="help">本地解析可体验常见服务和域名指令。选择 AI 模式可使用更自由的表达。</div>
+          <p class="help catalog-note">服务规则采用常见域名集合，完整覆盖和服务解锁仍需实际验证。</p>
+          <details id="ai-settings" hidden><summary>AI 服务设置</summary><div class="settings-fields"><label>API 基础地址<input id="base-url" type="url" value="https://api.deepseek.com" placeholder="https://api.deepseek.com"></label><label>模型<input id="model" value="deepseek-chat" autocomplete="off"></label><label>API Key<input id="api-key" type="password" autocomplete="off" placeholder="填写后点击保存到钥匙串"></label><div class="review-actions"><button id="save-key" disabled>保存到钥匙串</button><button id="remove-key" disabled>删除已保存 Key</button></div><p id="key-status" class="status" role="status" aria-live="polite">正在检查钥匙串…</p><p class="help">已保存 Key 按 API 地址隔离，不回传页面。请求只发送指令和出口名称，不发送整份配置或节点凭证。</p></div></details>
+          <label for="prompt" class="field-label">你想如何分流？</label><textarea id="prompt" rows="3" placeholder="例如：Netflix 走日本，ChatGPT 走美国" maxlength="8000"></textarea>
+          <div class="examples" aria-label="示例指令"><button data-prompt="Netflix 走日本">Netflix 走日本</button><button data-prompt="ChatGPT 走美国">ChatGPT 走美国</button><button data-prompt="example.com 直连">网站直连</button></div>
+          <label class="target-control" for="target">插入已有出口<select id="target" disabled><option value="">导入配置后可选择</option></select></label>
+          <button id="generate" class="primary full-width" disabled>生成修改预览</button>
+          <div id="status" class="status" role="status" aria-live="polite">等待导入配置。</div>
+          <section class="review" aria-labelledby="review-title"><div class="review-heading"><h3 id="review-title">修改预览</h3><span id="review-count"></span></div>
+            <div id="empty-review" class="empty-review"><svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true"><path d="M10 7h16l8 8v22H10zM26 7v9h8M16 24h12M16 30h8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg><p>先看改动，再确认。</p><span>这里会列出每个匹配项和完整出口名称。</span></div>
+            <div id="review-content" hidden><ul id="changes" class="change-ledger"></ul><details class="diff-panel" open><summary>YAML 文本差异</summary><pre id="diff" aria-label="修改前后 YAML 差异"></pre></details><p id="validation-result" class="help"></p><div class="review-actions"><button id="discard">放弃预览</button><button id="confirm" class="primary">确认到编辑稿</button></div><p class="help">确认只更新本页编辑稿。导出后再交给代理客户端使用。</p></div>
+          </section>
+        </div>
+      </section>
+    </div>
+    <footer class="page-footer"><span>Veer 的下一步：先验证 AI 配置编辑，再接入运行时执行。</span><span>演示节点不可用于真实代理。</span></footer>
+  </main>
+</body>
+</html>

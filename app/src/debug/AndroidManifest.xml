@@ -29,6 +29,7 @@
             <intent-filter>
                 <action android:name="com.yamax.veer.debug.KILL_UI_PROCESS" />
                 <action android:name="com.yamax.veer.debug.DUMP_LOG_VIEWER" />
+                <action android:name="com.yamax.veer.debug.REFRESH_SUBSCRIPTIONS" />
             </intent-filter>
         </receiver>
 
@@ -46,7 +47,6 @@
                 <action android:name="com.yamax.veer.debug.ADD_TEST_RULE" />
                 <action android:name="com.yamax.veer.debug.REMOVE_TEST_RULE" />
                 <action android:name="com.yamax.veer.debug.CONFIGURE_AUTO_RECOVERY" />
-                <action android:name="com.yamax.veer.debug.REFRESH_SUBSCRIPTIONS" />
                 <action android:name="com.yamax.veer.debug.VERIFY_REFRESH_FAILURE_SAFETY" />
                 <action android:name="com.yamax.veer.debug.VERIFY_LOG_REDACTION" />
                 <action android:name="com.yamax.veer.debug.START_VPN" />

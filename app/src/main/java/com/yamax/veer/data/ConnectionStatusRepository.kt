@@ -2,6 +2,7 @@ package com.yamax.veer.data
 
 import android.content.Context
 import com.yamax.veer.core_mihomo.MihomoRepository
+import com.yamax.veer.core_mihomo.MihomoLocalProxy
 import android.os.SystemClock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -17,8 +18,6 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.net.InetSocketAddress
-import java.net.Proxy
 import java.util.concurrent.TimeUnit
 import kotlin.system.measureTimeMillis
 
@@ -383,14 +382,12 @@ internal class ConnectionStatusRepository(
         private val IPV4_REGEX = Regex("""(?<![:\da-fA-F])(?:\d{1,3}\.){3}\d{1,3}(?![:\da-fA-F])""")
         private val IPV6_REGEX = Regex("""(?i)(?:[0-9a-f]{1,4}:){2,7}[0-9a-f:]{0,4}""")
 
-        private fun defaultTunnelClient(): OkHttpClient = OkHttpClient.Builder()
-            .proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", MIHOMO_MIXED_PORT)))
+        private fun defaultTunnelClient(): OkHttpClient = MihomoLocalProxy.clientBuilder()
             .connectTimeout(3, TimeUnit.SECONDS)
             .readTimeout(4, TimeUnit.SECONDS)
             .callTimeout(5, TimeUnit.SECONDS)
             .build()
 
-        private const val MIHOMO_MIXED_PORT = 7890
 
         internal fun shouldReuseExitIdentity(
             nowMs: Long,

@@ -51,6 +51,8 @@ internal sealed class ValidationError {
     data class EmptyProxyGroup(val groupName: String) : ValidationError()
     data class MissingRequiredField(val proxyName: String, val field: String) : ValidationError()
     data class BrokenGroupReference(val groupName: String, val missingProxy: String) : ValidationError()
+    data class BrokenRuleReference(val target: String) : ValidationError()
+    data class UnsupportedConfigFeatures(val paths: List<String>) : ValidationError()
     object NoProxies : ValidationError()
     object NoProxyGroups : ValidationError()
     data class InvalidSubscriptionUrl(val detail: String) : ValidationError()
@@ -72,6 +74,9 @@ internal fun ValidationError.message(): String = when (this) {
     is ValidationError.EmptyProxyGroup        -> "Proxy group \"$groupName\" has no proxies"
     is ValidationError.MissingRequiredField   -> "Proxy \"$proxyName\" missing required field: $field"
     is ValidationError.BrokenGroupReference   -> "Group \"$groupName\" references unknown proxy \"$missingProxy\""
+    is ValidationError.BrokenRuleReference    -> "Rule references unknown proxy or group: \"$target\""
+    is ValidationError.UnsupportedConfigFeatures ->
+        "Unsupported configuration fields or rules: ${paths.joinToString(", ")}. Import stopped to avoid changing routing semantics"
     is ValidationError.NoProxies              -> "Profile contains no proxies"
     is ValidationError.NoProxyGroups          -> "Profile contains no proxy groups"
     is ValidationError.InvalidSubscriptionUrl -> "Invalid subscription URL: $detail"

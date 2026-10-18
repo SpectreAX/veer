@@ -6,13 +6,12 @@ import android.net.NetworkCapabilities
 import com.yamax.veer.core_mihomo.EngineState
 import com.yamax.veer.core_mihomo.MihomoEngine
 import com.yamax.veer.core_mihomo.MihomoRepository
+import com.yamax.veer.core_mihomo.MihomoLocalProxy
 import com.yamax.veer.data.ConfigManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.net.InetSocketAddress
-import java.net.Proxy
 import java.util.concurrent.TimeUnit
 import kotlin.system.measureTimeMillis
 
@@ -159,7 +158,7 @@ internal class NetworkDiagnosticExecutor(
                 label = "Mihomo 控制器",
                 prerequisite = controllerPrerequisite,
                 healthy = controllerReachable,
-                detail = if (controllerReachable) "127.0.0.1:9090 可用" else "控制器不可达",
+                detail = if (controllerReachable) "本地控制器可用" else "控制器不可达",
                 skippedDetail = "VPN/TUN 不可用，跳过控制器检查",
             ),
             layerCheck(
@@ -304,7 +303,6 @@ internal class NetworkDiagnosticExecutor(
 
     companion object {
         private const val INTERNET_PROBE_URL = "https://www.gstatic.com/generate_204"
-        private const val MIHOMO_MIXED_PORT = 7890
 
         internal fun matchingRule(
             rules: List<MihomoRepository.RuleState>,
@@ -429,8 +427,7 @@ internal class NetworkDiagnosticExecutor(
                 "诊断结果：代理出口正常，但目标站点 $domain 无法访问。"
         }
 
-        private fun defaultProxyClient(): OkHttpClient = OkHttpClient.Builder()
-            .proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", MIHOMO_MIXED_PORT)))
+        private fun defaultProxyClient(): OkHttpClient = MihomoLocalProxy.clientBuilder()
             .connectTimeout(4, TimeUnit.SECONDS)
             .readTimeout(6, TimeUnit.SECONDS)
             .callTimeout(8, TimeUnit.SECONDS)

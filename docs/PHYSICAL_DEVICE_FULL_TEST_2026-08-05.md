@@ -1,5 +1,10 @@
 # Veer 真机全方位测试报告
 
+> 2026-08-26 的 VPN 系统策略、Private DNS、Doze 与回归门禁增量结果见
+> [PHYSICAL_DEVICE_SYSTEM_POLICY_TEST_2026-08-26.md](PHYSICAL_DEVICE_SYSTEM_POLICY_TEST_2026-08-26.md)。
+> 该增量报告现已补充可用订阅恢复、真实 US/JP 出口、AI 路由、订阅刷新、约 1 秒
+> 重连、快速停启竞态及最新 17/17 核心套件结果，应作为当前验收结论。
+
 日期：2026-08-05  
 设备：Xiaomi M2102J2SC，Android 13，HyperOS V816.0.4.0.TGACNXM  
 应用：`com.yamax.veer` Debug，Mihomo v1.19.29，Go 1.26.5

@@ -9,8 +9,6 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.net.InetSocketAddress
-import java.net.Proxy
 import java.util.concurrent.TimeUnit
 
 internal class RecoveryFailureTracker(
@@ -167,12 +165,10 @@ internal class AutoRecoveryManager(
     companion object {
         private const val PROBE_DOMAIN = "www.gstatic.com"
         private const val PROBE_URL = "https://www.gstatic.com/generate_204"
-        private const val MIXED_PORT = 7890
         private const val MAX_PROBE_CANDIDATES = 8
 
         private fun defaultInternetProbe(): Boolean {
-            val client = OkHttpClient.Builder()
-                .proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", MIXED_PORT)))
+            val client = MihomoLocalProxy.clientBuilder()
                 .connectTimeout(3, TimeUnit.SECONDS)
                 .readTimeout(4, TimeUnit.SECONDS)
                 .callTimeout(5, TimeUnit.SECONDS)

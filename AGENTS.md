@@ -357,6 +357,9 @@ data class VeerExtendedColors(
 
 动画应服务于状态理解，而不是装饰。
 
+进行任何 UI 动效或动画实现前，必须完整阅读根目录 `MOTION.md`。`AGENTS.md`
+定义产品如何呈现，`MOTION.md` 定义产品如何运动；两者不得冲突。
+
 推荐：
 
 - 状态切换：150–300ms

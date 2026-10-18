@@ -3,6 +3,7 @@ package com.yamax.veer.core_ai
 import android.content.Context
 import com.yamax.veer.core_diagnostics.NetworkDiagnosticExecutor
 import com.yamax.veer.core_mihomo.MihomoRepository
+import com.yamax.veer.core_profile.SubscriptionMetadata
 import com.yamax.veer.data.AiRuleStore
 import com.yamax.veer.data.AiHistoryMutation
 import com.yamax.veer.data.AiHistorySelectorChange
@@ -53,6 +54,7 @@ class AiController internal constructor(
                 .firstOrNull { region ->
                     routingSnapshot.proxies.values.none { proxy ->
                         proxy.members.isEmpty() &&
+                            !SubscriptionMetadata.isLikelyMetadataName(proxy.name) &&
                             proxy.regionCode == region &&
                             proxy.alive != false &&
                             proxy.delayMs != 65535

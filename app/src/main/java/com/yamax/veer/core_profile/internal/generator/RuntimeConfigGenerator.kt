@@ -112,7 +112,6 @@ internal object RuntimeConfigGenerator {
 
         // Fixed infrastructure — the profile cannot override these
         config["mixed-port"]          = 7890
-        config["external-controller"] = "127.0.0.1:9090"
         config["mode"]                = "rule"
         config["log-level"]           = "warning"
         config["allow-lan"]           = false

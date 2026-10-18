@@ -1,6 +1,7 @@
 package com.yamax.veer.data
 
 import android.content.Context
+import com.yamax.veer.core_mihomo.ControllerSecretStore
 import com.yamax.veer.core_profile.SubscriptionMetadata
 import org.yaml.snakeyaml.DumperOptions
 import org.yaml.snakeyaml.LoaderOptions
@@ -251,6 +252,10 @@ object ConfigManager {
         updateAiRuleStore(context) { deleteRule(it, ruleId) }
 
     @Synchronized
+    internal fun deleteAiRuleRaw(context: Context, raw: String): Boolean =
+        updateAiRuleStore(context) { deleteRuleByRaw(it, raw) }
+
+    @Synchronized
     internal fun rebindAiRule(context: Context, ruleId: String, newPolicy: String): Boolean {
         val normalizedPolicy = newPolicy.trim()
         if (normalizedPolicy.isEmpty()) return false
@@ -285,6 +290,23 @@ object ConfigManager {
             enabled = store.enabled.filterNot { parseAiRule(it)?.id == ruleId },
             disabled = store.disabled.filterNot { parseAiRule(it)?.id == ruleId },
         ).normalized()
+
+    internal fun deleteRuleByRaw(store: AiRuleStore, raw: String): AiRuleStore {
+        val normalized = raw.split(',').joinToString(",") { it.trim() }
+        val ruleId = parseAiRule(normalized)?.id
+        return if (ruleId != null) {
+            deleteRule(store, ruleId)
+        } else {
+            AiRuleStore(
+                enabled = store.enabled.filterNot { candidate ->
+                    candidate.split(',').joinToString(",") { it.trim() } == normalized
+                },
+                disabled = store.disabled.filterNot { candidate ->
+                    candidate.split(',').joinToString(",") { it.trim() } == normalized
+                },
+            ).normalized()
+        }
+    }
 
     internal fun rebindRule(
         store: AiRuleStore,
@@ -357,7 +379,12 @@ object ConfigManager {
             ?: context.assets.open(BASE_CONFIG).bufferedReader().use { it.readText() }
         val scope = snapshot?.profileId ?: DEFAULT_RULE_SCOPE
         val merged = mergeAiRules(source, readAiRuleStore(scopedAiRulesFile(home, scope)).enabled)
-        return File(home, BASE_CONFIG).also { atomicWrite(it, merged) }
+        val authenticated = withControllerSecret(
+            merged,
+            ControllerSecretStore.getOrCreate(context),
+            ControllerSecretStore.socketPath(context),
+        )
+        return File(home, BASE_CONFIG).also { atomicWrite(it, authenticated) }
     }
 
     private fun activeRuleScope(): String = activeProfile?.profileId ?: DEFAULT_RULE_SCOPE
@@ -423,6 +450,31 @@ object ConfigManager {
             rule.substringAfterLast(',', missingDelimiterValue = "") in validPolicies
         }
         config["rules"] = (compatibleAiRules + existing).distinct()
+        return yamlDumper().dump(config)
+    }
+
+    /** Restricts the final Controller endpoint, including legacy imported profiles. */
+    internal fun withControllerSecret(yaml: String, secret: String, socketPath: String): String {
+        require(Regex("[0-9a-f]{64}").matches(secret)) { "Invalid Controller credential" }
+        require(socketPath.startsWith("/") && !socketPath.contains("..")) {
+            "Invalid Controller socket path"
+        }
+        val loaded = safeYaml().load<Any?>(yaml)
+        require(loaded is Map<*, *>) { "Mihomo config root must be a YAML mapping" }
+        val config = linkedMapOf<String, Any?>()
+        loaded.forEach { (key, value) -> config[key.toString()] = value }
+        config.remove("external-controller")
+        config.remove("external-controller-tls")
+        config.remove("external-controller-pipe")
+        config["external-controller-unix"] = socketPath
+        config["secret"] = secret
+        config["authentication"] = listOf("veer:$secret")
+        config["skip-auth-prefixes"] = emptyList<String>()
+        val profile = (config["profile"] as? Map<*, *>)
+            ?.entries?.associate { it.key.toString() to it.value }?.toMutableMap()
+            ?: mutableMapOf()
+        profile["store-selected"] = false
+        config["profile"] = profile
         return yamlDumper().dump(config)
     }
 

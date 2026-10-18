@@ -13,9 +13,7 @@ ipv6: false
 # before TUN establishment so that path never downloads through the VPN.
 geo-auto-update: false
 
-# Local REST API used by MihomoEngine for hot-reload calls.
-external-controller: 127.0.0.1:9090
-secret: ""
+# ConfigManager injects the app-private Unix Controller path and credential.
 
 dns:
   enable: true
