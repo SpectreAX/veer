@@ -8,11 +8,9 @@ remains in this repository for future full-client development.
 
 ## Native rebuild (2026-10-17)
 
-A ground-up native macOS rebuild lives in [`native/macos-editor`](native/macos-editor/README.md):
-one Swift process with no Node runtime and no listening ports, built from the spec
-[`docs/VEER_AI_EDITOR_SPEC_2026-10-17.md`](docs/VEER_AI_EDITOR_SPEC_2026-10-17.md) and the Open Design
-prototype in [`prototype/editor-rebuild`](prototype/editor-rebuild/README.md). The older editor below is kept
-for comparison until the rebuild replaces it.
+The native macOS rebuild of the AI editor, with its spec, design brief and prototype, now lives in the
+private repository [SpectreAX/veer-editor](https://github.com/SpectreAX/veer-editor) (history kept).
+The older editor below is kept for comparison until the rebuild replaces it.
 
 ## Current editor development (2026-10-14)
 
