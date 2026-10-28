@@ -1,0 +1,5 @@
+# The Android app is its own repository (SpectreAX/veer-android), checked out here.
+/android/
+# Local Claude Code settings and worktrees.
+/.claude/
+.DS_Store

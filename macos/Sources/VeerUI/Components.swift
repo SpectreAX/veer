@@ -1,0 +1,391 @@
+import AppKit
+import SwiftUI
+import VeerCore
+
+/// Icon + text status label. Color is never the only cue.
+public struct StatusBadge: View {
+    public init(kind: StatusKind, text: String, compact: Bool = false) {
+        self.kind = kind
+        self.text = text
+        self.compact = compact
+    }
+
+    public let kind: StatusKind
+    public let text: String
+    public var compact = false
+
+    public var body: some View {
+        Label {
+            Text(text).foregroundStyle(compact ? Color.secondary : Color.primary)
+        } icon: {
+            Image(systemName: kind.symbol).foregroundStyle(kind.color)
+        }
+        .font(compact ? .caption : .callout)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// Small rounded tag, e.g. "策略组", "新增".
+public struct Tag: View {
+    public init(text: String, tint: Color = .secondary) {
+        self.text = text
+        self.tint = tint
+    }
+
+    public let text: String
+    public var tint: Color = .secondary
+
+    public var body: some View {
+        Text(text)
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(tint)
+            .padding(.horizontal, Spacing.xs + Spacing.xxs)
+            .padding(.vertical, Spacing.xxs)
+            .background(tint.opacity(0.12), in: Capsule())
+    }
+}
+
+/// Selectable suggestion pill. Enabled pills carry a faint accent edge and react to the pointer,
+/// so they read as clickable; disabled ones (for example in older turns) fade out.
+public struct Chip: View {
+    public init(text: String, symbol: String? = nil, action: @escaping () -> Void) {
+        self.text = text
+        self.symbol = symbol
+        self.action = action
+    }
+
+    public let text: String
+    public var symbol: String?
+    public let action: () -> Void
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var hovering = false
+
+    public var body: some View {
+        Button(action: action) {
+            HStack(spacing: Spacing.xs) {
+                if let symbol { Image(systemName: symbol).imageScale(.small).foregroundStyle(isEnabled ? Color.veerAccent : Color.secondary) }
+                Text(text).lineLimit(1)
+            }
+            .font(.callout)
+            .foregroundStyle(isEnabled ? Color.primary : Color.secondary)
+            .padding(.horizontal, Spacing.md)
+            .padding(.vertical, Spacing.xs + Spacing.xxs)
+            .background(hovering && isEnabled ? Color.veerAccent.opacity(0.12) : Color.surfaceRaised, in: Capsule())
+            .overlay(Capsule().strokeBorder(isEnabled ? Color.veerAccent.opacity(0.35) : Color.separatorLine))
+            .opacity(isEnabled ? 1 : 0.6)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(Motion.quick, value: hovering)
+    }
+}
+
+/// Icon pill for the composer's menu buttons: a neutral (or tinted) wash that deepens on hover and
+/// press, like `ToggleChip` beside it.
+public struct PillButtonStyle: ButtonStyle {
+    public init(tint: Color? = nil) { self.tint = tint }
+
+    public var tint: Color?
+
+    public func makeBody(configuration: Configuration) -> some View {
+        PillBody(configuration: configuration, tint: tint)
+    }
+
+    private struct PillBody: View {
+        let configuration: Configuration
+        let tint: Color?
+        @State private var hovering = false
+
+        var body: some View {
+            let base = tint == nil ? 0.06 : 0.14
+            configuration.label
+                .font(.callout)
+                .foregroundStyle(tint ?? .primary)
+                .padding(.horizontal, Spacing.sm + Spacing.xxs)
+                .padding(.vertical, Spacing.xs)
+                .background((tint ?? .primary).opacity(configuration.isPressed ? base + 0.08 : hovering ? base + 0.04 : base), in: Capsule())
+                .contentShape(Capsule())
+                .onHover { hovering = $0 }
+                .animation(Motion.quick, value: hovering)
+        }
+    }
+}
+
+/// On / off pill for a composer option. Off it matches the neutral mode pill beside it; on it takes
+/// an accent wash, edge and text, so the state reads from more than color alone (also announced as
+/// selected).
+public struct ToggleChip: View {
+    public init(title: String, symbol: String, isOn: Binding<Bool>, compact: Bool = false) {
+        self.title = title
+        self.symbol = symbol
+        _isOn = isOn
+        self.compact = compact
+    }
+
+    public let title: String
+    public let symbol: String
+    @Binding public var isOn: Bool
+    /// Icon only, for narrow rows; the title stays as the accessibility label.
+    public var compact = false
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var hovering = false
+
+    public var body: some View {
+        Button { isOn.toggle() } label: {
+            Label(title, systemImage: symbol)
+                .labelStyle(.adaptive(compact))
+                .font(.callout)
+                .foregroundStyle(isOn && isEnabled ? Color.veerAccent : isEnabled ? Color.primary : Color.secondary)
+                .padding(.horizontal, Spacing.sm + Spacing.xxs)
+                .padding(.vertical, Spacing.xs)
+                .background(background, in: Capsule())
+                .overlay(Capsule().strokeBorder(isOn && isEnabled ? Color.veerAccent.opacity(0.4) : .clear))
+                .opacity(isEnabled ? 1 : 0.6)
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+        .onHover { hovering = $0 }
+        .animation(Motion.quick, value: isOn)
+        .animation(Motion.quick, value: hovering)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(isOn ? .isSelected : [])
+    }
+
+    private var background: Color {
+        guard isEnabled else { return Color.primary.opacity(0.06) }
+        if isOn { return Color.veerAccent.opacity(hovering ? 0.2 : 0.14) }
+        return Color.primary.opacity(hovering ? 0.1 : 0.06)
+    }
+}
+
+public struct AdaptiveLabelStyle: LabelStyle {
+    public init(iconOnly: Bool) { self.iconOnly = iconOnly }
+
+    public let iconOnly: Bool
+    public func makeBody(configuration: Configuration) -> some View {
+        if iconOnly { configuration.icon } else { Label(configuration) }
+    }
+}
+
+public extension LabelStyle where Self == AdaptiveLabelStyle {
+    static func adaptive(_ iconOnly: Bool) -> AdaptiveLabelStyle { AdaptiveLabelStyle(iconOnly: iconOnly) }
+}
+
+/// Centered empty / error / informational state with an optional action.
+public struct StateView: View {
+    public init(symbol: String, title: String, message: String? = nil, actionTitle: String? = nil, action: (() -> Void)? = nil) {
+        self.symbol = symbol
+        self.title = title
+        self.message = message
+        self.actionTitle = actionTitle
+        self.action = action
+    }
+
+    public let symbol: String
+    public let title: String
+    public var message: String?
+    public var actionTitle: String?
+    public var action: (() -> Void)?
+
+    public var body: some View {
+        VStack(spacing: Spacing.md) {
+            Image(systemName: symbol).font(.title).foregroundStyle(.tertiary)
+            Text(title).font(.headline)
+            if let message {
+                Text(message).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            }
+            if let actionTitle, let action {
+                Button(actionTitle, action: action).buttonStyle(.bordered)
+            }
+        }
+        .frame(maxWidth: 320)
+        .padding(Spacing.xl)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// Exit name with its region and kind, used in lists and completions.
+public struct ExitLabel: View {
+    public init(name: String, region: Region?, kind: Target.Kind? = nil) {
+        self.name = name
+        self.region = region
+        self.kind = kind
+    }
+
+    public let name: String
+    public let region: Region?
+    public var kind: Target.Kind?
+
+    public var body: some View {
+        HStack(spacing: Spacing.sm) {
+            Text(name).lineLimit(1).truncationMode(.middle).help(name)
+            if let region { Text(region == .unknown ? "未指定地区" : region.displayName).font(.caption).foregroundStyle(.secondary) }
+            if let kind { Tag(text: kind.label) }
+        }
+    }
+}
+
+/// Primary glass action. Uses native Liquid Glass; the system falls back to an opaque
+/// treatment when Reduce Transparency is on.
+public struct PrimaryActionStyle: ViewModifier {
+    public init() {}
+
+    public func body(content: Content) -> some View {
+        content
+            .buttonStyle(.glassProminent)
+            .tint(.veerAccent)
+            .controlSize(.large)
+    }
+}
+
+public extension View {
+    func primaryAction() -> some View { modifier(PrimaryActionStyle()) }
+
+    /// Solid content panel: no glass on content.
+    func panel(padding: CGFloat = Spacing.lg) -> some View {
+        self.padding(padding)
+            .background(Color.surfaceRaised, in: RoundedRectangle(cornerRadius: Radius.large, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Radius.large, style: .continuous).strokeBorder(Color.separatorLine.opacity(0.6)))
+    }
+}
+
+
+
+public extension View {
+    /// The native, uncolored look for selection controls and secondary buttons. The accent is
+    /// kept for the one primary action of a view, so it stays easy to find.
+    func neutralControl() -> some View { tint(nil) }
+}
+
+/// The standard SwiftUI segmented picker with the selected segment in neutral gray
+/// (`Color.selectionNeutral`), so the accent stays on primary actions (impeccable review,
+/// 2026-10-19).
+public struct SegmentedControl<Value: Hashable>: View {
+    public init(label: String, selection: Binding<Value>, options: [Option]) {
+        self.label = label
+        _selection = selection
+        self.options = options
+    }
+
+    public struct Option {
+        public init(value: Value, title: String, symbol: String? = nil) {
+            self.value = value
+            self.title = title
+            self.symbol = symbol
+        }
+
+        public let value: Value
+        public let title: String
+        public var symbol: String?
+    }
+
+    public let label: String
+    @Binding public var selection: Value
+    public let options: [Option]
+
+    public var body: some View {
+        Picker(label, selection: $selection) {
+            ForEach(Array(options.enumerated()), id: \.offset) { _, option in
+                Group {
+                    if let symbol = option.symbol {
+                        Image(systemName: symbol).accessibilityLabel(option.title).help(option.title)
+                    } else {
+                        Text(option.title)
+                    }
+                }
+                .tag(option.value)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .tint(Color.selectionNeutral)
+    }
+}
+
+/// A key or key combination shown as a keycap, e.g. "⇧↩" or "1": one surface step up with a
+/// hairline edge, no gradient or shadow. Decorative for VoiceOver; the action's label says it.
+public struct KeyCap: View {
+    public init(keys: String) { self.keys = keys }
+
+    public let keys: String
+
+    public var body: some View {
+        Text(verbatim: keys)
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, Spacing.xs)
+            .padding(.vertical, Spacing.xxs / 2)
+            .frame(minWidth: Spacing.lg)
+            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: Radius.tiny))
+            .overlay(RoundedRectangle(cornerRadius: Radius.tiny).strokeBorder(Color.separatorLine))
+            .accessibilityHidden(true)
+    }
+}
+
+/// Keycap followed by what it does, for hint rows.
+public struct ShortcutHint: View {
+    public init(keys: String, label: String) {
+        self.keys = keys
+        self.label = label
+    }
+
+    public let keys: String
+    public let label: String
+
+    public var body: some View {
+        HStack(spacing: Spacing.xs) {
+            KeyCap(keys: keys)
+            Text(label).font(.caption2).foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(keys) \(label)")
+    }
+}
+
+/// A menu choice like Claude's mode menu: icon, title, what it does, a check when current, and
+/// its number key (pressed while the menu is open).
+public struct ChoiceRow: View {
+    public init(number: Int, symbol: String, title: String, detail: String, selected: Bool, tint: Color? = nil, action: @escaping () -> Void) {
+        self.number = number
+        self.symbol = symbol
+        self.title = title
+        self.detail = detail
+        self.selected = selected
+        self.tint = tint
+        self.action = action
+    }
+
+    public let number: Int
+    public let symbol: String
+    public let title: String
+    public let detail: String
+    public let selected: Bool
+    public var tint: Color? = nil
+    public let action: () -> Void
+    @State private var hovering = false
+
+    public var body: some View {
+        Button(action: action) {
+            HStack(alignment: .firstTextBaseline, spacing: Spacing.sm) {
+                Image(systemName: symbol).frame(width: Spacing.lg).foregroundStyle(tint ?? .secondary)
+                VStack(alignment: .leading, spacing: Spacing.xxs) {
+                    Text(title).font(.body).foregroundStyle(tint ?? .primary)
+                    Text(detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: Spacing.sm)
+                if selected { Image(systemName: "checkmark").foregroundStyle(Color.veerAccent).fontWeight(.semibold) }
+                KeyCap(keys: "\(number)")
+            }
+            .padding(.horizontal, Spacing.sm)
+            .padding(.vertical, Spacing.sm)
+            .background(hovering ? Color.primary.opacity(0.06) : .clear, in: RoundedRectangle(cornerRadius: Radius.small))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .keyboardShortcut(KeyEquivalent(Character("\(number)")), modifiers: [])
+        .onHover { hovering = $0 }
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
