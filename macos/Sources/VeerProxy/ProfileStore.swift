@@ -87,6 +87,8 @@ public final class ProfileStore: @unchecked Sendable {
 
     public func setSubscriptionURL(_ url: URL, for id: UUID) throws { try secrets.save(url.absoluteString, for: Self.secretKey(id)) }
 
+    public func forgetSubscriptionURL(of id: UUID) { secrets.delete(for: Self.secretKey(id)) }
+
     private func file(_ id: UUID) -> URL { paths.profiles.appendingPathComponent("\(id.uuidString).yaml") }
 
     static func secretKey(_ id: UUID) -> String { "subscription-\(id.uuidString)" }

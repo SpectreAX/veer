@@ -27,6 +27,12 @@ Veer 随应用打包以下组件，各自适用其许可证；许可证全文位
 - License: MIT (`licenses/Yams-LICENSE`).
 - Source: <https://github.com/jpsim/Yams>.
 
+## Sparkle 2.9.6
+
+- Used as a framework for update checks and installs.
+- License: MIT (`licenses/Sparkle-LICENSE`).
+- Source: <https://github.com/sparkle-project/Sparkle>.
+
 ## Natural Earth
 
 - `Resources/Map/land-110m.json` is the 1:110m land layer of Natural Earth, simplified, used to

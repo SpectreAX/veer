@@ -8,7 +8,10 @@ let package = Package(
         .executable(name: "Veer", targets: ["VeerApp"]),
         .executable(name: "VeerHelper", targets: ["VeerHelper"]),
     ],
-    dependencies: [.package(url: "https://github.com/jpsim/Yams.git", exact: "6.2.2")],
+    dependencies: [
+        .package(url: "https://github.com/jpsim/Yams.git", exact: "6.2.2"),
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.6"),
+    ],
     targets: [
         /// Config parsing, AI rule editing, validation and the Mihomo controller client. Started as
         /// a copy of Veer AI Editor's core (SpectreAX/veer-editor 6b37119); Veer builds on its own.
@@ -23,8 +26,10 @@ let package = Package(
         .target(name: "VeerProxy", dependencies: ["VeerCore", "VeerHelperKit", "Yams"]),
         .executableTarget(
             name: "VeerApp",
-            dependencies: ["VeerProxy", "VeerCore", "VeerUI"],
-            swiftSettings: [.defaultIsolation(MainActor.self)]
+            dependencies: ["VeerProxy", "VeerCore", "VeerUI", .product(name: "Sparkle", package: "Sparkle")],
+            swiftSettings: [.defaultIsolation(MainActor.self)],
+            // build-app.sh puts Sparkle.framework in Contents/Frameworks.
+            linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
         ),
         .testTarget(name: "VeerCoreTests", dependencies: ["VeerCore"]),
         .testTarget(name: "VeerProxyTests", dependencies: ["VeerProxy"]),

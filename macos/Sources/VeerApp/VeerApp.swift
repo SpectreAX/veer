@@ -44,6 +44,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         Self.store.launch()
+        Updater.shared.start()
+        HotKeyCenter.shared.perform = Self.perform
+        HotKeyCenter.shared.start()
+    }
+
+    /// A global shortcut, pressed in any app.
+    static func perform(_ action: HotKeyAction) {
+        switch action {
+        case .toggleProxy:
+            if store.isRunning { store.setSystemProxy(!store.systemProxyOn) } else { store.startWithSystemProxy() }
+        case .switchMode:
+            guard store.isRunning else { return }
+            let modes = ProxyStore.Mode.allCases
+            store.setMode(modes[(modes.firstIndex(of: store.mode)! + 1) % modes.count])
+        case .openWindow:
+            openMain?()
+            DockPresence.windowOpened()
+        case .newThread:
+            openMain?()
+            DockPresence.windowOpened()
+            store.page = .agent
+            agent.newThread()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -80,6 +103,9 @@ struct VeerCommands: Commands {
     let store: ProxyStore
 
     var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            Button("检查更新…") { Updater.shared.checkForUpdates() }
+        }
         CommandGroup(replacing: .newItem) {
             Button("导入配置…") { store.openImport() }.keyboardShortcut("o")
             Button("用剪贴板内容导入…") { store.openImport(prefill: NSPasteboard.general.string(forType: .string) ?? "") }
@@ -88,6 +114,9 @@ struct VeerCommands: Commands {
             Button("导出配置…") { if let profile = store.activeProfile { ConfigExport.run(profile, store: store) } }
                 .keyboardShortcut("e", modifiers: [.command, .shift])
                 .disabled(store.activeProfile == nil)
+            Divider()
+            Button("备份…") { BackupFlow.backUp(store: store) }
+            Button("从备份恢复…") { BackupFlow.restore(store: store) }
         }
         CommandGroup(after: .sidebar) {
             ForEach(Array(Page.allCases.enumerated()), id: \.element) { index, page in

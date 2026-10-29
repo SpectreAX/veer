@@ -16,5 +16,10 @@
     <key>NSPrincipalClass</key><string>NSApplication</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>NSHumanReadableCopyright</key><string>版权所有 © 2026 SpectreAX。保留所有权利。</string>
+    <key>SUFeedURL</key><string>https://github.com/SpectreAX/veer-releases/releases/latest/download/appcast.xml</string>
+    <key>SUPublicEDKey</key><string>Az8+Bf16fylMLoz711rmB+ZOQkbhmYify3dh5gCZSdw=</string>
+    <key>SUEnableAutomaticChecks</key><true/>
+    <key>SUScheduledCheckInterval</key><integer>86400</integer>
+    <key>SUAutomaticallyUpdate</key><false/>
     <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
 </dict></plist>

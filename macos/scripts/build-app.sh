@@ -17,7 +17,7 @@ swift build -c release --product VeerHelper
 bin_dir="$(swift build -c release --show-bin-path)"
 app="$PWD/dist/Veer.app"
 rm -rf "$app"
-mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources/bin" "$app/Contents/Resources/licenses" \
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources/bin" "$app/Contents/Resources/licenses" "$app/Contents/Frameworks" \
   "$app/Contents/Library/LaunchServices" "$app/Contents/Library/LaunchDaemons"
 cp "$bin_dir/Veer" "$app/Contents/MacOS/Veer"
 # SwiftPM records the deployment target (14.0) as the SDK version too, and macOS only gives
@@ -35,6 +35,9 @@ cp -R Resources/Map "$app/Contents/Resources/Map"
 cp "$core" "$app/Contents/Resources/bin/mihomo"
 cp third_party/mihomo/LICENSE "$app/Contents/Resources/licenses/mihomo-LICENSE"
 cp .build/checkouts/Yams/LICENSE "$app/Contents/Resources/licenses/Yams-LICENSE"
+# Sparkle (MIT) for updates; the executable finds it through @executable_path/../Frameworks.
+ditto "$bin_dir/Sparkle.framework" "$app/Contents/Frameworks/Sparkle.framework"
+cp .build/artifacts/sparkle/Sparkle/LICENSE "$app/Contents/Resources/licenses/Sparkle-LICENSE"
 cp THIRD_PARTY_NOTICES.md "$app/Contents/Resources/licenses/THIRD_PARTY_NOTICES.md"
 cp LICENSE "$app/Contents/Resources/licenses/Veer-LICENSE"
 # TUN's privileged helper, registered through SMAppService from this plist.
@@ -61,6 +64,13 @@ if [[ -z "$identity" ]]; then
   identity=-
 fi
 codesign --force --timestamp=none --sign "$identity" "$app/Contents/Resources/bin/mihomo"
+# Sparkle's helpers inside out, then the framework (its own documented order).
+sparkle="$app/Contents/Frameworks/Sparkle.framework"
+for item in "$sparkle/Versions/B/XPCServices/Installer.xpc" "$sparkle/Versions/B/XPCServices/Downloader.xpc" \
+            "$sparkle/Versions/B/Autoupdate" "$sparkle/Versions/B/Updater.app"; do
+  [[ -e "$item" ]] && codesign --force --timestamp=none --options runtime --preserve-metadata=entitlements --sign "$identity" "$item"
+done
+codesign --force --timestamp=none --options runtime --sign "$identity" "$sparkle"
 codesign --force --timestamp=none --sign "$identity" --identifier "$helper_label" "$app/Contents/Library/LaunchServices/$helper_label"
 codesign --force --timestamp=none --sign "$identity" "$app"
 codesign --verify --deep --strict "$app"

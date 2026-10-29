@@ -11,6 +11,8 @@ struct SettingsView: View {
             TUNSettings().tabItem { Label(String(localized: "TUN"), systemImage: "shield.lefthalf.filled") }
             AISettingsPane().tabItem { Label("AI", systemImage: "sparkles") }
             PrivacySettingsPane().tabItem { Label(String(localized: "隐私"), systemImage: "hand.raised") }
+            HotKeySettings().tabItem { Label(String(localized: "快捷键"), systemImage: "keyboard") }
+            AboutSettings().tabItem { Label(String(localized: "关于"), systemImage: "info.circle") }
         }
         .frame(width: 560)
     }
@@ -20,6 +22,8 @@ struct GeneralSettings: View {
     @Environment(ProxyStore.self) private var store
     @State private var language = AppLanguage.current
     @State private var languageChanged = false
+    @State private var openAtLogin = LoginItem.isEnabled
+    @State private var loginProblem: String?
 
     var body: some View {
         @Bindable var store = store
@@ -41,6 +45,18 @@ struct GeneralSettings: View {
                 }
             }
             Section {
+                Toggle(String(localized: "登录时打开 Veer"), isOn: $openAtLogin)
+                    .onChange(of: openAtLogin) { _, on in
+                        guard on != LoginItem.isEnabled else { return }
+                        do {
+                            try LoginItem.set(on)
+                            loginProblem = LoginItem.needsApproval ? String(localized: "已加入登录项，但在系统设置中被关闭了。在“通用 → 登录项”中打开它。") : nil
+                        } catch {
+                            loginProblem = error.localizedDescription
+                            openAtLogin = LoginItem.isEnabled
+                        }
+                    }
+                if let loginProblem { StatusBadge(kind: .warning, text: loginProblem, compact: true) }
                 Toggle(String(localized: "打开 Veer 时恢复上次的代理状态"), isOn: $store.restoreLastState)
                 Toggle(String(localized: "在菜单栏显示实时速率"), isOn: $store.showRateInMenuBar)
                 Toggle(String(localized: "在概览中检测出口 IP"), isOn: $store.showExitIP)

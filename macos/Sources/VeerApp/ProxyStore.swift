@@ -1215,6 +1215,20 @@ final class ProxyStore {
         }
     }
 
+    /// The files of a diagnostics bundle, built off the main thread.
+    func diagnosticItems() async -> [Diagnostics.Item] {
+        var config: String?
+        if let id = activeProfileID { config = try? await effectiveTextInBackground(of: id) }
+        let coreVersion = await AboutSettings.coreVersion(binary)
+        let state = (try? Data(contentsOf: paths.state)).map { String(decoding: $0, as: UTF8.self) }
+        let logs = logs.map { "\($0.time.formatted(.iso8601)) [\($0.level)] \($0.message)" }
+        let settings = settings, tail = core?.tail ?? [], version = AboutSettings.version
+        return await Task.detached {
+            Diagnostics.collect(appVersion: version, coreVersion: coreVersion, settings: settings, state: state,
+                                effectiveConfig: config, logs: logs, coreTail: tail)
+        }.value
+    }
+
     /// Low traffic or a near expiry, as one system notification each (see `UsageAlertLedger`).
     func alertAboutUsage(of profile: Profile, now: Date = .now) {
         for alert in UsageAlertLedger(defaults: defaults).take(for: profile, now: now) {

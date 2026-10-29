@@ -535,3 +535,72 @@ struct RuleTemplateTests {
         #expect(result.status == .passed, "\(result.message)")
     }
 }
+
+struct BackupTests {
+    static func fresh() -> (VeerPaths, UserDefaults, ProfileStore, FileKeyStore) {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("veer-backup-test-\(UUID().uuidString)")
+        let paths = VeerPaths(root: root)
+        let secrets = FileKeyStore(url: paths.secrets)
+        return (paths, UserDefaults(suiteName: "veer-backup-\(UUID().uuidString)")!, ProfileStore(paths: paths, secrets: secrets), secrets)
+    }
+
+    @Test func roundTripKeepsProfilesAndSettingsButNeverKeys() throws {
+        let (paths, defaults, profiles, secrets) = Self.fresh()
+        let profile = Profile(name: "机场", isSubscription: true, nodeCount: 1)
+        try profiles.save(profile, text: RuleTemplateTests.profile)
+        try profiles.setSubscriptionURL(URL(string: "https://sub.example.invalid/token-123")!, for: profile.id)
+        try secrets.save("sk-secret-key-999", for: "deepSeek")
+        try RoutingStore(paths: paths).save(RoutingLayer(excludedNodes: ["香港 01"]), for: profile.id)
+        defaults.set(true, forKey: "showRateInMenuBar")
+        defaults.set("window junk", forKey: "NSWindow Frame main")
+
+        let zip = paths.root.appendingPathComponent("b.zip")
+        try Backup.make(paths: paths, defaults: defaults, profileStore: profiles, includeLinks: false, appVersion: "1.0", to: zip)
+        let (target, targetDefaults, targetProfiles, _) = Self.fresh()
+        let opened = try Backup.open(zip)
+        // Every unpacked file, read as text: no key, no link, no secrets file.
+        let files = FileManager.default.enumerator(at: opened.folder, includingPropertiesForKeys: nil)!.compactMap { $0 as? URL }
+        #expect(!files.contains { $0.lastPathComponent == "secrets.json" })
+        let contents = files.compactMap { try? String(contentsOf: $0, encoding: .utf8) }.joined()
+        #expect(!contents.isEmpty && !contents.contains("sk-secret-key-999") && !contents.contains("token-123"))
+        #expect(opened.manifest.profiles == ["机场"] && !opened.manifest.hasSubscriptionLinks)
+        try Backup.restore(from: opened.folder, paths: target, defaults: targetDefaults, profileStore: targetProfiles)
+        #expect(targetProfiles.loadAll().map(\.name) == ["机场"])
+        #expect(try targetProfiles.text(of: profile.id) == RuleTemplateTests.profile)
+        #expect(RoutingStore(paths: target).load(profile.id).excludedNodes == ["香港 01"])
+        #expect(targetDefaults.bool(forKey: "showRateInMenuBar") && targetDefaults.string(forKey: "NSWindow Frame main") == nil)
+        #expect(targetProfiles.subscriptionURL(of: profile.id) == nil)
+    }
+
+    @Test func linksComeBackOnlyWhenIncluded() throws {
+        let (paths, defaults, profiles, _) = Self.fresh()
+        let profile = Profile(name: "机场", isSubscription: true, nodeCount: 1)
+        try profiles.save(profile, text: RuleTemplateTests.profile)
+        try profiles.setSubscriptionURL(URL(string: "https://sub.example.invalid/token-123")!, for: profile.id)
+        let zip = paths.root.appendingPathComponent("b.zip")
+        try Backup.make(paths: paths, defaults: defaults, profileStore: profiles, includeLinks: true, appVersion: "1.0", to: zip)
+        let (target, targetDefaults, targetProfiles, _) = Self.fresh()
+        let opened = try Backup.open(zip)
+        try Backup.restore(from: opened.folder, paths: target, defaults: targetDefaults, profileStore: targetProfiles)
+        #expect(targetProfiles.subscriptionURL(of: profile.id)?.absoluteString == "https://sub.example.invalid/token-123")
+    }
+
+    @Test func otherZipsAreRefused() throws {
+        let (paths, _, _, _) = Self.fresh()
+        try paths.prepare()
+        let folder = paths.root.appendingPathComponent("x")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("hi".utf8).write(to: folder.appendingPathComponent("a.txt"))
+        let zip = paths.root.appendingPathComponent("x.zip")
+        try Backup.ditto(["-c", "-k", "--keepParent", folder.path, zip.path])
+        #expect(throws: (any Error).self) { try Backup.open(zip) }
+    }
+
+    @Test func diagnosticsLeaveOutServersAndPasswords() {
+        let items = Diagnostics.collect(appVersion: "1.0", coreVersion: "v1", settings: RuntimeSettings(), state: "{}",
+                                        effectiveConfig: RuleTemplateTests.profile, logs: ["a", "b"], coreTail: [])
+        let all = items.map(\.text).joined()
+        #expect(items.contains { $0.name == "config-anonymized.yaml" })
+        #expect(!all.contains("1.1.1.3") && !all.contains("password: x"))
+    }
+}
