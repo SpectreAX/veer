@@ -119,7 +119,7 @@ enum DNSMessage {
         for label in name.split(separator: ".") {
             let utf8 = Array(label.utf8)
             guard !utf8.isEmpty, utf8.count < 64, label.allSatisfy(\.isASCII) else {
-                throw EditorError("域名格式不正确，或含有暂不支持的非英文字符。")
+                throw EditorError(String(localized: "域名格式不正确，或含有暂不支持的非英文字符。"))
             }
             bytes.append(UInt8(utf8.count))
             bytes += utf8
@@ -133,7 +133,7 @@ enum DNSMessage {
     static let types: [UInt16: String] = [1: "A", 2: "NS", 5: "CNAME", 6: "SOA", 15: "MX", 16: "TXT", 28: "AAAA", 64: "SVCB", 65: "HTTPS"]
 
     static func parse(_ data: [UInt8], id: UInt16?) throws -> (status: String, answers: [DNSAnswer]) {
-        func fail() -> EditorError { EditorError("DNS 服务器返回了无法读取的响应。") }
+        func fail() -> EditorError { EditorError(String(localized: "DNS 服务器返回了无法读取的响应。")) }
         guard data.count >= 12 else { throw fail() }
         if let id, UInt16(data[0]) << 8 | UInt16(data[1]) != id { throw fail() }
         let rcode = Int(data[3] & 0x0f)
@@ -190,23 +190,23 @@ public struct DNSResolver: Sendable {
     public init(transport: AITransport = URLSessionTransport()) { self.transport = transport }
 
     public func lookup(_ domain: String, type: DNSRecordType, server: DNSServer) async throws -> DNSResult {
-        guard let name = GeoLookup.domain(in: domain) else { throw EditorError("请输入域名，例如 www.example.com。") }
+        guard let name = GeoLookup.domain(in: domain) else { throw EditorError(String(localized: "请输入域名，例如 www.example.com。")) }
         let start = Date()
         let status: String, answers: [DNSAnswer]
         switch server {
         case .system:
-            guard type != .cname else { throw EditorError("系统 DNS 只返回地址，不返回 CNAME；请选择 DoH 或 UDP 服务器。") }
+            guard type != .cname else { throw EditorError(String(localized: "系统 DNS 只返回地址，不返回 CNAME；请选择 DoH 或 UDP 服务器。")) }
             (status, answers) = try await Self.system(name, type: type)
         case .doh(let url):
             let message = try DNSMessage.query(name, type: type, id: 0)
-            guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { throw EditorError("DoH 地址无效。") }
+            guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { throw EditorError(String(localized: "DoH 地址无效。")) }
             let items = components.queryItems ?? []
             components.queryItems = items + [URLQueryItem(name: "dns", value: Data(message).base64URL)]
-            guard let requestURL = components.url else { throw EditorError("DoH 地址无效。") }
+            guard let requestURL = components.url else { throw EditorError(String(localized: "DoH 地址无效。")) }
             var request = URLRequest(url: requestURL, timeoutInterval: 8)
             request.setValue("application/dns-message", forHTTPHeaderField: "Accept")
             let (data, response) = try await transport.send(request)
-            guard response.statusCode == 200 else { throw EditorError("DoH 服务器返回 HTTP \(response.statusCode)。") }
+            guard response.statusCode == 200 else { throw EditorError(String(localized: "DoH 服务器返回 HTTP \(response.statusCode)。")) }
             (status, answers) = try DNSMessage.parse([UInt8](data), id: 0)
         case let .udp(host, port):
             let id = UInt16.random(in: 1...UInt16.max)
@@ -225,7 +225,7 @@ public struct DNSResolver: Sendable {
             let code = getaddrinfo(name, nil, &hints, &list)
             defer { if let list { freeaddrinfo(list) } }
             if code == EAI_NONAME || code == EAI_NODATA { return ("NXDOMAIN", []) }
-            guard code == 0 else { throw EditorError("系统 DNS 解析失败：\(String(cString: gai_strerror(code)))") }
+            guard code == 0 else { throw EditorError(String(localized: "系统 DNS 解析失败：\(String(cString: gai_strerror(code)))")) }
             var answers: [DNSAnswer] = [], node = list
             while let current = node {
                 if let address = current.pointee.ai_addr {
@@ -251,7 +251,7 @@ public struct DNSResolver: Sendable {
     }
 
     static func udp(_ message: Data, host: String, port: UInt16, timeout: TimeInterval = 5) async throws -> Data {
-        guard let endpointPort = NWEndpoint.Port(rawValue: port) else { throw EditorError("端口无效。") }
+        guard let endpointPort = NWEndpoint.Port(rawValue: port) else { throw EditorError(String(localized: "端口无效。")) }
         let connection = NWConnection(host: NWEndpoint.Host(host), port: endpointPort, using: .udp)
         let queue = DispatchQueue(label: "veer.dns-udp")
         let finish = Once<Result<Data, Error>>()
@@ -269,14 +269,14 @@ public struct DNSResolver: Sendable {
                         })
                         connection.receiveMessage { data, _, _, error in
                             if let data { finish.fire(.success(data)) }
-                            else { finish.fire(.failure(error ?? EditorError("DNS 服务器没有回应。"))) }
+                            else { finish.fire(.failure(error ?? EditorError(String(localized: "DNS 服务器没有回应。")))) }
                         }
                     case .failed(let error): finish.fire(.failure(error))
                     default: break
                     }
                 }
                 connection.start(queue: queue)
-                queue.asyncAfter(deadline: .now() + timeout) { finish.fire(.failure(EditorError("DNS 服务器 \(timeout.formatted()) 秒内没有回应。"))) }
+                queue.asyncAfter(deadline: .now() + timeout) { finish.fire(.failure(EditorError(String(localized: "DNS 服务器 \(timeout.formatted()) 秒内没有回应。")))) }
             }
         } onCancel: {
             finish.fire(.failure(CancellationError()))

@@ -18,17 +18,17 @@ public enum AIFailure: Error, Equatable, Sendable {
 
     public var message: String {
         switch self {
-        case .missingKey: "还没有设置 AI 服务的 API Key。"
+        case .missingKey: String(localized: "还没有设置 AI 服务的 API Key。")
         case .invalidEndpoint(let reason): reason
-        case .network: "无法连接 AI 服务，请检查网络与服务地址。"
-        case .timeout: "AI 服务长时间没有响应（不思考 60 秒，深度思考 180 秒，最高强度 300 秒）。"
-        case .unauthorized(let code): "AI 服务拒绝了请求（HTTP \(code)），请检查 API Key 与模型权限。"
-        case .rateLimited: "AI 服务限流或额度不足（HTTP 429），请稍后重试。"
-        case .server(let code): "AI 服务暂时出错（HTTP \(code)），可以重试。"
-        case .http(let code): "AI 服务返回 HTTP \(code)，请检查地址和模型名称。"
-        case let .rejected(code, detail): "AI 服务返回 HTTP \(code)：\(detail)。请检查地址和模型名称。"
+        case .network: String(localized: "无法连接 AI 服务，请检查网络与服务地址。")
+        case .timeout: String(localized: "AI 服务长时间没有响应（不思考 60 秒，深度思考 180 秒，最高强度 300 秒）。")
+        case .unauthorized(let code): String(localized: "AI 服务拒绝了请求（HTTP \(code)），请检查 API Key 与模型权限。")
+        case .rateLimited: String(localized: "AI 服务限流或额度不足（HTTP 429），请稍后重试。")
+        case .server(let code): String(localized: "AI 服务暂时出错（HTTP \(code)），可以重试。")
+        case .http(let code): String(localized: "AI 服务返回 HTTP \(code)，请检查地址和模型名称。")
+        case let .rejected(code, detail): String(localized: "AI 服务返回 HTTP \(code)：\(detail)。请检查地址和模型名称。")
         case .invalidResponse(let reason): reason
-        case .cancelled: "已停止。"
+        case .cancelled: String(localized: "已停止。")
         }
     }
 
@@ -122,12 +122,12 @@ public final class URLSessionTransport: NSObject, AITransport, URLSessionTaskDel
 
     public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         let (bytes, response) = try await session.bytes(for: request)
-        guard let http = response as? HTTPURLResponse else { throw AIFailure.invalidResponse("AI 服务返回了无法识别的响应。") }
+        guard let http = response as? HTTPURLResponse else { throw AIFailure.invalidResponse(String(localized: "AI 服务返回了无法识别的响应。")) }
         var data = Data()
         for try await byte in bytes {
             data.append(byte)
             if data.count > limit {
-                throw AIFailure.invalidResponse(limit == Self.maxBytes ? "AI 服务响应超过 512 KB 限制，请缩短指令后重试。" : "响应超过 \(limit / 1024 / 1024) MB 限制。")
+                throw AIFailure.invalidResponse(limit == Self.maxBytes ? String(localized: "AI 服务响应超过 512 KB 限制，请缩短指令后重试。") : String(localized: "响应超过 \(limit / 1024 / 1024) MB 限制。"))
             }
         }
         return (data, http)
@@ -138,14 +138,14 @@ public final class URLSessionTransport: NSObject, AITransport, URLSessionTaskDel
 
     public func lines(_ request: URLRequest) async throws -> (HTTPURLResponse, AsyncThrowingStream<String, Error>) {
         let (bytes, response) = try await session.bytes(for: request)
-        guard let http = response as? HTTPURLResponse else { throw AIFailure.invalidResponse("AI 服务返回了无法识别的响应。") }
+        guard let http = response as? HTTPURLResponse else { throw AIFailure.invalidResponse(String(localized: "AI 服务返回了无法识别的响应。")) }
         let stream = AsyncThrowingStream<String, Error> { continuation in
             let task = Task {
                 do {
                     var total = 0
                     for try await line in bytes.lines {
                         total += line.utf8.count + 1
-                        if total > Self.maxStreamBytes { throw AIFailure.invalidResponse("AI 服务响应超过 2 MB 限制，请缩短指令或降低思考强度后重试。") }
+                        if total > Self.maxStreamBytes { throw AIFailure.invalidResponse(String(localized: "AI 服务响应超过 2 MB 限制，请缩短指令或降低思考强度后重试。")) }
                         continuation.yield(line)
                     }
                     continuation.finish()
@@ -180,14 +180,14 @@ public struct AIClient: Sendable {
     /// Checks a base address: HTTPS, or HTTP on this Mac; no credentials, query or fragment.
     static func validatedBase(_ baseURL: String) throws -> URLComponents {
         guard var components = URLComponents(string: baseURL.trimmingCharacters(in: .whitespaces)), let host = components.host, let scheme = components.scheme else {
-            throw AIFailure.invalidEndpoint("AI 服务地址无效。")
+            throw AIFailure.invalidEndpoint(String(localized: "AI 服务地址无效。"))
         }
         let local = ["localhost", "127.0.0.1", "::1", "[::1]"].contains(host)
         guard scheme == "https" || (scheme == "http" && local) else {
-            throw AIFailure.invalidEndpoint("AI 服务地址必须是 HTTPS，或本机的 HTTP 地址。")
+            throw AIFailure.invalidEndpoint(String(localized: "AI 服务地址必须是 HTTPS，或本机的 HTTP 地址。"))
         }
         guard components.user == nil, components.password == nil, components.query == nil, components.fragment == nil else {
-            throw AIFailure.invalidEndpoint("AI 服务地址不能包含用户名、密码或查询参数。")
+            throw AIFailure.invalidEndpoint(String(localized: "AI 服务地址不能包含用户名、密码或查询参数。"))
         }
         components.path = components.path.replacingOccurrences(of: #"/+$"#, with: "", options: .regularExpression)
         return components
@@ -197,7 +197,7 @@ public struct AIClient: Sendable {
         var components = try validatedBase(baseURL)
         components.path += path
         if !query.isEmpty { components.queryItems = query }
-        guard let url = components.url else { throw AIFailure.invalidEndpoint("AI 服务地址无效。") }
+        guard let url = components.url else { throw AIFailure.invalidEndpoint(String(localized: "AI 服务地址无效。")) }
         return url
     }
 
@@ -222,7 +222,7 @@ public struct AIClient: Sendable {
                             followUps: [(role: String, content: String)] = [], stream: Bool = false) throws -> AIRequest {
         if settings.provider.needsKey && (apiKey ?? "").trimmingCharacters(in: .whitespaces).isEmpty { throw AIFailure.missingKey }
         let model = settings.model.trimmingCharacters(in: .whitespaces)
-        guard !model.isEmpty else { throw AIFailure.invalidEndpoint("请选择或填写模型。") }
+        guard !model.isEmpty else { throw AIFailure.invalidEndpoint(String(localized: "请选择或填写模型。")) }
         let format = settings.provider.format
         let style = settings.thinkingStyle
         let level = settings.effectiveLevel
@@ -264,7 +264,7 @@ public struct AIClient: Sendable {
         case .gemini:
             let path = model.hasPrefix("models/") ? String(model.dropFirst(7)) : model
             guard let escaped = path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/:"))) else {
-                throw AIFailure.invalidEndpoint("模型名称无效。")
+                throw AIFailure.invalidEndpoint(String(localized: "模型名称无效。"))
             }
             url = stream
                 ? try Self.url(settings.baseURL, appending: "/models/\(escaped):streamGenerateContent", query: [URLQueryItem(name: "alt", value: "sse")])
@@ -341,7 +341,7 @@ public struct AIClient: Sendable {
             switch error.code {
             case .cancelled: return .cancelled
             case .timedOut: return .timeout
-            case .httpTooManyRedirects, .redirectToNonExistentLocation: return .invalidResponse("AI 服务返回了重定向，Veer 不会跟随。请检查服务地址。")
+            case .httpTooManyRedirects, .redirectToNonExistentLocation: return .invalidResponse(String(localized: "AI 服务返回了重定向，Veer 不会跟随。请检查服务地址。"))
             default: return .network
             }
         default: return .network
@@ -352,7 +352,7 @@ public struct AIClient: Sendable {
         let detail = Self.errorMessage(data)
         switch status {
         case 200..<300: return
-        case 300..<400: throw AIFailure.invalidResponse("AI 服务返回了重定向，Veer 不会跟随。请检查服务地址。")
+        case 300..<400: throw AIFailure.invalidResponse(String(localized: "AI 服务返回了重定向，Veer 不会跟随。请检查服务地址。"))
         case 401, 403: throw AIFailure.unauthorized(status)
         case 400 where format == .gemini && (detail?.localizedCaseInsensitiveContains("api key") ?? false): throw AIFailure.unauthorized(400)
         case 429: throw AIFailure.rateLimited
@@ -412,8 +412,8 @@ public struct AIClient: Sendable {
         return String(message.prefix(200))
     }
 
-    static let incomplete = AIFailure.invalidResponse("AI 的回答没有完整结束，请缩短指令或检查模型设置后重试。")
-    static let unreadable = AIFailure.invalidResponse("AI 服务返回了无法读取的响应，请重试。")
+    static let incomplete = AIFailure.invalidResponse(String(localized: "AI 的回答没有完整结束，请缩短指令或检查模型设置后重试。"))
+    static let unreadable = AIFailure.invalidResponse(String(localized: "AI 服务返回了无法读取的响应，请重试。"))
 
     static func parse(_ data: Data, format: AIAPIFormat) throws -> (content: String, reasoning: String?) {
         guard let reply = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw unreadable }
@@ -435,14 +435,14 @@ public struct AIClient: Sendable {
         case .gemini:
             guard let candidate = (reply["candidates"] as? [[String: Any]])?.first else {
                 if let blocked = (reply["promptFeedback"] as? [String: Any])?["blockReason"] as? String {
-                    throw AIFailure.invalidResponse("AI 服务拒绝回答（\(blocked)），请换一种说法。")
+                    throw AIFailure.invalidResponse(String(localized: "AI 服务拒绝回答（\(blocked)），请换一种说法。"))
                 }
                 throw unreadable
             }
             switch candidate["finishReason"] as? String {
             case nil, "STOP": break
             case "MAX_TOKENS": throw incomplete
-            case let reason?: throw AIFailure.invalidResponse("AI 服务拒绝回答（\(reason)），请换一种说法。")
+            case let reason?: throw AIFailure.invalidResponse(String(localized: "AI 服务拒绝回答（\(reason)），请换一种说法。"))
             }
             let parts = (candidate["content"] as? [String: Any])?["parts"] as? [[String: Any]] ?? []
             content = parts.filter { $0["thought"] as? Bool != true }.compactMap { $0["text"] as? String }.joined()
@@ -452,7 +452,7 @@ public struct AIClient: Sendable {
         let split = splitThinkTags(content)
         content = split.content.trimmingCharacters(in: .whitespacesAndNewlines)
         if reasoning == nil || reasoning?.isEmpty == true { reasoning = split.reasoning }
-        guard !content.isEmpty, content.count <= 100_000 else { throw AIFailure.invalidResponse("AI 返回的内容为空或超过长度限制。") }
+        guard !content.isEmpty, content.count <= 100_000 else { throw AIFailure.invalidResponse(String(localized: "AI 返回的内容为空或超过长度限制。")) }
         return (content, reasoning.map { String($0.prefix(20_000)) })
     }
 
@@ -471,7 +471,7 @@ public struct AIClient: Sendable {
     public func testConnection(settings: AISettings, apiKey: String?) async throws {
         let request = try makeRequest(settings: settings, apiKey: apiKey, system: "Reply with the JSON object {\"ok\":true} and nothing else.", history: [], prompt: "ping")
         let content = try await complete(request)
-        guard content.contains("ok") else { throw AIFailure.invalidResponse("AI 服务可以连接，但没有按 JSON 格式回答。请换一个模型。") }
+        guard content.contains("ok") else { throw AIFailure.invalidResponse(String(localized: "AI 服务可以连接，但没有按 JSON 格式回答。请换一个模型。")) }
     }
 
     /// Chat models the service offers, for the model menu. Sends no configuration data.
@@ -499,7 +499,7 @@ public struct AIClient: Sendable {
         }
         let notChat = #"(embed|whisper|tts|dall-e|davinci|babbage|moderation|image|audio|realtime|transcribe|speech|rerank|sora|veo|imagen|aqa)"#
         ids = ids.filter { $0.range(of: notChat, options: [.regularExpression, .caseInsensitive]) == nil }
-        guard !ids.isEmpty else { throw AIFailure.invalidResponse("AI 服务没有返回可用的对话模型。") }
+        guard !ids.isEmpty else { throw AIFailure.invalidResponse(String(localized: "AI 服务没有返回可用的对话模型。")) }
         return Array(Set(ids)).sorted().prefix(500).map { $0 }
     }
 
@@ -535,7 +535,7 @@ struct StreamAccumulator {
               let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
         if let error = event["error"] {
             let message = ((error as? [String: Any])?["message"] as? String) ?? (error as? String) ?? "AI 服务在回答过程中出错。"
-            failure = .invalidResponse("AI 服务出错：\(message.prefix(200))")
+            failure = .invalidResponse(String(localized: "AI 服务出错：\(message.prefix(200))"))
             return
         }
         switch format {
@@ -559,7 +559,7 @@ struct StreamAccumulator {
             }
         case .gemini:
             if let blocked = (event["promptFeedback"] as? [String: Any])?["blockReason"] as? String {
-                failure = .invalidResponse("AI 服务拒绝回答（\(blocked)），请换一种说法。")
+                failure = .invalidResponse(String(localized: "AI 服务拒绝回答（\(blocked)），请换一种说法。"))
                 return
             }
             guard let candidate = (event["candidates"] as? [[String: Any]])?.first else { return }
@@ -588,13 +588,13 @@ struct StreamAccumulator {
     func result() throws -> (content: String, reasoning: String?) {
         switch finish {
         case "length", "max_tokens", "MAX_TOKENS": throw AIClient.incomplete
-        case let reason? where format == .gemini && reason != "STOP": throw AIFailure.invalidResponse("AI 服务拒绝回答（\(reason)），请换一种说法。")
+        case let reason? where format == .gemini && reason != "STOP": throw AIFailure.invalidResponse(String(localized: "AI 服务拒绝回答（\(reason)），请换一种说法。"))
         default: break
         }
         let split = AIClient.splitThinkTags(content)
         let text = split.content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else {
-            throw finish == nil ? AIClient.incomplete : AIFailure.invalidResponse("AI 返回的内容为空或超过长度限制。")
+            throw finish == nil ? AIClient.incomplete : AIFailure.invalidResponse(String(localized: "AI 返回的内容为空或超过长度限制。"))
         }
         let thought = reasoning.isEmpty ? split.reasoning : reasoning
         return (text, thought.map { String($0.prefix(20_000)) })

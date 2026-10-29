@@ -80,7 +80,7 @@ public struct Turn: Codable, Identifiable, Sendable, Equatable {
         public var label: String {
             switch self {
             case .ai(let model): "AI · \(model)"
-            case .local: "本地解析"
+            case .local: String(localized: "本地解析")
             }
         }
     }

@@ -99,7 +99,7 @@ public struct RuleSetCounter: Sendable {
     /// A free TCP port on 127.0.0.1, found by binding to port 0.
     static func freePort() throws -> Int {
         let socket = Darwin.socket(AF_INET, SOCK_STREAM, 0)
-        guard socket >= 0 else { throw EditorError("无法为内置 Mihomo 分配本机端口。") }
+        guard socket >= 0 else { throw EditorError(String(localized: "无法为内置 Mihomo 分配本机端口。")) }
         defer { close(socket) }
         var address = sockaddr_in()
         address.sin_family = sa_family_t(AF_INET)
@@ -109,7 +109,7 @@ public struct RuleSetCounter: Sendable {
         let bound = withUnsafeMutablePointer(to: &address) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(socket, $0, length) == 0 && getsockname(socket, $0, &length) == 0 }
         }
-        guard bound else { throw EditorError("无法为内置 Mihomo 分配本机端口。") }
+        guard bound else { throw EditorError(String(localized: "无法为内置 Mihomo 分配本机端口。")) }
         return Int(UInt16(bigEndian: address.sin_port))
     }
 }

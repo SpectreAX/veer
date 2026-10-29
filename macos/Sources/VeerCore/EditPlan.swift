@@ -119,45 +119,45 @@ extension EditPlan {
         guard let data = text.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data),
               let root = object as? [String: Any] else {
-            throw EditorError("AI 没有返回有效的结构化计划，请换一种说法再试。")
+            throw EditorError(String(localized: "AI 没有返回有效的结构化计划，请换一种说法再试。"))
         }
         let understanding = (root["understanding"] as? String).map { String($0.trimmingCharacters(in: .whitespacesAndNewlines).prefix(400)) }
         if let search = root["search"] {
             guard Set(root.keys).isSubset(of: ["search", "understanding"]), let request = search as? [String: Any],
                   Set(request.keys).isSubset(of: ["queries"]), let queries = request["queries"] as? [String], !queries.isEmpty else {
-                throw EditorError("AI 的搜索请求格式无效：search 只能包含 queries（字符串数组），且不能和计划或问题同时出现。")
+                throw EditorError(String(localized: "AI 的搜索请求格式无效：search 只能包含 queries（字符串数组），且不能和计划或问题同时出现。"))
             }
             return (.search(Array(queries.prefix(SearchQueries.maxQueries * 2))), understanding)
         }
         if let check = root["check"] {
             guard Set(root.keys).isSubset(of: ["check", "understanding"]), let request = check as? [String: Any],
                   Set(request.keys).isSubset(of: ["domains"]), let domains = request["domains"] as? [String], !domains.isEmpty else {
-                throw EditorError("AI 的检查请求格式无效：check 只能包含 domains（字符串数组），且不能和计划或问题同时出现。")
+                throw EditorError(String(localized: "AI 的检查请求格式无效：check 只能包含 domains（字符串数组），且不能和计划或问题同时出现。"))
             }
             return (.check(Array(domains.prefix(DomainChecker.maxDomains * 2))), understanding)
         }
         if let runtime = root["runtime"] {
             guard Set(root.keys).isSubset(of: ["runtime", "understanding"]), let request = runtime as? [String: Any],
                   Set(request.keys).isSubset(of: ["actions"]), let actions = request["actions"] as? [Any], (1...8).contains(actions.count) else {
-                throw EditorError("AI 的运行状态操作格式无效：runtime 只能包含 actions（1 到 8 项），且不能和计划或问题同时出现。")
+                throw EditorError(String(localized: "AI 的运行状态操作格式无效：runtime 只能包含 actions（1 到 8 项），且不能和计划或问题同时出现。"))
             }
             return (.runtime(try actions.map(RuntimeAction.decode)), understanding)
         }
         if let clarification = root["clarification"] {
             guard Set(root.keys).isSubset(of: ["clarification", "understanding", "options"]), let question = clarification as? String,
                   !question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw EditorError("AI 同时返回了问题和修改，已拒绝。请重新生成。")
+                throw EditorError(String(localized: "AI 同时返回了问题和修改，已拒绝。请重新生成。"))
             }
             // Choices the user can click; each prompt is a complete instruction.
             var options: [ClarifyOption] = []
             if let raw = root["options"] {
                 guard let list = raw as? [[String: Any]], (1...4).contains(list.count) else {
-                    throw EditorError("options 必须是 1 到 4 个 {\"label\",\"prompt\"} 对象。")
+                    throw EditorError(String(localized: "options 必须是 1 到 4 个 {\"label\",\"prompt\"} 对象。"))
                 }
                 for item in list {
                     guard Set(item.keys) == ["label", "prompt"], let label = item["label"] as? String, let prompt = item["prompt"] as? String,
                           !label.isEmpty, !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                        throw EditorError("每个选项都需要 label（按钮文字）和 prompt（选中后执行的完整指令）。")
+                        throw EditorError(String(localized: "每个选项都需要 label（按钮文字）和 prompt（选中后执行的完整指令）。"))
                     }
                     options.append(ClarifyOption(label: String(label.prefix(40)), prompt: String(prompt.prefix(300))))
                 }
@@ -168,20 +168,20 @@ extension EditPlan {
               (root["schemaVersion"] as? NSNumber)?.intValue == 1,
               let rawOperations = root["operations"] as? [Any],
               (1...32).contains(rawOperations.count) else {
-            throw EditorError("AI 返回的修改计划格式无效，请重新生成。")
+            throw EditorError(String(localized: "AI 返回的修改计划格式无效，请重新生成。"))
         }
         return (.plan(EditPlan(operations: try rawOperations.map(decodeOperation))), understanding)
     }
 
     static func decodeOperation(_ raw: Any) throws -> Operation {
         guard let op = raw as? [String: Any], let kind = op["kind"] as? String else {
-            throw EditorError("AI 返回了无效的规则操作。")
+            throw EditorError(String(localized: "AI 返回了无效的规则操作。"))
         }
         func fields(_ allowed: Set<String>) throws {
-            guard Set(op.keys).isSubset(of: allowed) else { throw EditorError("AI 的规则操作包含不支持的字段，请重新生成。") }
+            guard Set(op.keys).isSubset(of: allowed) else { throw EditorError(String(localized: "AI 的规则操作包含不支持的字段，请重新生成。")) }
         }
         func string(_ key: String) throws -> String {
-            guard let value = op[key] as? String else { throw EditorError("AI 的规则操作缺少 \(key)。") }
+            guard let value = op[key] as? String else { throw EditorError(String(localized: "AI 的规则操作缺少 \(key)。")) }
             return value
         }
         switch kind {
@@ -195,20 +195,20 @@ extension EditPlan {
             try fields(["kind", "id", "name", "type", "regions", "members", "excludeRegions"])
             let id = try string("id"), name = try string("name").trimmingCharacters(in: .whitespaces)
             let type = (op["type"] as? String ?? "select").lowercased()
-            guard id.range(of: #"^new-[0-9]{1,2}$"#, options: .regularExpression) != nil else { throw EditorError("新策略组的 id 必须是 new-1、new-2 这样的形式。") }
+            guard id.range(of: #"^new-[0-9]{1,2}$"#, options: .regularExpression) != nil else { throw EditorError(String(localized: "新策略组的 id 必须是 new-1、new-2 这样的形式。")) }
             guard !name.isEmpty, name.count <= 64, name.rangeOfCharacter(from: CharacterSet(charactersIn: ",\r\n")) == nil else {
-                throw EditorError("新策略组的名称为空、过长或包含逗号。")
+                throw EditorError(String(localized: "新策略组的名称为空、过长或包含逗号。"))
             }
-            guard NewGroup.types.contains(type) else { throw EditorError("新策略组只支持 select、url-test 或 fallback。") }
+            guard NewGroup.types.contains(type) else { throw EditorError(String(localized: "新策略组只支持 select、url-test 或 fallback。")) }
             func regionList(_ key: String) throws -> [Region] {
                 try (op[key] as? [String] ?? []).map { code -> Region in
-                    guard let region = Region(rawValue: code.uppercased()), region != .unknown else { throw EditorError("不支持的地区代码：\(code.prefix(10))") }
+                    guard let region = Region(rawValue: code.uppercased()), region != .unknown else { throw EditorError(String(localized: "不支持的地区代码：\(code.prefix(10))")) }
                     return region
                 }
             }
             let regions = try regionList("regions"), excluded = try regionList("excludeRegions")
             let members = op["members"] as? [String] ?? []
-            guard !regions.isEmpty || !members.isEmpty || !excluded.isEmpty else { throw EditorError("新策略组需要 regions、excludeRegions 或 members。") }
+            guard !regions.isEmpty || !members.isEmpty || !excluded.isEmpty else { throw EditorError(String(localized: "新策略组需要 regions、excludeRegions 或 members。")) }
             return .group(NewGroup(id: id, name: name, type: type, regions: regions, members: members, excludeRegions: excluded))
         case "rule_set":
             if op["url"] != nil {
@@ -218,7 +218,7 @@ extension EditPlan {
             try fields(["kind", "source", "name", "targetId"])
             return .ruleSet(.catalog(source: try string("source"), name: try string("name")), targetId: try string("targetId"))
         default:
-            throw EditorError("目前只支持添加、修改、删除分流规则，添加规则集和新建策略组（收到 \(kind.prefix(30))）。")
+            throw EditorError(String(localized: "目前只支持添加、修改、删除分流规则，添加规则集和新建策略组（收到 \(kind.prefix(30))）。"))
         }
     }
 
@@ -263,27 +263,27 @@ enum MatchValidator {
     static func validate(type: String, match: String, removing: Bool = false) throws {
         if removing && type == "RULE-SET" {
             guard !match.isEmpty, match.count <= 128, match.rangeOfCharacter(from: CharacterSet(charactersIn: ", \r\n\t")) == nil else {
-                throw EditorError("规则集名称为空或包含不允许的字符。")
+                throw EditorError(String(localized: "规则集名称为空或包含不允许的字符。"))
             }
             return
         }
-        guard EditPlan.matchTypes.contains(type) else { throw EditorError("暂不支持修改这类规则：\(type.prefix(30))") }
+        guard EditPlan.matchTypes.contains(type) else { throw EditorError(String(localized: "暂不支持修改这类规则：\(type.prefix(30))")) }
         guard !match.isEmpty, match.count <= 253, match.rangeOfCharacter(from: CharacterSet(charactersIn: ", \r\n\t")) == nil else {
-            throw EditorError("规则匹配值为空或包含不允许的字符。")
+            throw EditorError(String(localized: "规则匹配值为空或包含不允许的字符。"))
         }
         switch type {
         case "DOMAIN", "DOMAIN-SUFFIX":
             // A suffix may be a whole top-level domain: DOMAIN-SUFFIX,jp covers every .jp site.
             let labels = type == "DOMAIN-SUFFIX" ? "*" : "+"
             guard match.matches(#"^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)"# + labels + #"[a-z0-9-]+$"#) else {
-                throw EditorError("域名格式无效：\(match)" + (match.hasPrefix(".") ? "（不要以点开头，例如顶级域写成 jp）" : ""))
+                throw EditorError(String(localized: "域名格式无效：\(match)") + (match.hasPrefix(".") ? String(localized: "（不要以点开头，例如顶级域写成 jp）") : ""))
             }
         case "IP-CIDR", "IP-CIDR6":
             let parts = match.split(separator: "/", omittingEmptySubsequences: false)
             let v6 = type == "IP-CIDR6"
             guard parts.count == 2, let prefix = Int(parts[1]), (0...(v6 ? 128 : 32)).contains(prefix),
                   v6 ? isIPv6(String(parts[0])) : isIPv4(String(parts[0])) else {
-                throw EditorError("CIDR 格式无效：\(match)")
+                throw EditorError(String(localized: "CIDR 格式无效：\(match)"))
             }
         default:
             break

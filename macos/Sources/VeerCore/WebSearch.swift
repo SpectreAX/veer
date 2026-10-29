@@ -8,14 +8,14 @@ public enum SearchProvider: String, Sendable, Codable, CaseIterable, Identifiabl
 
     public var title: String {
         switch self {
-        case .wikidata: "Wikidata 官方网站（无需 Key）"
-        case .deepSeek: "DeepSeek 搜索（用 DeepSeek 的 Key，按次计费）"
-        case .zhipu: "智谱搜索（用智谱 GLM 的 Key，按次计费）"
+        case .wikidata: String(localized: "Wikidata 官方网站（无需 Key）")
+        case .deepSeek: String(localized: "DeepSeek 搜索（用 DeepSeek 的 Key，按次计费）")
+        case .zhipu: String(localized: "智谱搜索（用智谱 GLM 的 Key，按次计费）")
         case .tavily: "Tavily"
         case .perplexity: "Perplexity"
         case .brave: "Brave Search"
-        case .searxng: "SearXNG（自建）"
-        case .catalogOnly: "只搜索规则集目录"
+        case .searxng: String(localized: "SearXNG（自建）")
+        case .catalogOnly: String(localized: "只搜索规则集目录")
         }
     }
 
@@ -31,9 +31,9 @@ public enum SearchProvider: String, Sendable, Codable, CaseIterable, Identifiabl
     /// What a search costs, for services that bill each one.
     public var costNote: String? {
         switch self {
-        case .deepSeek: "每次搜索按 DeepSeek 的价格计费（0.75 美元 / 千次，2026-11-01 起），只发送搜索词。"
-        case .zhipu: "使用智谱基础搜索引擎 search_std，每次 0.01 元，只发送搜索词。"
-        case .perplexity: "每次搜索按 Perplexity 的价格计费（5 美元 / 千次），只发送搜索词。"
+        case .deepSeek: String(localized: "每次搜索按 DeepSeek 的价格计费（0.75 美元 / 千次，2026-11-01 起），只发送搜索词。")
+        case .zhipu: String(localized: "使用智谱基础搜索引擎 search_std，每次 0.01 元，只发送搜索词。")
+        case .perplexity: String(localized: "每次搜索按 Perplexity 的价格计费（5 美元 / 千次），只发送搜索词。")
         default: nil
         }
     }
@@ -325,17 +325,17 @@ public struct WebSearchService: RuleSearching {
             let found = await index.lookup(query)
             var record = SearchRecord(query: query, geosite: found.geosite, geoip: found.geoip, source: config.provider.title)
             if config.provider == .catalogOnly {
-                record.note = "未开启网页搜索（设置中选择了只搜索规则集目录）。"
+                record.note = String(localized: "未开启网页搜索（设置中选择了只搜索规则集目录）。")
             } else {
                 do {
                     record.web = try await web(query, config: config)
                     if record.web.isEmpty {
-                        record.note = config.provider == .wikidata ? "Wikidata 中没有找到带官方网站的条目；需要更全的网页结果时可在设置中改用 Tavily。" : "没有结果。"
+                        record.note = config.provider == .wikidata ? String(localized: "Wikidata 中没有找到带官方网站的条目；需要更全的网页结果时可在设置中改用 Tavily。") : String(localized: "没有结果。")
                     }
                 } catch let failure as AIFailure {
-                    record.note = "搜索失败：\(failure.message)"
+                    record.note = String(localized: "搜索失败：\(failure.message)")
                 } catch {
-                    record.note = "搜索失败。"
+                    record.note = String(localized: "搜索失败。")
                 }
             }
             record.containing = await containing(query: query, results: record.web)
@@ -368,13 +368,13 @@ public struct WebSearchService: RuleSearching {
         let (data, response) = try await transport.send(request)
         switch response.statusCode {
         case 200..<300: break
-        case 401, 403: throw AIFailure.invalidResponse("搜索服务拒绝了请求，请检查 Key。")
-        case 402: throw AIFailure.invalidResponse("搜索服务账户余额不足。")
-        case 429: throw AIFailure.invalidResponse("搜索服务限流或额度不足。")
+        case 401, 403: throw AIFailure.invalidResponse(String(localized: "搜索服务拒绝了请求，请检查 Key。"))
+        case 402: throw AIFailure.invalidResponse(String(localized: "搜索服务账户余额不足。"))
+        case 429: throw AIFailure.invalidResponse(String(localized: "搜索服务限流或额度不足。"))
         // 智谱 explains other failures in an error object (1701–1703).
         case _ where config.provider == .zhipu && (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] != nil:
             return try Self.parse(data, provider: .zhipu)
-        default: throw AIFailure.invalidResponse("搜索服务返回 HTTP \(response.statusCode)。")
+        default: throw AIFailure.invalidResponse(String(localized: "搜索服务返回 HTTP \(response.statusCode)。"))
         }
         return Array(try Self.parse(data, provider: config.provider).prefix(5))
     }
@@ -396,7 +396,7 @@ public struct WebSearchService: RuleSearching {
             request.setValue("Veer", forHTTPHeaderField: "User-Agent")
             let (data, response) = try await transport.send(request)
             guard (200..<300).contains(response.statusCode), let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                throw AIFailure.invalidResponse("Wikidata 暂时不可用（HTTP \(response.statusCode)）。")
+                throw AIFailure.invalidResponse(String(localized: "Wikidata 暂时不可用（HTTP \(response.statusCode)）。"))
             }
             return object
         }
@@ -437,27 +437,27 @@ public struct WebSearchService: RuleSearching {
         var request: URLRequest
         switch config.provider {
         case .wikidata:
-            throw AIFailure.invalidResponse("Wikidata 通过 wikidata(_:) 查询。")
+            throw AIFailure.invalidResponse(String(localized: "Wikidata 通过 wikidata(_:) 查询。"))
         case .deepSeek:
             // https://api-docs.deepseek.com/guides/search/ — only the query is sent, not the user's instruction.
-            guard let key = config.apiKey, !key.isEmpty else { throw AIFailure.invalidResponse("还没有保存 DeepSeek 的 API Key（在上方 AI 服务中选择 DeepSeek 并保存）。") }
+            guard let key = config.apiKey, !key.isEmpty else { throw AIFailure.invalidResponse(String(localized: "还没有保存 DeepSeek 的 API Key（在上方 AI 服务中选择 DeepSeek 并保存）。")) }
             request = try jsonPost("https://api.deepseek.com/v1/tools/search", key: key, body: ["query": String(query.prefix(128)), "count": 8, "need_content": false])
         case .zhipu:
             // https://docs.bigmodel.cn/api-reference/工具-api/网络搜索 — the cheapest engine, no intent rewriting.
-            guard let key = config.apiKey, !key.isEmpty else { throw AIFailure.invalidResponse("还没有保存智谱 GLM 的 API Key（在上方 AI 服务中选择智谱 GLM 并保存）。") }
+            guard let key = config.apiKey, !key.isEmpty else { throw AIFailure.invalidResponse(String(localized: "还没有保存智谱 GLM 的 API Key（在上方 AI 服务中选择智谱 GLM 并保存）。")) }
             request = try jsonPost("https://open.bigmodel.cn/api/paas/v4/web_search", key: key, body: [
                 "search_query": String(query.prefix(70)), "search_engine": "search_std", "search_intent": false,
                 "count": 8, "content_size": "medium",
             ])
         case .perplexity:
             // https://docs.perplexity.ai/api-reference/search-post
-            guard let key = config.apiKey, !key.isEmpty else { throw AIFailure.invalidResponse("还没有设置 Perplexity 的 API Key。") }
+            guard let key = config.apiKey, !key.isEmpty else { throw AIFailure.invalidResponse(String(localized: "还没有设置 Perplexity 的 API Key。")) }
             request = try jsonPost("https://api.perplexity.ai/search", key: key, body: ["query": query, "max_results": 5, "max_tokens_per_page": 256])
         case .tavily:
-            guard let key = config.apiKey, !key.isEmpty else { throw AIFailure.invalidResponse("还没有设置 Tavily 的 API Key。") }
+            guard let key = config.apiKey, !key.isEmpty else { throw AIFailure.invalidResponse(String(localized: "还没有设置 Tavily 的 API Key。")) }
             request = try jsonPost("https://api.tavily.com/search", key: key, body: ["query": query, "max_results": 5, "search_depth": "basic"])
         case .brave:
-            guard let key = config.apiKey, !key.isEmpty else { throw AIFailure.invalidResponse("还没有设置 Brave Search 的 API Key。") }
+            guard let key = config.apiKey, !key.isEmpty else { throw AIFailure.invalidResponse(String(localized: "还没有设置 Brave Search 的 API Key。")) }
             var components = URLComponents(string: "https://api.search.brave.com/res/v1/web/search")!
             components.queryItems = [.init(name: "q", value: query), .init(name: "count", value: "5")]
             request = URLRequest(url: components.url!, timeoutInterval: 15)
@@ -465,12 +465,12 @@ public struct WebSearchService: RuleSearching {
             request.setValue("application/json", forHTTPHeaderField: "Accept")
         case .searxng:
             guard let base = config.baseURL, !base.trimmingCharacters(in: .whitespaces).isEmpty else {
-                throw AIFailure.invalidResponse("还没有填写 SearXNG 的地址。")
+                throw AIFailure.invalidResponse(String(localized: "还没有填写 SearXNG 的地址。"))
             }
             request = URLRequest(url: try AIClient.url(base, appending: "/search", query: [.init(name: "q", value: query), .init(name: "format", value: "json")]),
                                  timeoutInterval: 15)
         case .catalogOnly:
-            throw AIFailure.invalidResponse("未开启网页搜索。")
+            throw AIFailure.invalidResponse(String(localized: "未开启网页搜索。"))
         }
         request.setValue("Veer", forHTTPHeaderField: "User-Agent")
         return request
@@ -488,7 +488,7 @@ public struct WebSearchService: RuleSearching {
 
     static func parse(_ data: Data, provider: SearchProvider) throws -> [SearchRecord.WebResult] {
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw AIFailure.invalidResponse("搜索服务返回了无法读取的结果。")
+            throw AIFailure.invalidResponse(String(localized: "搜索服务返回了无法读取的结果。"))
         }
         func clip(_ text: String?) -> String {
             String((text ?? "").replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces).prefix(300))
@@ -515,8 +515,8 @@ public struct WebSearchService: RuleSearching {
                 let code = (error["code"] as? String) ?? (error["code"] as? Int).map(String.init) ?? ""
                 switch code {
                 case "1703": return []
-                case "1701": throw AIFailure.invalidResponse("搜索服务限流或额度不足。")
-                default: throw AIFailure.invalidResponse("智谱搜索出错：\(clip(error["message"] as? String))")
+                case "1701": throw AIFailure.invalidResponse(String(localized: "搜索服务限流或额度不足。"))
+                default: throw AIFailure.invalidResponse(String(localized: "智谱搜索出错：\(clip(error["message"] as? String))"))
                 }
             }
             return (object["search_result"] as? [[String: Any]] ?? []).compactMap { item in

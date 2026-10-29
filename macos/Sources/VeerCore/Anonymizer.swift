@@ -22,7 +22,7 @@ public struct AnonymousContext: Sendable {
                 continue
             }
             let region = regions[target.name] ?? .unknown
-            let suffix = region == .unknown ? "" : "（\(region.displayName)）"
+            let suffix = region == .unknown ? "" : "（\(region.promptName)）"
             let label: String
             if target.kind == .group {
                 groups += 1

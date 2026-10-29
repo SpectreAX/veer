@@ -3,7 +3,7 @@ import Foundation
 /// Runs one instruction through the pipeline: understand → check exits → generate → validate.
 /// Step indices match `EditorEngine.stepTitles`; progress reports real task state only.
 public struct EditorEngine: Sendable {
-    public static let stepTitles = ["理解指令", "检查出口", "生成修改", "校验"]
+    public static let stepTitles = [String(localized: "理解指令"), String(localized: "检查出口"), String(localized: "生成修改"), String(localized: "校验")]
 
     public enum Output: Sendable {
         case proposal(plan: EditPlan, items: [ChangeItem], candidate: String, validation: ValidationResult)
@@ -111,7 +111,7 @@ public struct EditorEngine: Sendable {
         // Switching nodes and testing delays are out of scope for an editor; in Veer the AI can do
         // them as runtime actions, and only local parsing cannot.
         if LocalIntentParser.isOutOfScope(request.prompt) && (!request.runtime || !request.useAI) {
-            await progress(.finished(0, detail: "超出编辑范围"))
+            await progress(.finished(0, detail: String(localized: "超出编辑范围")))
             return .outOfScope(request.runtime ? LocalIntentParser.runtimeNeedsAIMessage : LocalIntentParser.outOfScopeMessage)
         }
         let hints = await lookup?.hints(for: request.prompt, exitNames: request.draft.targets.map(\.name))
@@ -119,7 +119,7 @@ public struct EditorEngine: Sendable {
         guard request.useAI else {
             let reply = try LocalIntentParser.parse(request.prompt, targets: request.draft.targets, regions: request.regions,
                                                     rules: request.draft.rules, ownSets: hints?.ownSets ?? [:])
-            await progress(.finished(0, detail: "本地解析"))
+            await progress(.finished(0, detail: String(localized: "本地解析")))
             return try await handle(reply, request: request, progress: progress)
         }
 
@@ -151,10 +151,10 @@ public struct EditorEngine: Sendable {
                 }
                 if case let .search(queries) = decoded.reply {
                     // Search, hand the results back, and ask again (at most `maxRounds` times).
-                    guard let config = request.search else { throw EditorError("联网搜索未开启，不能请求搜索。请直接输出修改计划或澄清问题。") }
-                    guard searchRounds < SearchQueries.maxRounds else { throw EditorError("本轮已经搜索过 \(SearchQueries.maxRounds) 次，不能再搜索。请根据已有结果输出修改计划或澄清问题。") }
+                    guard let config = request.search else { throw EditorError(String(localized: "联网搜索未开启，不能请求搜索。请直接输出修改计划或澄清问题。")) }
+                    guard searchRounds < SearchQueries.maxRounds else { throw EditorError(String(localized: "本轮已经搜索过 \(SearchQueries.maxRounds) 次，不能再搜索。请根据已有结果输出修改计划或澄清问题。")) }
                     let checked = SearchQueries.sanitize(queries)
-                    guard !checked.accepted.isEmpty else { throw EditorError("搜索词包含配置里的标签、占位符或私有地址，Veer 不会发送。请只用公开的服务或网站名称搜索。") }
+                    guard !checked.accepted.isEmpty else { throw EditorError(String(localized: "搜索词包含配置里的标签、占位符或私有地址，Veer 不会发送。请只用公开的服务或网站名称搜索。")) }
                     searchRounds += 1
                     await progress(.searching(checked.accepted))
                     let records = await searcher.search(checked.accepted, config: config)
@@ -166,10 +166,10 @@ public struct EditorEngine: Sendable {
                 }
                 if case let .check(raw) = decoded.reply {
                     // Test the domains against the draft and hand the results back (at most `maxRounds` times).
-                    guard let checker else { throw EditorError("本机检查不可用。请直接输出修改计划或澄清问题。") }
-                    guard checkRounds < DomainChecker.maxRounds else { throw EditorError("本轮已经检查过 \(DomainChecker.maxRounds) 次，不能再检查。请根据已有结果输出修改计划或澄清问题。") }
+                    guard let checker else { throw EditorError(String(localized: "本机检查不可用。请直接输出修改计划或澄清问题。")) }
+                    guard checkRounds < DomainChecker.maxRounds else { throw EditorError(String(localized: "本轮已经检查过 \(DomainChecker.maxRounds) 次，不能再检查。请根据已有结果输出修改计划或澄清问题。")) }
                     let domains = DomainChecker.sanitize(raw)
-                    guard !domains.isEmpty else { throw EditorError("check.domains 里没有有效的域名（例如 i0.hdslb.com），请只列公开域名。") }
+                    guard !domains.isEmpty else { throw EditorError(String(localized: "check.domains 里没有有效的域名（例如 i0.hdslb.com），请只列公开域名。")) }
                     checkRounds += 1
                     await progress(.checking(domains))
                     let records = await checker.check(domains, draft: request.draft)
@@ -185,9 +185,9 @@ public struct EditorEngine: Sendable {
                     continue
                 }
                 if request.mode == .plan, case .plan = decoded.reply {
-                    throw EditorError("计划模式下不要输出修改计划。请用 clarification 写出分析，用 options 给出 2 到 3 个方案。")
+                    throw EditorError(String(localized: "计划模式下不要输出修改计划。请用 clarification 写出分析，用 options 给出 2 到 3 个方案。"))
                 }
-                if attempt == 0 { await progress(.finished(0, detail: "已由 \(model) 解析")) }
+                if attempt == 0 { await progress(.finished(0, detail: String(localized: "已由 \(model) 解析"))) }
                 var reply = anonymized.restoringRuleSetNames(in: decoded.reply)
                 if case let .clarification(question, options) = reply {
                     // The user sees, and later sends, real exit names, not the model's labels.
@@ -218,11 +218,11 @@ public struct EditorEngine: Sendable {
             return try await process(plan, draft: request.draft, regions: request.regions, progress: progress)
         case .search:
             // Searches are answered inside the AI loop; one reaching here was not allowed.
-            throw EditorError("AI 请求了联网搜索，但本轮不能再搜索。请换一种说法或开启联网搜索。")
+            throw EditorError(String(localized: "AI 请求了联网搜索，但本轮不能再搜索。请换一种说法或开启联网搜索。"))
         case .check:
-            throw EditorError("AI 请求了本机检查，但本轮不能再检查。请换一种说法再试。")
+            throw EditorError(String(localized: "AI 请求了本机检查，但本轮不能再检查。请换一种说法再试。"))
         case let .runtime(actions):
-            guard request.runtime else { throw EditorError("这里不能切换节点或模式，只能修改分流规则。") }
+            guard request.runtime else { throw EditorError(String(localized: "这里不能切换节点或模式，只能修改分流规则。")) }
             return .runtime(try actions.map { try $0.resolved(in: request.draft) })
         }
     }
@@ -243,7 +243,7 @@ public struct EditorEngine: Sendable {
     /// same review card, no parsing step.
     public func run(plan: EditPlan, draft: ConfigDocument, regions: [String: Region] = [:], progress: @Sendable (Progress) async -> Void) async throws -> Output {
         await progress(.started(0))
-        await progress(.finished(0, detail: "手动添加"))
+        await progress(.finished(0, detail: String(localized: "手动添加")))
         return try await process(plan, draft: draft, regions: regions, progress: progress)
     }
 
@@ -256,15 +256,15 @@ public struct EditorEngine: Sendable {
             case let .route(_, _, target), let .ruleSet(_, target), let .groupMembers(target, _), let .addMatch(target): id = target
             case .removeRule, .removeRuleAt, .removeProvider, .moveRule: id = nil
             case .group(let group):
-                exitNames.append("新建 \(group.name)")
+                exitNames.append(String(localized: "新建 \(group.name)"))
                 id = nil
             }
             guard let id else { continue }
             if plan.operations.contains(where: { if case .group(let group) = $0 { group.id == id } else { false } }) { continue }
-            guard let target = draft.target(id: id) else { throw EditorError("修改引用了当前配置中不存在的出口。") }
+            guard let target = draft.target(id: id) else { throw EditorError(String(localized: "修改引用了当前配置中不存在的出口。")) }
             if !exitNames.contains(target.name) { exitNames.append(target.name) }
         }
-        await progress(.finished(1, detail: exitNames.isEmpty ? "无需出口" : exitNames.joined(separator: "、")))
+        await progress(.finished(1, detail: exitNames.isEmpty ? String(localized: "无需出口") : exitNames.joined(separator: "、")))
 
         await progress(.started(2))
         var result = try PlanApplier.apply(plan, to: draft, regions: regions)
@@ -274,15 +274,15 @@ public struct EditorEngine: Sendable {
             try Task.checkCancellation()
             let missing = newURLs.filter { checks[$0] == .missing }
             if !missing.isEmpty {
-                throw EditorError("规则集地址不存在（404）：\(missing.joined(separator: "、"))。Veer 不会使用推测的地址。\(RuleSetCatalog.findHelp)")
+                throw EditorError(String(localized: "规则集地址不存在（404）：\(missing.joined(separator: "、"))。Veer 不会使用推测的地址。\(RuleSetCatalog.findHelp)"))
             }
             result = try PlanApplier.apply(plan, to: draft, regions: regions, verification: checks)
         }
         guard result.changed else {
-            await progress(.finished(2, detail: "没有变化"))
-            return .noChange("这些规则已经是你要的样子，草稿没有变化。")
+            await progress(.finished(2, detail: String(localized: "没有变化")))
+            return .noChange(String(localized: "这些规则已经是你要的样子，分流没有变化。"))
         }
-        await progress(.finished(2, detail: "\(result.items.count) 项修改"))
+        await progress(.finished(2, detail: String(localized: "\(result.items.count) 项修改")))
 
         await progress(.started(3))
         let validation = await validator.validate(result.candidate)
@@ -296,7 +296,7 @@ public struct EditorEngine: Sendable {
         var checks: [String: RuleSetVerification] = [:]
         for item in previous { if let provider = item.provider { checks[provider.url] = provider.verification } }
         let result = try PlanApplier.apply(plan, to: draft, regions: regions, accepting: accepted, verification: checks)
-        let validation = accepted.isEmpty ? ValidationResult(status: .passed, message: "没有选择任何修改") : await validator.validate(result.candidate)
+        let validation = accepted.isEmpty ? ValidationResult(status: .passed, message: String(localized: "没有选择任何修改")) : await validator.validate(result.candidate)
         return (result.candidate, result.items, validation)
     }
 

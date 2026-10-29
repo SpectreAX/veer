@@ -71,8 +71,8 @@ public struct DomainChecker: Sendable {
             }
             var note: String?
             if !result.certain, let first = result.skipped.first {
-                note = "第 \(first.index + 1) 条等 \(result.skipped.count) 条规则需要运行时数据才能判断"
-                if let likely = result.likely { note! += "，很可能先命中第 \(likely.index + 1) 条" }
+                note = String(localized: "第 \(first.index + 1) 条等 \(result.skipped.count) 条规则需要运行时数据才能判断")
+                if let likely = result.likely { note! += String(localized: "，很可能先命中第 \(likely.index + 1) 条") }
             }
             let sets = geosite.map { database in
                 database.hits(for: domain, available: available).filter { !$0.geositeRuleOnly }.map(\.name)

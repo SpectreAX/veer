@@ -88,7 +88,7 @@ public struct AnonymizedConfig: Sendable {
             var byRegion: [String: Int] = [:]
             for node in unlisted {
                 let region = regions[node.name] ?? .unknown
-                byRegion[region == .unknown ? "未指定地区" : region.displayName, default: 0] += 1
+                byRegion[region == .unknown ? "未指定地区" : region.promptName, default: 0] += 1
             }
             root.append(("未列出的节点", .mapping(.init([
                 (scalar("数量"), scalar(String(unlisted.count), tag: .int)),
@@ -120,7 +120,7 @@ public struct AnonymizedConfig: Sendable {
                     for member in members {
                         if member.kind == .proxy {
                             let region = regions[member.name] ?? .unknown
-                            byRegion[region == .unknown ? "未指定地区" : region.displayName, default: 0] += 1
+                            byRegion[region == .unknown ? "未指定地区" : region.promptName, default: 0] += 1
                         } else {
                             others.append(label(member.name))
                         }

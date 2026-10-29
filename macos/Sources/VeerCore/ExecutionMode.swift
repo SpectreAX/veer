@@ -8,21 +8,21 @@ public enum ExecutionMode: String, Sendable, Codable, CaseIterable, Identifiable
 
     public var title: String {
         switch self {
-        case .auto: "自动"
-        case .manual: "手动"
-        case .acceptEdits: "自动写入"
-        case .plan: "计划"
-        case .full: "完整权限"
+        case .auto: String(localized: "自动")
+        case .manual: String(localized: "手动")
+        case .acceptEdits: String(localized: "自动应用")
+        case .plan: String(localized: "计划")
+        case .full: String(localized: "完整权限")
         }
     }
 
     public var detail: String {
         switch self {
-        case .auto: "Veer 判断风险：只新增或改动分流、校验通过的修改直接写入；删除、新建策略组和宽泛规则集仍由你审阅"
-        case .manual: "每项修改都先由你审阅，确认后才写入草稿"
-        case .acceptEdits: "通过 Mihomo 校验的修改全部直接写入草稿，可以撤销"
-        case .plan: "AI 只分析并给出可选方案，不生成修改；选定方案后再生成修改供你审阅"
-        case .full: "AI 遇到不明确的地方自己做合理假设、不再追问，修改直接写入草稿"
+        case .auto: String(localized: "Veer 判断风险：只新增或改动分流、校验通过的修改直接应用；删除、新建策略组和宽泛规则集仍由你确认")
+        case .manual: String(localized: "每项修改都先由你确认，然后才应用")
+        case .acceptEdits: String(localized: "通过 Mihomo 校验的修改全部直接应用，可以撤销")
+        case .plan: String(localized: "AI 只分析并给出可选方案，不生成修改；选定方案后再生成修改供你确认")
+        case .full: String(localized: "AI 遇到不明确的地方自己做合理假设、不再追问，修改直接应用")
         }
     }
 
@@ -60,8 +60,8 @@ public enum ExecutionMode: String, Sendable, Codable, CaseIterable, Identifiable
     public func heldReason(validation: ValidationResult) -> String? {
         switch self {
         case .manual, .plan, .full: nil
-        case .auto: "自动模式：含删除、新建策略组、宽泛规则集或较多修改，需要你确认"
-        case .acceptEdits: validation.status == .passed ? nil : "自动写入模式：Mihomo 校验没有完成，需要你确认"
+        case .auto: String(localized: "自动模式：含删除、新建策略组、宽泛规则集或较多修改，需要你确认")
+        case .acceptEdits: validation.status == .passed ? nil : String(localized: "自动应用模式：Mihomo 校验没有完成，需要你确认")
         }
     }
 

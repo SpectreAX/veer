@@ -62,7 +62,7 @@ public enum PlanApplier {
     /// the plan is invalid or the result would change anything outside `rules`/new providers.
     public static func apply(_ plan: EditPlan, to base: ConfigDocument, regions: [String: Region] = [:], accepting accepted: Set<Int>? = nil,
                              verification: [String: RuleSetVerification] = [:]) throws -> ApplyResult {
-        guard (1...32).contains(plan.operations.count) else { throw EditorError("修改计划需要 1 到 32 项操作。") }
+        guard (1...32).contains(plan.operations.count) else { throw EditorError(String(localized: "修改计划需要 1 到 32 项操作。")) }
         func isAccepted(_ index: Int) -> Bool { accepted?.contains(index) ?? true }
 
         // 0. New groups: members come from Veer's own region data (user corrections first), never
@@ -74,10 +74,10 @@ public enum PlanApplier {
         func region(of name: String) -> Region { regions[name] ?? Region.infer(from: name) }
         for (index, op) in plan.operations.enumerated() {
             guard case let .group(spec) = op else { continue }
-            guard newGroups[spec.id] == nil else { throw EditorError("计划里有重复的新策略组 id：\(spec.id)") }
+            guard newGroups[spec.id] == nil else { throw EditorError(String(localized: "计划里有重复的新策略组 id：\(spec.id)")) }
             var members: [String] = []
             for id in spec.members {
-                guard let target = base.target(id: id) else { throw EditorError("新策略组引用了当前配置中不存在的出口。") }
+                guard let target = base.target(id: id) else { throw EditorError(String(localized: "新策略组引用了当前配置中不存在的出口。")) }
                 if !members.contains(target.name) { members.append(target.name) }
             }
             if !spec.regions.isEmpty || !spec.excludeRegions.isEmpty {
@@ -95,8 +95,8 @@ public enum PlanApplier {
                 var regional = inRegions(.group)
                 if regional.isEmpty { regional = inRegions(.node) }
                 guard !regional.isEmpty else {
-                    let description = spec.regions.isEmpty ? "除\(spec.excludeRegions.map(\.displayName).joined(separator: "、"))以外地区" : spec.regions.map(\.displayName).joined(separator: "、")
-                    throw EditorError("当前配置里没有标记为\(description)的节点或策略组，无法新建“\(spec.name)”。可以在检查器的“出口”里更正地区。")
+                    let description = spec.regions.isEmpty ? String(localized: "除\(spec.excludeRegions.map(\.displayName).joined(separator: "、"))以外地区") : spec.regions.map(\.displayName).joined(separator: "、")
+                    throw EditorError(String(localized: "当前配置里没有标记为\(description)的节点或策略组，无法新建“\(spec.name)”。"))
                 }
                 for name in regional where !members.contains(name) { members.append(name) }
             }
@@ -105,7 +105,7 @@ public enum PlanApplier {
             takenNames.insert(name)
             newGroups[spec.id] = (index, name)
             var counts: [String: Int] = [:]
-            for member in members { counts[region(of: member) == .unknown ? "未指定地区" : region(of: member).displayName, default: 0] += 1 }
+            for member in members { counts[region(of: member) == .unknown ? String(localized: "未指定地区") : region(of: member).displayName, default: 0] += 1 }
             groupItems[index] = ChangeItem(id: index, kind: .group, subject: name, matchType: "", match: "", targetName: nil, targetID: spec.id,
                                            replaced: [], rule: nil, provider: nil,
                                            group: .init(name: name, type: spec.type, members: members, regionCounts: counts,
@@ -140,37 +140,37 @@ public enum PlanApplier {
             switch op {
             case let .removeRuleAt(position, rule):
                 guard base.rules.indices.contains(position), base.rules[position] == rule else {
-                    throw EditorError("草稿的第 \(position + 1) 条规则已经变化，请重新体检。")
+                    throw EditorError(String(localized: "配置的第 \(position + 1) 条规则已经变化，请重新体检。"))
                 }
-                guard touched.insert("#\(position)").inserted else { throw EditorError("计划重复删除了第 \(position + 1) 条规则。") }
+                guard touched.insert("#\(position)").inserted else { throw EditorError(String(localized: "计划重复删除了第 \(position + 1) 条规则。")) }
                 let parts = RuleParts.parse(rule)
                 ruleRemovals[index] = position
                 items.append(ChangeItem(id: index, kind: .removeRule, subject: parts?.payload ?? rule, matchType: parts?.type ?? "",
                                         match: parts?.payload ?? "", targetName: nil, targetID: nil, replaced: [rule], rule: nil))
                 continue
             case let .removeProvider(key):
-                guard base.providers.contains(where: { $0.key == key }) else { throw EditorError("配置中没有名为 \(key) 的规则集。") }
+                guard base.providers.contains(where: { $0.key == key }) else { throw EditorError(String(localized: "配置中没有名为 \(key) 的规则集。")) }
                 guard !base.rules.compactMap(RuleParts.parse).contains(where: { ConfigHealthCheck.ruleSetReferences($0).contains(key) }) else {
-                    throw EditorError("仍有规则使用规则集 \(key)，不能删除。")
+                    throw EditorError(String(localized: "仍有规则使用规则集 \(key)，不能删除。"))
                 }
-                guard touched.insert("provider:\(key)").inserted else { throw EditorError("计划重复删除了规则集 \(key)。") }
+                guard touched.insert("provider:\(key)").inserted else { throw EditorError(String(localized: "计划重复删除了规则集 \(key)。")) }
                 providerRemovals[index] = key
                 items.append(ChangeItem(id: index, kind: .removeProvider, subject: key, matchType: "RULE-SET", match: key,
                                         targetName: nil, targetID: nil, replaced: [], rule: nil))
                 continue
             case let .addMatch(targetID):
-                guard !base.rules.contains(where: { RuleParts.parse($0)?.type == "MATCH" }) else { throw EditorError("配置里已经有 MATCH 规则。") }
-                guard let target = base.target(id: targetID) else { throw EditorError("修改引用了当前配置中不存在的出口。") }
-                guard touched.insert("match").inserted else { throw EditorError("计划重复添加了 MATCH 规则。") }
-                items.append(ChangeItem(id: index, kind: .addMatch, subject: "其他所有流量", matchType: "MATCH", match: "", targetName: target.name,
+                guard !base.rules.contains(where: { RuleParts.parse($0)?.type == "MATCH" }) else { throw EditorError(String(localized: "配置里已经有 MATCH 规则。")) }
+                guard let target = base.target(id: targetID) else { throw EditorError(String(localized: "修改引用了当前配置中不存在的出口。")) }
+                guard touched.insert("match").inserted else { throw EditorError(String(localized: "计划重复添加了 MATCH 规则。")) }
+                items.append(ChangeItem(id: index, kind: .addMatch, subject: String(localized: "其他所有流量"), matchType: "MATCH", match: "", targetName: target.name,
                                         targetID: targetID, replaced: [], rule: "MATCH,\(target.name)"))
                 continue
             case let .moveRule(position, rule, before, beforeRule):
                 guard base.rules.indices.contains(position), base.rules[position] == rule,
                       base.rules.indices.contains(before), base.rules[before] == beforeRule, before < position else {
-                    throw EditorError("草稿的第 \(position + 1) 条规则已经变化，请重新体检。")
+                    throw EditorError(String(localized: "配置的第 \(position + 1) 条规则已经变化，请重新体检。"))
                 }
-                guard touched.insert("#\(position)").inserted else { throw EditorError("计划重复修改了第 \(position + 1) 条规则。") }
+                guard touched.insert("#\(position)").inserted else { throw EditorError(String(localized: "计划重复修改了第 \(position + 1) 条规则。")) }
                 ruleMoves[index] = (position, before)
                 let parts = RuleParts.parse(rule)
                 // `replaced` holds the rule it moves in front of, for the review card.
@@ -178,16 +178,16 @@ public enum PlanApplier {
                                         match: parts?.payload ?? "", targetName: parts?.target, targetID: nil, replaced: [beforeRule], rule: rule))
                 continue
             case let .groupMembers(groupID, memberIDs):
-                guard let group = base.target(id: groupID), group.kind == .group else { throw EditorError("要修改的策略组不在当前配置中。") }
-                guard touched.insert("group:\(group.name)").inserted else { throw EditorError("计划重复修改了策略组“\(group.name)”。") }
+                guard let group = base.target(id: groupID), group.kind == .group else { throw EditorError(String(localized: "要修改的策略组不在当前配置中。")) }
+                guard touched.insert("group:\(group.name)").inserted else { throw EditorError(String(localized: "计划重复修改了策略组“\(group.name)”。")) }
                 var names: [String] = []
                 for id in memberIDs {
-                    guard let member = base.target(id: id) else { throw EditorError("策略组“\(group.name)”的成员引用了当前配置中不存在的出口。") }
-                    guard member.name != group.name else { throw EditorError("策略组“\(group.name)”不能包含它自己。") }
+                    guard let member = base.target(id: id) else { throw EditorError(String(localized: "策略组“\(group.name)”的成员引用了当前配置中不存在的出口。")) }
+                    guard member.name != group.name else { throw EditorError(String(localized: "策略组“\(group.name)”不能包含它自己。")) }
                     if !names.contains(member.name) { names.append(member.name) }
                 }
                 var counts: [String: Int] = [:]
-                for member in names { counts[region(of: member) == .unknown ? "未指定地区" : region(of: member).displayName, default: 0] += 1 }
+                for member in names { counts[region(of: member) == .unknown ? String(localized: "未指定地区") : region(of: member).displayName, default: 0] += 1 }
                 memberEdits[index] = (group.name, names)
                 items.append(ChangeItem(id: index, kind: .groupMembers, subject: group.name, matchType: "", match: "", targetName: group.name,
                                         targetID: groupID, replaced: base.groupMembers[group.name] ?? [], rule: nil, provider: nil,
@@ -202,18 +202,18 @@ public enum PlanApplier {
             }
             if case .ruleSet = op {} else { try MatchValidator.validate(type: matchType, match: match, removing: targetID == nil) }
             let prefix = "\(matchType),\(match),".lowercased()
-            guard touched.insert(prefix).inserted else { throw EditorError("计划对 \(match) 有重复或冲突的修改，请拆分指令。") }
+            guard touched.insert(prefix).inserted else { throw EditorError(String(localized: "计划对 \(match) 有重复或冲突的修改，请拆分指令。")) }
             let replaced = base.rules.enumerated().filter { lowerRules[$0.offset].hasPrefix(prefix) }.map(\.element)
 
             var target: Target?
             if let targetID {
                 if let created = newGroups[targetID] {
                     if isAccepted(index) && !isAccepted(created.index) {
-                        throw EditorError("“\(match)”指向新策略组“\(created.name)”，请同时接受新建该策略组。")
+                        throw EditorError(String(localized: "“\(match)”指向新策略组“\(created.name)”，请同时接受新建该策略组。"))
                     }
                     target = Target(id: targetID, name: created.name, kind: .group, type: nil)
                 } else {
-                    guard let found = base.target(id: targetID) else { throw EditorError("修改引用了当前配置中不存在的出口。") }
+                    guard let found = base.target(id: targetID) else { throw EditorError(String(localized: "修改引用了当前配置中不存在的出口。")) }
                     target = found
                 }
             }
@@ -222,7 +222,7 @@ public enum PlanApplier {
                 let keepNoResolve = ["IP-CIDR", "IP-CIDR6", "GEOIP"].contains(matchType) && replaced.contains { $0.hasSuffix(",no-resolve") }
                 rule = "\(matchType),\(match),\(target.name)\(keepNoResolve ? ",no-resolve" : "")"
             } else if replaced.isEmpty, accepted?.contains(index) ?? true {
-                throw EditorError("配置中没有 \(matchType),\(match) 这条规则，没有可删除的内容。")
+                throw EditorError(String(localized: "配置中没有 \(matchType),\(match) 这条规则，没有可删除的内容。"))
             }
 
             var provider: ChangeItem.ProviderInfo?
@@ -308,51 +308,51 @@ public enum PlanApplier {
                        editedGroups: [String: [String]] = [:]) throws {
         let reread: ConfigDocument
         do { reread = try ConfigDocument.parse(candidate) } catch {
-            throw EditorError("生成的配置无法重新解析，已拒绝：\((error as? EditorError)?.message ?? "")")
+            throw EditorError(String(localized: "生成的配置无法重新解析，已拒绝：\((error as? EditorError)?.message ?? "")"))
         }
-        guard reread.rules == expectedRules else { throw EditorError("序列化后的规则与计划不一致，已拒绝生成。") }
+        guard reread.rules == expectedRules else { throw EditorError(String(localized: "序列化后的规则与计划不一致，已拒绝生成。")) }
         guard let before = try compose(yaml: original.text)?.mapping, let after = try compose(yaml: candidate)?.mapping else {
-            throw EditorError("生成的配置无法重新解析，已拒绝。")
+            throw EditorError(String(localized: "生成的配置无法重新解析，已拒绝。"))
         }
         let editable: Set<String> = ["rules", "rule-providers", "proxy-groups"]
         let beforeKeys = Array(before.keys).compactMap(\.string).filter { !editable.contains($0) }
         let afterKeys = Array(after.keys).compactMap(\.string).filter { !editable.contains($0) }
         guard beforeKeys == afterKeys, beforeKeys.allSatisfy({ before[$0] == after[$0] }) else {
-            throw EditorError("修改会改变规则以外的配置字段，已拒绝生成。")
+            throw EditorError(String(localized: "修改会改变规则以外的配置字段，已拒绝生成。"))
         }
         let oldProviders = before["rule-providers"]?.mapping
         let newProviders = after["rule-providers"]?.mapping
         for (key, value) in oldProviders ?? [:] {
             if let name = key.string, removedProviders.contains(name) {
-                guard newProviders?[key] == nil else { throw EditorError("要删除的规则集仍在配置中，已拒绝生成。") }
+                guard newProviders?[key] == nil else { throw EditorError(String(localized: "要删除的规则集仍在配置中，已拒绝生成。")) }
                 continue
             }
-            guard newProviders?[key] == value else { throw EditorError("修改会改变已有的规则集，已拒绝生成。") }
+            guard newProviders?[key] == value else { throw EditorError(String(localized: "修改会改变已有的规则集，已拒绝生成。")) }
         }
         let added = (newProviders.map { Array($0.keys).compactMap(\.string) } ?? []).filter { key in !(oldProviders?.keys.contains { $0.string == key } ?? false) }
-        guard Set(added) == Set(addedProviders) else { throw EditorError("新增的规则集与计划不一致，已拒绝生成。") }
+        guard Set(added) == Set(addedProviders) else { throw EditorError(String(localized: "新增的规则集与计划不一致，已拒绝生成。")) }
 
         // proxy-groups: every existing group in place and unchanged, apart from the planned members of
         // edited groups; only the planned groups appended.
         let oldGroups = before["proxy-groups"]?.sequence.map(Array.init) ?? []
         let newGroups = after["proxy-groups"]?.sequence.map(Array.init) ?? []
-        guard newGroups.count == oldGroups.count + addedGroups.count else { throw EditorError("修改会改变已有的策略组，已拒绝生成。") }
+        guard newGroups.count == oldGroups.count + addedGroups.count else { throw EditorError(String(localized: "修改会改变已有的策略组，已拒绝生成。")) }
         for (old, new) in zip(oldGroups, newGroups) {
             guard let name = old.mapping?["name"]?.string, let members = editedGroups[name] else {
-                guard old == new else { throw EditorError("修改会改变已有的策略组，已拒绝生成。") }
+                guard old == new else { throw EditorError(String(localized: "修改会改变已有的策略组，已拒绝生成。")) }
                 continue
             }
             guard let oldMap = old.mapping, let newMap = new.mapping,
                   newMap["proxies"]?.sequence?.compactMap(\.string) == members,
                   Set(oldMap.keys.compactMap(\.string)).subtracting(["proxies"]) == Set(newMap.keys.compactMap(\.string)).subtracting(["proxies"]),
                   oldMap.keys.allSatisfy({ $0.string == "proxies" || oldMap[$0] == newMap[$0] }) else {
-                throw EditorError("修改策略组“\(name)”时改动了成员以外的内容，已拒绝生成。")
+                throw EditorError(String(localized: "修改策略组“\(name)”时改动了成员以外的内容，已拒绝生成。"))
             }
         }
         for (node, expected) in zip(newGroups.dropFirst(oldGroups.count), addedGroups) {
             guard let map = node.mapping, map["name"]?.string == expected.name, map["type"]?.string == expected.type,
                   map["proxies"]?.sequence?.compactMap(\.string) == expected.members else {
-                throw EditorError("新建的策略组与计划不一致，已拒绝生成。")
+                throw EditorError(String(localized: "新建的策略组与计划不一致，已拒绝生成。"))
             }
         }
     }

@@ -16,11 +16,11 @@ public enum ThinkingLevel: String, Sendable, Codable, CaseIterable, Identifiable
     public var id: String { rawValue }
     public var title: String {
         switch self {
-        case .off: "不思考"
-        case .low: "低"
-        case .medium: "中"
-        case .high: "高"
-        case .max: "最高"
+        case .off: String(localized: "不思考")
+        case .low: String(localized: "低")
+        case .medium: String(localized: "中")
+        case .high: String(localized: "高")
+        case .max: String(localized: "最高")
         }
     }
 }
@@ -70,7 +70,7 @@ public enum ThinkingStyle: String, Sendable, Codable {
 
     /// Menu title of a level; on/off-only models say "开启".
     public func title(of level: ThinkingLevel) -> String {
-        levels.count == 2 && level != .off ? "开启" : level.title
+        levels.count == 2 && level != .off ? String(localized: "开启") : level.title
     }
 }
 
@@ -87,13 +87,13 @@ public enum AIProvider: String, Sendable, Codable, CaseIterable, Identifiable {
         case .gemini: "Google Gemini"
         case .deepSeek: "DeepSeek"
         case .openRouter: "OpenRouter"
-        case .qwen: "通义千问（阿里云百炼）"
-        case .moonshot: "Kimi（月之暗面）"
-        case .zhipu: "智谱 GLM"
-        case .siliconFlow: "硅基流动 SiliconFlow"
+        case .qwen: String(localized: "通义千问（阿里云百炼）")
+        case .moonshot: String(localized: "Kimi（月之暗面）")
+        case .zhipu: String(localized: "智谱 GLM")
+        case .siliconFlow: String(localized: "硅基流动 SiliconFlow")
         case .xai: "xAI Grok"
-        case .ollama: "Ollama（本机）"
-        case .custom: "自定义（OpenAI 兼容）"
+        case .ollama: String(localized: "Ollama（本机）")
+        case .custom: String(localized: "自定义（OpenAI 兼容）")
         }
     }
 
@@ -269,7 +269,7 @@ public struct AISettings: Sendable, Codable, Equatable {
     /// "深度思考 · 高" for adjustable models, "深度思考" for reasoning models, nil when not thinking.
     public var thinkingLabel: String? {
         guard thinks else { return nil }
-        return thinkingStyle.adjustable ? "深度思考 · \(thinkingStyle.title(of: effectiveLevel))" : "深度思考"
+        return thinkingStyle.adjustable ? String(localized: "深度思考 · \(thinkingStyle.title(of: effectiveLevel))") : String(localized: "深度思考")
     }
 
     /// "deepseek-flash · 深度思考 · 高", shown in the composer and on each turn.

@@ -86,17 +86,17 @@ public enum LocalIntentParser {
     /// The region or exit a clause names ("日本", "@香港出口"), for a follow-up question.
     static func mentionedPlace(_ clause: String, exits: [Target]) -> String? {
         if let named = exits.map(\.name).sorted(by: { $0.count > $1.count }).first(where: { clause.contains($0) }) { return named }
-        return Region.allCases.first { $0.instructionPattern.map(clause.matches) ?? false }?.displayName
+        return Region.allCases.first { $0.instructionPattern.map(clause.matches) ?? false }?.promptName
     }
 
     static let domainPattern = #"\b(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}\b"#
 
     static let outOfScopePattern = #"延迟|太卡|很卡|卡顿|最快|测速|ping|latency|slow|fastest|换个?节点|换一个|切换节点|开启?vpn|启动vpn|关闭vpn|连接代理|断开"#
 
-    public static let outOfScopeMessage = "我只编辑分流规则，不能测速、启动 VPN 或切换运行中的节点。你可以指定一个出口，例如“YouTube 走香港”。"
+    public static let outOfScopeMessage = String(localized: "我只编辑分流规则，不能测速、启动 VPN 或切换运行中的节点。你可以指定一个出口，例如“YouTube 走香港”。")
 
     /// Veer with local parsing: runtime actions need the AI.
-    public static let runtimeNeedsAIMessage = "本地解析不能切换节点或测速。开启 AI 解析后可以用一句话完成，也可以在“代理”页手动切换。"
+    public static let runtimeNeedsAIMessage = String(localized: "本地解析不能切换节点或测速。开启 AI 解析后可以用一句话完成，也可以在“代理”页手动切换。")
 
     /// True when the instruction asks for something outside rule editing. Checked before any AI call.
     public static func isOutOfScope(_ prompt: String) -> Bool { prompt.matches(outOfScopePattern) }
@@ -108,7 +108,7 @@ public enum LocalIntentParser {
     public static func parse(_ prompt: String, targets: [Target], regions: [String: Region], rules: [String] = [],
                              ownSets: [String: String] = [:]) throws -> AssistantReply {
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { throw EditorError("请输入希望修改的分流，例如“Netflix 走日本”。") }
+        guard !trimmed.isEmpty else { throw EditorError(String(localized: "请输入希望修改的分流，例如“Netflix 走日本”。")) }
         if isOutOfScope(trimmed) { return .outOfScope(outOfScopeMessage) }
 
         let exits = targets.filter { $0.kind != .builtin }
@@ -124,7 +124,7 @@ public enum LocalIntentParser {
             // Exclusions with a region ("排除港澳") are handled by resolveExit; other negations are not.
             let negated = !removing && clause.matches(#"不要|不走|别走|别用|不使用|除了|除外|排除|去掉|except|unless|\bnot\b|don't"#)
             if negated && !Region.allCases.contains(where: { $0.instructionPattern.map(clause.matches) ?? false }) {
-                throw EditorError("本地解析不支持这种否定或例外条件。可以说“排除港澳”这样的地区排除，或切换到 AI 解析。")
+                throw EditorError(String(localized: "本地解析不支持这种否定或例外条件。可以说“排除港澳”这样的地区排除，或切换到 AI 解析。"))
             }
             // Strip exit names before looking for domains so names like "hk.example" don't count.
             var scan = clause
@@ -136,11 +136,11 @@ public enum LocalIntentParser {
             guard !domains.isEmpty || !geosites.isEmpty || !networks.isEmpty else {
                 if clauseCount == 1, let place = mentionedPlace(clause, exits: exits) {
                     // Only where to send it, not what: ask instead of failing.
-                    return .clarification("哪些流量走\(place)？可以说服务、域名或 IP，例如：", options: ["Netflix", "YouTube", "ChatGPT"].map {
+                    return .clarification(String(localized: "哪些流量走\(place)？可以说服务、域名或 IP，例如："), options: ["Netflix", "YouTube", "ChatGPT"].map {
                         ClarifyOption(label: $0, prompt: "\($0) 走\(place)")
                     })
                 }
-                throw EditorError("本地解析认识常见服务（如 Netflix、YouTube、ChatGPT、Claude、Google、Apple、微软、B站、Steam、广告、国内网站、局域网）、明确的域名和 IP。其他说法请切换到 AI 解析。")
+                throw EditorError(String(localized: "本地解析认识常见服务（如 Netflix、YouTube、ChatGPT、Claude、Google、Apple、微软、B站、Steam、广告、国内网站、局域网）、明确的域名和 IP。其他说法请切换到 AI 解析。"))
             }
 
             if removing {
@@ -149,7 +149,7 @@ public enum LocalIntentParser {
                 for geosite in geosites {
                     let found = serviceRules(geosite, in: rules)
                     guard !found.isEmpty else {
-                        throw EditorError("配置中没有\(RuleSetCatalog.displayName(for: geosite))相关的规则集或 GEOSITE 规则，无需删除。")
+                        throw EditorError(String(localized: "配置中没有\(RuleSetCatalog.displayName(for: geosite))相关的规则集或 GEOSITE 规则，无需删除。"))
                     }
                     operations += found.map { .removeRule(matchType: $0.type, match: $0.payload) }
                 }
@@ -194,8 +194,8 @@ public enum LocalIntentParser {
                 operations.append(.ruleSet(catalog(geosite), targetId: targetID))
             }
         }
-        guard !operations.isEmpty else { throw EditorError("没有识别到可执行的修改。") }
-        guard operations.count <= 32 else { throw EditorError("一次最多 32 项修改，请拆分指令。") }
+        guard !operations.isEmpty else { throw EditorError(String(localized: "没有识别到可执行的修改。")) }
+        guard operations.count <= 32 else { throw EditorError(String(localized: "一次最多 32 项修改，请拆分指令。")) }
         return .plan(EditPlan(operations: operations))
     }
 
@@ -227,7 +227,7 @@ public enum LocalIntentParser {
 
         let actions = (direct ? 1 : 0) + (reject ? 1 : 0) + (longestNamed.isEmpty && asked.isEmpty ? 0 : 1)
         if actions > 1 {
-            throw EditorError("同一句里既有代理出口又有直连或拦截，请拆成两句。")
+            throw EditorError(String(localized: "同一句里既有代理出口又有直连或拦截，请拆成两句。"))
         }
         if clause.matches(#"排除|除了|除去|去掉|不要|不走|不含|别走|except"#), !asked.isEmpty, longestNamed.isEmpty, !direct, !reject {
             return .newGroup(regions: [], members: [], excluded: asked)
@@ -246,9 +246,9 @@ public enum LocalIntentParser {
         let pool = groups.isEmpty ? regional : groups
         if pool.count == 1 { return .target(pool[0]) }
         if pool.isEmpty {
-            return .ask("当前配置里没有标记为\(region.displayName)的出口。请选择一个出口，或在检查器的“出口”里更正地区。", [])
+            return .ask(String(localized: "当前配置里没有标记为\(region.displayName)的出口。请选择一个出口。"), [])
         }
-        return .ask("有 \(pool.count) 个\(region.displayName)出口，请选择一个：", Array(pool.prefix(6).map(\.name)))
+        return .ask(String(localized: "有 \(pool.count) 个\(region.displayName)出口，请选择一个："), Array(pool.prefix(6).map(\.name)))
     }
 
     /// `prompt` with this clause's region word (or "走代理") replaced by `@exit`.

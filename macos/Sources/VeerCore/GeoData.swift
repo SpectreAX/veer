@@ -31,7 +31,7 @@ struct ProtoReader {
             shift += 7
             if shift > 63 { break }
         }
-        throw EditorError("地理数据文件已损坏（varint）。")
+        throw EditorError(String(localized: "地理数据文件已损坏（varint）。"))
     }
 
     /// Field number, wire type.
@@ -43,7 +43,7 @@ struct ProtoReader {
     /// Bounds of a length-delimited field.
     mutating func lengthDelimited() throws -> Range<Int> {
         let length = Int(try varint())
-        guard length >= 0, position + length <= end else { throw EditorError("地理数据文件已损坏（长度）。") }
+        guard length >= 0, position + length <= end else { throw EditorError(String(localized: "地理数据文件已损坏（长度）。")) }
         defer { position += length }
         return position..<(position + length)
     }
@@ -58,9 +58,9 @@ struct ProtoReader {
         case 1: position += 8
         case 2: _ = try lengthDelimited()
         case 5: position += 4
-        default: throw EditorError("地理数据文件已损坏（类型 \(wireType)）。")
+        default: throw EditorError(String(localized: "地理数据文件已损坏（类型 \(wireType)）。"))
         }
-        guard position <= end else { throw EditorError("地理数据文件已损坏。") }
+        guard position <= end else { throw EditorError(String(localized: "地理数据文件已损坏。")) }
     }
 }
 
@@ -182,7 +182,7 @@ public struct GeoSiteDatabase: Sendable {
                 }
             }
         }
-        guard !categories.isEmpty else { throw EditorError("geosite.dat 中没有数据。") }
+        guard !categories.isEmpty else { throw EditorError(String(localized: "geosite.dat 中没有数据。")) }
         self.categories = categories
         self.attributeSets = attributeSets
         self.full = full
@@ -386,7 +386,7 @@ public struct GeoIPDatabase: Sendable {
                 ranges.append(merged)
             }
         }
-        guard !categories.isEmpty else { throw EditorError("geoip.dat 中没有数据。") }
+        guard !categories.isEmpty else { throw EditorError(String(localized: "geoip.dat 中没有数据。")) }
         self.categories = categories
         self.ranges = ranges
     }
@@ -433,12 +433,12 @@ public struct MaxMindDatabase: Sendable {
 
     public init(data: Data) throws {
         let bytes = [UInt8](data)
-        guard let markerIndex = Self.lastIndex(of: Self.marker, in: bytes) else { throw EditorError("ASN 数据库文件无法识别。") }
+        guard let markerIndex = Self.lastIndex(of: Self.marker, in: bytes) else { throw EditorError(String(localized: "ASN 数据库文件无法识别。")) }
         let metadataStart = markerIndex + Self.marker.count
         var decoder = Decoder(bytes: bytes, base: metadataStart)
         let metadata = try decoder.value(at: metadataStart).0
         guard let nodes = metadata["node_count"]?.unsigned, let record = metadata["record_size"]?.unsigned,
-              [24, 28, 32].contains(record) else { throw EditorError("ASN 数据库的元数据不完整。") }
+              [24, 28, 32].contains(record) else { throw EditorError(String(localized: "ASN 数据库的元数据不完整。")) }
         nodeCount = Int(nodes)
         recordSize = Int(record)
         ipVersion = Int(metadata["ip_version"]?.unsigned ?? 6)
@@ -446,7 +446,7 @@ public struct MaxMindDatabase: Sendable {
         buildDate = metadata["build_epoch"]?.unsigned.map { Date(timeIntervalSince1970: TimeInterval($0)) }
         let treeSize = recordSize * 2 / 8 * nodeCount
         dataStart = treeSize + 16
-        guard dataStart <= bytes.count else { throw EditorError("ASN 数据库文件不完整。") }
+        guard dataStart <= bytes.count else { throw EditorError(String(localized: "ASN 数据库文件不完整。")) }
         self.bytes = bytes
         // IPv4 addresses live under 96 zero bits in an IPv6 tree.
         var node = 0
@@ -496,7 +496,7 @@ public struct MaxMindDatabase: Sendable {
         }
         guard node > nodeCount else { return nil }
         let offset = (node - nodeCount) - 16 + dataStart
-        guard offset < bytes.count else { throw EditorError("ASN 数据库记录越界。") }
+        guard offset < bytes.count else { throw EditorError(String(localized: "ASN 数据库记录越界。")) }
         var decoder = Decoder(bytes: bytes, base: dataStart)
         return (try decoder.value(at: offset).0, depth)
     }
@@ -507,12 +507,12 @@ public struct MaxMindDatabase: Sendable {
         let base: Int
 
         func byte(_ index: Int) throws -> Int {
-            guard index < bytes.count else { throw EditorError("ASN 数据库记录越界。") }
+            guard index < bytes.count else { throw EditorError(String(localized: "ASN 数据库记录越界。")) }
             return Int(bytes[index])
         }
 
         func number(_ start: Int, _ count: Int) throws -> UInt64 {
-            guard start + count <= bytes.count, count <= 8 else { throw EditorError("ASN 数据库记录越界。") }
+            guard start + count <= bytes.count, count <= 8 else { throw EditorError(String(localized: "ASN 数据库记录越界。")) }
             return bytes[start..<(start + count)].reduce(UInt64(0)) { $0 << 8 | UInt64($1) }
         }
 
@@ -532,7 +532,7 @@ public struct MaxMindDatabase: Sendable {
                 default: pointer = Int(try number(position, 4))
                 }
                 let target = base + pointer
-                guard target != offset else { throw EditorError("ASN 数据库记录无效。") }
+                guard target != offset else { throw EditorError(String(localized: "ASN 数据库记录无效。")) }
                 return (try value(at: target).0, position + size + 1)
             }
             if type == 0 {
@@ -548,11 +548,11 @@ public struct MaxMindDatabase: Sendable {
             }
             switch type {
             case 2:
-                guard position + size <= bytes.count else { throw EditorError("ASN 数据库记录越界。") }
+                guard position + size <= bytes.count else { throw EditorError(String(localized: "ASN 数据库记录越界。")) }
                 return (.string(String(decoding: bytes[position..<(position + size)], as: UTF8.self)), position + size)
             case 3: return (.double(Double(bitPattern: try number(position, 8))), position + 8)
             case 4:
-                guard position + size <= bytes.count else { throw EditorError("ASN 数据库记录越界。") }
+                guard position + size <= bytes.count else { throw EditorError(String(localized: "ASN 数据库记录越界。")) }
                 return (.bytes(Array(bytes[position..<(position + size)])), position + size)
             case 5, 6, 9: return (.unsigned(try number(position, size)), position + size)
             case 10: return (.bytes(Array(bytes[position..<min(bytes.count, position + size)])), position + size)
@@ -576,7 +576,7 @@ public struct MaxMindDatabase: Sendable {
                 return (.array(array), position)
             case 14: return (.bool(size != 0), position)
             case 15: return (.double(Double(Float(bitPattern: UInt32(try number(position, 4))))), position + 4)
-            default: throw EditorError("ASN 数据库中有无法识别的数据类型（\(type)）。")
+            default: throw EditorError(String(localized: "ASN 数据库中有无法识别的数据类型（\(type)）。"))
             }
         }
     }
@@ -639,7 +639,7 @@ public struct URLSessionGeoDataFetcher: GeoDataFetching {
     public func download(_ url: URL) async throws -> URL {
         let (location, response) = try await Self.session.download(from: url)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw EditorError("下载 \(url.lastPathComponent) 失败（HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)）。")
+            throw EditorError(String(localized: "下载 \(url.lastPathComponent) 失败（HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)）。"))
         }
         return location
     }
@@ -647,7 +647,7 @@ public struct URLSessionGeoDataFetcher: GeoDataFetching {
     public func text(_ url: URL) async throws -> String {
         let (data, response) = try await Self.session.data(from: url)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw EditorError("下载 \(url.lastPathComponent) 失败（HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)）。")
+            throw EditorError(String(localized: "下载 \(url.lastPathComponent) 失败（HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)）。"))
         }
         return String(decoding: data, as: UTF8.self)
     }
@@ -703,7 +703,7 @@ public actor GeoDataStore {
             let data = try Data(contentsOf: temporary, options: .mappedIfSafe)
             let actual = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
             guard expected.count == 64, actual == expected else {
-                throw EditorError("\(file.rawValue) 校验失败，没有替换本机已有的文件。请稍后重试。")
+                throw EditorError(String(localized: "\(file.rawValue) 校验失败，没有替换本机已有的文件。请稍后重试。"))
             }
             // Parse before replacing, so a broken file never replaces a good one.
             try Self.check(file, data: data)

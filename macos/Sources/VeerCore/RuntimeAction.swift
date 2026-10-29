@@ -15,13 +15,13 @@ public enum RuntimeAction: Sendable, Equatable {
 
     static func decode(_ raw: Any) throws -> RuntimeAction {
         guard let op = raw as? [String: Any], let kind = op["kind"] as? String else {
-            throw EditorError("AI 返回了无效的运行状态操作。")
+            throw EditorError(String(localized: "AI 返回了无效的运行状态操作。"))
         }
         func fields(_ allowed: Set<String>) throws {
-            guard Set(op.keys).isSubset(of: allowed) else { throw EditorError("AI 的运行状态操作包含不支持的字段，请重新生成。") }
+            guard Set(op.keys).isSubset(of: allowed) else { throw EditorError(String(localized: "AI 的运行状态操作包含不支持的字段，请重新生成。")) }
         }
         func string(_ key: String) throws -> String {
-            guard let value = op[key] as? String, !value.isEmpty else { throw EditorError("AI 的运行状态操作缺少 \(key)。") }
+            guard let value = op[key] as? String, !value.isEmpty else { throw EditorError(String(localized: "AI 的运行状态操作缺少 \(key)。")) }
             return value
         }
         switch kind {
@@ -31,14 +31,14 @@ public enum RuntimeAction: Sendable, Equatable {
         case "select_fastest":
             try fields(["kind", "groupId", "regions"])
             let regions = try (op["regions"] as? [String] ?? []).map { code -> Region in
-                guard let region = Region(rawValue: code.uppercased()), region != .unknown else { throw EditorError("不支持的地区代码：\(code.prefix(10))") }
+                guard let region = Region(rawValue: code.uppercased()), region != .unknown else { throw EditorError(String(localized: "不支持的地区代码：\(code.prefix(10))")) }
                 return region
             }
             return .selectFastest(groupId: try string("groupId"), regions: regions)
         case "mode":
             try fields(["kind", "mode"])
             let mode = try string("mode").lowercased()
-            guard modes.contains(mode) else { throw EditorError("mode 只能是 rule、global 或 direct。") }
+            guard modes.contains(mode) else { throw EditorError(String(localized: "mode 只能是 rule、global 或 direct。")) }
             return .mode(mode)
         case "test":
             try fields(["kind", "groupId"])
@@ -47,11 +47,11 @@ public enum RuntimeAction: Sendable, Equatable {
             try fields(["kind", "host"])
             let host = try string("host").lowercased()
             guard host.count <= 253, host.range(of: #"^[a-z0-9.*-]+$"#, options: .regularExpression) != nil else {
-                throw EditorError("close_connections.host 必须是一个域名。")
+                throw EditorError(String(localized: "close_connections.host 必须是一个域名。"))
             }
             return .closeConnections(host: host)
         default:
-            throw EditorError("运行状态操作只支持 select、select_fastest、mode、test、close_connections（收到 \(kind.prefix(30))）。")
+            throw EditorError(String(localized: "运行状态操作只支持 select、select_fastest、mode、test、close_connections（收到 \(kind.prefix(30))）。"))
         }
     }
 
@@ -59,15 +59,15 @@ public enum RuntimeAction: Sendable, Equatable {
     /// member of that group).
     func resolved(in draft: ConfigDocument) throws -> RuntimeStep {
         func group(_ id: String) throws -> String {
-            guard let target = draft.target(id: id), target.kind == .group else { throw EditorError("运行状态操作里的 \(id.prefix(30)) 不是策略组。") }
+            guard let target = draft.target(id: id), target.kind == .group else { throw EditorError(String(localized: "运行状态操作里的 \(id.prefix(30)) 不是策略组。")) }
             return target.name
         }
         switch self {
         case let .select(groupId, targetId):
             let name = try group(groupId)
-            guard let member = draft.target(id: targetId)?.name else { throw EditorError("运行状态操作里的 \(targetId.prefix(30)) 不存在。") }
+            guard let member = draft.target(id: targetId)?.name else { throw EditorError(String(localized: "运行状态操作里的 \(targetId.prefix(30)) 不存在。")) }
             if let members = draft.groupMembers[name], !members.contains(member) {
-                throw EditorError("“\(member)”不是“\(name)”的成员，不能选择它。请只选择该策略组 proxies 里的出口。")
+                throw EditorError(String(localized: "“\(member)”不是“\(name)”的成员，不能选择它。请只选择该策略组 proxies 里的出口。"))
             }
             return .select(group: name, node: member)
         case let .selectFastest(groupId, regions):
@@ -134,12 +134,12 @@ public extension RuntimeStep {
     /// One line for the conversation and the anonymized history.
     var summary: String {
         switch self {
-        case let .select(group, node): "“\(group)”切换到 \(node)"
+        case let .select(group, node): String(localized: "“\(group)”切换到 \(node)")
         case let .selectFastest(group, regions):
-            regions.isEmpty ? "“\(group)”切换到延迟最低的节点" : "“\(group)”切换到延迟最低的\(regions.map(\.displayName).joined(separator: "、"))节点"
-        case let .mode(mode): "切换到 \(mode) 模式"
-        case let .test(group): "测试“\(group)”的延迟"
-        case let .closeConnections(host): "断开到 \(host) 的连接"
+            regions.isEmpty ? String(localized: "“\(group)”切换到延迟最低的节点") : String(localized: "“\(group)”切换到延迟最低的\(regions.map(\.displayName).joined(separator: "、"))节点")
+        case let .mode(mode): String(localized: "切换到 \(mode) 模式")
+        case let .test(group): String(localized: "测试“\(group)”的延迟")
+        case let .closeConnections(host): String(localized: "断开到 \(host) 的连接")
         }
     }
 }

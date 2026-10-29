@@ -29,6 +29,23 @@ public enum Region: String, CaseIterable, Sendable, Codable {
 
     public var displayName: String {
         switch self {
+        case .jp: String(localized: "日本")
+        case .us: String(localized: "美国")
+        case .hk: String(localized: "香港")
+        case .sg: String(localized: "新加坡")
+        case .tw: String(localized: "台湾")
+        case .mo: String(localized: "澳门")
+        case .kr: String(localized: "韩国")
+        case .gb: String(localized: "英国")
+        case .de: String(localized: "德国")
+        case .unknown: String(localized: "未指定")
+        }
+    }
+
+    /// The Chinese name, whatever the interface language: for labels sent to the AI (the system
+    /// prompt's examples use it) and for group names Veer writes into configs.
+    public var promptName: String {
+        switch self {
         case .jp: "日本"
         case .us: "美国"
         case .hk: "香港"

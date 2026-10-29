@@ -43,13 +43,13 @@ public struct MihomoController: Sendable {
         guard var components = URLComponents(string: text), let scheme = components.scheme?.lowercased(),
               let host = components.host, !host.isEmpty, components.user == nil, components.password == nil,
               components.query == nil, components.fragment == nil else {
-            throw EditorError("控制器地址无效，例如 127.0.0.1:9090 或 http://192.168.1.1:9090。")
+            throw EditorError(String(localized: "控制器地址无效，例如 127.0.0.1:9090 或 http://192.168.1.1:9090。"))
         }
         guard scheme == "https" || (scheme == "http" && SubscriptionFetcher.isLocalNetwork(host: host)) else {
-            throw EditorError("草稿包含节点密码：控制器地址必须是 HTTPS；HTTP 只能用于本机或局域网地址。")
+            throw EditorError(String(localized: "配置包含节点密码：控制器地址必须是 HTTPS；HTTP 只能用于本机或局域网地址。"))
         }
         while components.path.hasSuffix("/") { components.path.removeLast() }
-        guard let url = components.url else { throw EditorError("控制器地址无效。") }
+        guard let url = components.url else { throw EditorError(String(localized: "控制器地址无效。")) }
         return url
     }
 
@@ -68,8 +68,8 @@ public struct MihomoController: Sendable {
         switch response.statusCode {
         case 400: return true
         case 404, 405: return false
-        case 401, 403: throw EditorError("控制器拒绝了访问：密钥不正确。")
-        default: throw EditorError("控制器返回 HTTP \(response.statusCode)，无法判断是否支持只更新规则。")
+        case 401, 403: throw EditorError(String(localized: "控制器拒绝了访问：密钥不正确。"))
+        default: throw EditorError(String(localized: "控制器返回 HTTP \(response.statusCode)，无法判断是否支持只更新规则。"))
         }
     }
 
@@ -232,7 +232,7 @@ public struct MihomoController: Sendable {
 
     private func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         do { return try await transport(request) } catch let error as EditorError { throw error } catch {
-            throw EditorError("无法连接到控制器 \(base.host ?? "")：内核没有运行、地址不对，或没有开启 external-controller。")
+            throw EditorError(String(localized: "无法连接到控制器 \(base.host ?? "")：内核没有运行、地址不对，或没有开启 external-controller。"))
         }
     }
 
@@ -240,7 +240,7 @@ public struct MihomoController: Sendable {
         let (data, response) = try await send(request)
         try check(response, data)
         do { return try JSONDecoder().decode(T.self, from: data) } catch {
-            throw EditorError("控制器的回应无法识别，它可能不是 Mihomo。")
+            throw EditorError(String(localized: "控制器的回应无法识别，它可能不是 Mihomo。"))
         }
     }
 
@@ -252,11 +252,11 @@ public struct MihomoController: Sendable {
     private func check(_ response: HTTPURLResponse, _ data: Data) throws {
         switch response.statusCode {
         case 200..<300: return
-        case 401, 403: throw EditorError("控制器拒绝了访问：密钥不正确。")
+        case 401, 403: throw EditorError(String(localized: "控制器拒绝了访问：密钥不正确。"))
         default:
             struct Message: Decodable { let message: String }
             let message = (try? JSONDecoder().decode(Message.self, from: data))?.message
-            throw EditorError("内核拒绝了请求（HTTP \(response.statusCode)）" + (message.map { "：\($0)" } ?? "。"))
+            throw EditorError(String(localized: "内核拒绝了请求（HTTP \(response.statusCode)）") + (message.map { "：\($0)" } ?? "。"))
         }
     }
 
@@ -268,9 +268,9 @@ public struct MihomoController: Sendable {
         let session = URLSession(configuration: .ephemeral, delegate: NoRedirect(), delegateQueue: nil)
         defer { session.finishTasksAndInvalidate() }
         let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse else { throw EditorError("控制器返回了无法识别的响应。") }
+        guard let http = response as? HTTPURLResponse else { throw EditorError(String(localized: "控制器返回了无法识别的响应。")) }
         // GET /rules of a large config stays well under this; anything bigger is not a controller.
-        guard data.count <= 8 * 1024 * 1024 else { throw EditorError("控制器的回应过大。") }
+        guard data.count <= 8 * 1024 * 1024 else { throw EditorError(String(localized: "控制器的回应过大。")) }
         return (data, http)
     }
 }

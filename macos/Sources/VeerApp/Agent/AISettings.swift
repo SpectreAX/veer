@@ -28,7 +28,7 @@ struct AISettingsPane: View {
                 .neutralControl()
                 TextField(String(localized: "地址"), text: $store.settings.baseURL, prompt: Text(store.settings.provider.baseURL.isEmpty ? "https://…/v1" : store.settings.provider.baseURL))
                 if store.settings.provider.needsKey { keyRow }
-                LabeledContent(String(localized: "连接")) {
+                LabeledContent(String(localized: "settings.ai.connection", defaultValue: "连接")) {
                     HStack {
                         if !store.aiConfigured { needsKeyNote }
                         Button(String(localized: "测试连接")) { test() }.disabled(testState == .running || !store.aiConfigured)

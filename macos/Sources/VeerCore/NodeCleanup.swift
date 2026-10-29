@@ -158,7 +158,7 @@ enum NodeCleanup {
         if options.removeInfoNodes {
             let info = kept.filter { isInfoNode($0.0) }
             if info.count == kept.count, !kept.isEmpty {
-                throw EditorError("订阅里只有流量、到期或官网提示，没有可用节点。订阅可能已过期或流量已用完，请到服务商处续费后再导入。")
+                throw EditorError(String(localized: "订阅里只有流量、到期或官网提示，没有可用节点。订阅可能已过期或流量已用完，请到服务商处续费后再导入。"))
             }
             report.infoNodes = info.map(\.0)
             kept.removeAll { isInfoNode($0.0) }
@@ -177,7 +177,7 @@ enum NodeCleanup {
         if let exclude = regex(options.exclude) { kept.removeAll { matches(exclude, $0.0) } }
         report.filtered = before - kept.count
         if kept.isEmpty, before > 0 {
-            throw EditorError("按“保留 / 排除”筛选后没有剩下节点。请放宽筛选条件。")
+            throw EditorError(String(localized: "按“保留 / 排除”筛选后没有剩下节点。请放宽筛选条件。"))
         }
         let renames = options.renames.compactMap { rule in regex(rule.find).map { ($0, rule.replace) } }
         if !renames.isEmpty {

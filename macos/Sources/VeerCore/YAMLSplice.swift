@@ -156,7 +156,7 @@ enum YAMLSplice {
                 let rendered = additions.flatMap { renderProvider(key: $0.key, fields: $0.fields, indent: "  ", step: "  ") }
                 lines.lines.replaceSubrange(region.keyLine..<region.end, with: ["rule-providers:"] + rendered)
             } else {
-                throw EditorError("rule-providers 使用了单行（flow）格式，当前版本无法安全添加规则集。请改为多行格式后重试。")
+                throw EditorError(String(localized: "rule-providers 使用了单行（flow）格式，当前版本无法安全添加规则集。请改为多行格式后重试。"))
             }
         } else {
             insertSection(["rule-providers:"] + additions.flatMap { renderProvider(key: $0.key, fields: $0.fields, indent: "  ", step: "  ") },
@@ -168,7 +168,7 @@ enum YAMLSplice {
     /// Removing the last entry leaves `rule-providers: {}`.
     static func removeProviders(in lines: inout SourceLines, document: ConfigDocument, keys: Set<String>) throws {
         guard !keys.isEmpty else { return }
-        let unsafe = EditorError("rule-providers 的格式无法安全删除规则集，请改为常规的多行格式后重试。")
+        let unsafe = EditorError(String(localized: "rule-providers 的格式无法安全删除规则集，请改为常规的多行格式后重试。"))
         guard let region = region(for: "rule-providers", in: document, lines: lines), inlineValue(lines.lines[region.keyLine]).isEmpty else { throw unsafe }
         let body = Array((region.keyLine + 1)..<region.end)
         guard let first = body.first(where: { !SourceLines.isTrivia(lines.lines[$0]) }) else { throw unsafe }
@@ -232,7 +232,7 @@ enum YAMLSplice {
         guard let region = region(for: "proxy-groups", in: document, lines: lines), inlineValue(lines.lines[region.keyLine]).isEmpty,
               let first = ((region.keyLine + 1)..<region.end).first(where: { !SourceLines.isTrivia(lines.lines[$0]) }),
               lines.lines[first].trimmingCharacters(in: .whitespaces).hasPrefix("-") else {
-            throw EditorError("proxy-groups 使用了单行（flow）格式，当前版本无法安全修改策略组。请改为多行格式后重试。")
+            throw EditorError(String(localized: "proxy-groups 使用了单行（flow）格式，当前版本无法安全修改策略组。请改为多行格式后重试。"))
         }
         let indent = SourceLines.indentation(lines.lines[first])
         let starts = ((region.keyLine + 1)..<region.end).filter { index in
@@ -240,15 +240,15 @@ enum YAMLSplice {
             return !SourceLines.isTrivia(line) && SourceLines.indentation(line) == indent && line.trimmingCharacters(in: .whitespaces).hasPrefix("-")
         }
         guard let groups = try Yams.compose(yaml: document.text)?.mapping?["proxy-groups"]?.sequence, groups.count == starts.count else {
-            throw EditorError("无法在 proxy-groups 中定位要修改的策略组。")
+            throw EditorError(String(localized: "无法在 proxy-groups 中定位要修改的策略组。"))
         }
         var replacements: [(range: Range<Int>, lines: [String])] = []
         for edit in edits {
             guard let index = groups.firstIndex(where: { $0.mapping?["name"]?.string == edit.name }), var group = groups[index].mapping else {
-                throw EditorError("找不到策略组“\(edit.name)”。")
+                throw EditorError(String(localized: "找不到策略组“\(edit.name)”。"))
             }
             if edit.members.isEmpty, group["use"] == nil, group["include-all"] == nil, group["include-all-proxies"] == nil {
-                throw EditorError("策略组“\(edit.name)”至少需要一个成员。")
+                throw EditorError(String(localized: "策略组“\(edit.name)”至少需要一个成员。"))
             }
             group["proxies"] = .sequence(.init(edit.members.map { .scalar(.init($0, Tag(.str), .any)) }, Tag(.seq), .block))
             var end = index + 1 < starts.count ? starts[index + 1] : region.end
@@ -275,7 +275,7 @@ enum YAMLSplice {
             } else if (inline.isEmpty && body.isEmpty) || ["[]", "null", "~"].contains(inline) {
                 lines.lines.replaceSubrange(region.keyLine..<region.end, with: ["proxy-groups:"] + (try renderGroups(additions, indent: "  ")))
             } else {
-                throw EditorError("proxy-groups 使用了单行（flow）格式，当前版本无法安全新建策略组。请改为多行格式后重试。")
+                throw EditorError(String(localized: "proxy-groups 使用了单行（flow）格式，当前版本无法安全新建策略组。请改为多行格式后重试。"))
             }
         } else {
             insertSection(["proxy-groups:"] + (try renderGroups(additions, indent: "  ")), in: &lines, document: document)

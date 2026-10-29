@@ -42,7 +42,7 @@ public struct MihomoValidator: ConfigValidating {
 
     public func validate(_ yaml: String) async -> ValidationResult {
         guard let binary else {
-            return ValidationResult(status: .unavailable, message: "已通过结构检查；未找到内置 Mihomo 校验器，没有进行内核校验。")
+            return ValidationResult(status: .unavailable, message: String(localized: "已通过结构检查；未找到内置 Mihomo 校验器，没有进行内核校验。"))
         }
         let timeout = timeout
         return await Task.detached(priority: .userInitiated) {
@@ -56,17 +56,17 @@ public struct MihomoValidator: ConfigValidating {
                 try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
                 let result = try Self.run(binary, arguments: ["-t", "-d", directory.path, "-f", file.path], input: nil, timeout: timeout, directory: directory)
                 if result.timedOut {
-                    return ValidationResult(status: .failed, message: "内核校验超过 \(Int(timeout)) 秒，可能在下载规则集或 GEO 数据。")
+                    return ValidationResult(status: .failed, message: String(localized: "内核校验超过 \(Int(timeout)) 秒，可能在下载规则集或 GEO 数据。"))
                 }
                 if result.status == 0 {
-                    return ValidationResult(status: .passed, message: "已通过 Mihomo 配置测试 · 网络可达性未验证")
+                    return ValidationResult(status: .passed, message: String(localized: "已通过 Mihomo 配置测试 · 网络可达性未验证"))
                 }
                 let detail = Self.redact(result.output, yaml: yaml, directory: directory.path)
                 let hint = detail.range(of: #"rule.?provider|download|dial|i/o timeout|no such host"#, options: [.regularExpression, .caseInsensitive]) != nil
-                    ? "可能是规则集下载失败。" : ""
-                return ValidationResult(status: .failed, message: "Mihomo 配置测试未通过。\(hint)", detail: String(detail.suffix(1500)))
+                    ? String(localized: "可能是规则集下载失败。") : ""
+                return ValidationResult(status: .failed, message: String(localized: "Mihomo 配置测试未通过。\(hint)"), detail: String(detail.suffix(1500)))
             } catch {
-                return ValidationResult(status: .unavailable, message: "已通过结构检查；无法运行 Mihomo 校验器，没有进行内核校验。")
+                return ValidationResult(status: .unavailable, message: String(localized: "已通过结构检查；无法运行 Mihomo 校验器，没有进行内核校验。"))
             }
         }.value
     }

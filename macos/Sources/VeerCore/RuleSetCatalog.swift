@@ -39,13 +39,13 @@ public enum RuleSetCatalog {
     static let serviceNames: [String: String] = [
         "netflix": "Netflix", "openai": "ChatGPT", "youtube": "YouTube", "google": "Google", "telegram": "Telegram",
         "github": "GitHub", "spotify": "Spotify", "tiktok": "TikTok", "twitter": "X (Twitter)", "facebook": "Facebook",
-        "instagram": "Instagram", "apple": "Apple", "microsoft": "Microsoft", "bilibili": "哔哩哔哩", "steam": "Steam",
-        "disney": "Disney+", "bahamut": "巴哈姆特", "cn": "中国大陆网站", "category-ads-all": "广告", "private": "局域网",
+        "instagram": "Instagram", "apple": "Apple", "microsoft": "Microsoft", "bilibili": String(localized: "哔哩哔哩"), "steam": "Steam",
+        "disney": "Disney+", "bahamut": String(localized: "巴哈姆特"), "cn": String(localized: "中国大陆网站"), "category-ads-all": String(localized: "广告"), "private": String(localized: "局域网"),
         "anthropic": "Claude", "discord": "Discord", "amazon": "Amazon", "cloudflare": "Cloudflare",
-        "category-ai-!cn": "国外 AI 服务", "category-ai-chat-!cn": "国外 AI 对话", "category-ai-cn": "国内 AI 服务",
-        "google-gemini": "Gemini", "perplexity": "Perplexity", "xai": "Grok", "groq": "Groq", "poe": "Poe", "category-games": "游戏",
-        "reddit": "Reddit", "twitch": "Twitch", "paypal": "PayPal", "douyin": "抖音", "bing": "Bing", "category-media": "国外流媒体",
-        "pixiv": "Pixiv", "hbo": "HBO", "primevideo": "Prime Video", "geoip:cn": "中国 IP", "geoip:private": "局域网",
+        "category-ai-!cn": String(localized: "国外 AI 服务"), "category-ai-chat-!cn": String(localized: "国外 AI 对话"), "category-ai-cn": String(localized: "国内 AI 服务"),
+        "google-gemini": "Gemini", "perplexity": "Perplexity", "xai": "Grok", "groq": "Groq", "poe": "Poe", "category-games": String(localized: "游戏"),
+        "reddit": "Reddit", "twitch": "Twitch", "paypal": "PayPal", "douyin": String(localized: "抖音"), "bing": "Bing", "category-media": String(localized: "国外流媒体"),
+        "pixiv": "Pixiv", "hbo": "HBO", "primevideo": "Prime Video", "geoip:cn": String(localized: "中国 IP"), "geoip:private": String(localized: "局域网"),
     ]
 
     public static func displayName(for name: String) -> String {
@@ -57,9 +57,9 @@ public enum RuleSetCatalog {
         var spec: Spec
         switch reference {
         case let .catalog(sourceID, name):
-            guard let source = sources[sourceID] else { throw EditorError("不支持的规则集来源：\(sourceID.prefix(40))") }
+            guard let source = sources[sourceID] else { throw EditorError(String(localized: "不支持的规则集来源：\(sourceID.prefix(40))")) }
             guard name.range(of: source.namePattern, options: .regularExpression) != nil else {
-                throw EditorError("规则集名称无效：\(name.prefix(64))")
+                throw EditorError(String(localized: "规则集名称无效：\(name.prefix(64))"))
             }
             spec = Spec(url: source.url(name), behavior: source.behavior, format: source.format, key: source.key(name),
                         sourceLabel: "\(source.label)/\(name)", serviceName: displayName(for: name))
@@ -67,7 +67,7 @@ public enum RuleSetCatalog {
             spec = try fromURL(raw, declared: declared)
         }
         if spec.format == "mrs" && spec.behavior == "classical" {
-            throw EditorError("mrs 格式只支持域名或 IP 段规则集，不支持混合（classical）规则。")
+            throw EditorError(String(localized: "mrs 格式只支持域名或 IP 段规则集，不支持混合（classical）规则。"))
         }
         let key = String(spec.key.replacingOccurrences(of: #"[^A-Za-z0-9@!._-]"#, with: "-", options: .regularExpression).prefix(64))
         return Spec(url: spec.url, behavior: spec.behavior, format: spec.format, key: key, sourceLabel: spec.sourceLabel, serviceName: spec.serviceName)
@@ -77,20 +77,20 @@ public enum RuleSetCatalog {
         guard let url = URLComponents(string: raw), url.scheme == "https", url.user == nil, url.password == nil,
               url.query == nil, url.fragment == nil, let host = url.host,
               ["raw.githubusercontent.com", "cdn.jsdelivr.net"].contains(host) else {
-            throw EditorError("规则集地址须为 raw.githubusercontent.com 或 cdn.jsdelivr.net 上的 HTTPS 文件。")
+            throw EditorError(String(localized: "规则集地址须为 raw.githubusercontent.com 或 cdn.jsdelivr.net 上的 HTTPS 文件。"))
         }
         let path = url.path
         let fileName = (path as NSString).lastPathComponent
         let ext = (fileName as NSString).pathExtension.lowercased()
         let formats = ["mrs": "mrs", "list": "text", "txt": "text", "yaml": "yaml", "yml": "yaml"]
-        guard let format = formats[ext] else { throw EditorError("规则集文件须为 .mrs、.list、.txt 或 .yaml。") }
+        guard let format = formats[ext] else { throw EditorError(String(localized: "规则集文件须为 .mrs、.list、.txt 或 .yaml。")) }
         let behavior: String? = path.contains("/geosite/") ? "domain" : path.contains("/geoip/") ? "ipcidr" : format == "text" ? "classical" : declared
         guard let behavior, ["domain", "ipcidr", "classical"].contains(behavior) else {
-            throw EditorError("无法从地址判断规则集类型，请说明它是域名、IP 段还是混合规则。")
+            throw EditorError(String(localized: "无法从地址判断规则集类型，请说明它是域名、IP 段还是混合规则。"))
         }
         let stem = ((fileName.removingPercentEncoding ?? fileName) as NSString).deletingPathExtension
         let key = behavior == "ipcidr" && path.contains("/geoip/") ? "\(stem)-ip" : stem
-        return Spec(url: raw, behavior: behavior, format: format, key: key, sourceLabel: "自定义地址 \(host)", serviceName: displayName(for: stem))
+        return Spec(url: raw, behavior: behavior, format: format, key: key, sourceLabel: String(localized: "自定义地址 \(host)"), serviceName: displayName(for: stem))
     }
 
     static let extensions = ["mrs": "mrs", "text": "list", "yaml": "yaml"]

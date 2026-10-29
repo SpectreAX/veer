@@ -92,7 +92,7 @@ public final class FileKeyStore: KeyStoring, @unchecked Sendable {
         // Create with 0600 before writing so the key is never readable by others, even briefly.
         if !manager.fileExists(atPath: url.path) {
             guard manager.createFile(atPath: url.path, contents: nil, attributes: [.posixPermissions: 0o600]) else {
-                throw EditorError("无法保存 API Key。")
+                throw EditorError(String(localized: "无法保存 API Key。"))
             }
         }
         try manager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
@@ -110,7 +110,7 @@ public final class FileKeyStore: KeyStoring, @unchecked Sendable {
         try lock.withLock {
             var keys = load()
             keys[provider] = key
-            do { try store(keys) } catch let error as EditorError { throw error } catch { throw EditorError("无法保存 API Key：\(error.localizedDescription)") }
+            do { try store(keys) } catch let error as EditorError { throw error } catch { throw EditorError(String(localized: "无法保存 API Key：\(error.localizedDescription)")) }
         }
     }
 
@@ -216,7 +216,7 @@ public struct SubscriptionFetcher: Sendable {
         guard let components = URLComponents(string: raw.trimmingCharacters(in: .whitespacesAndNewlines)),
               let scheme = components.scheme?.lowercased(), let host = components.host, !host.isEmpty,
               scheme == "https" || (scheme == "http" && isLocalNetwork(host: host)), let url = components.url else {
-            throw EditorError("订阅链接必须是 HTTPS 地址；HTTP 只能用于本机或局域网地址（例如自建的 Sub-Store）。")
+            throw EditorError(String(localized: "订阅链接必须是 HTTPS 地址；HTTP 只能用于本机或局域网地址（例如自建的 Sub-Store）。"))
         }
         return withSubStoreTarget(url)
     }
@@ -295,17 +295,17 @@ public struct SubscriptionFetcher: Sendable {
         request.setValue("Veer/1.0 (compatible; clash.meta; mihomo)", forHTTPHeaderField: "User-Agent")
         let bytes: URLSession.AsyncBytes, response: URLResponse
         do { (bytes, response) = try await session.bytes(for: request) } catch {
-            throw EditorError("无法下载订阅：网络错误或超时。")
+            throw EditorError(String(localized: "无法下载订阅：网络错误或超时。"))
         }
-        guard let http = response as? HTTPURLResponse else { throw EditorError("订阅服务返回了无法识别的响应。") }
-        if (300..<400).contains(http.statusCode) { throw EditorError("链接返回了重定向，Veer 不会自动跟随。请使用最终地址。") }
-        guard (200..<300).contains(http.statusCode) else { throw EditorError("订阅服务返回 HTTP \(http.statusCode)。") }
+        guard let http = response as? HTTPURLResponse else { throw EditorError(String(localized: "订阅服务返回了无法识别的响应。")) }
+        if (300..<400).contains(http.statusCode) { throw EditorError(String(localized: "链接返回了重定向，Veer 不会自动跟随。请使用最终地址。")) }
+        guard (200..<300).contains(http.statusCode) else { throw EditorError(String(localized: "订阅服务返回 HTTP \(http.statusCode)。")) }
         var data = Data()
         for try await byte in bytes {
             data.append(byte)
-            if data.count > ConfigDocument.maxBytes { throw EditorError("订阅内容超过 2 MB。") }
+            if data.count > ConfigDocument.maxBytes { throw EditorError(String(localized: "订阅内容超过 2 MB。")) }
         }
-        guard let text = String(data: data, encoding: .utf8) else { throw EditorError("订阅内容不是 UTF-8 文本。") }
+        guard let text = String(data: data, encoding: .utf8) else { throw EditorError(String(localized: "订阅内容不是 UTF-8 文本。")) }
         let headers = http.allHeaderFields.reduce(into: [String: String]()) { result, pair in
             if let key = pair.key as? String, let value = pair.value as? String { result[key] = value }
         }

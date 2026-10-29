@@ -89,10 +89,10 @@ public enum ConfigImporter {
         var text = raw
         if text.hasPrefix("\u{FEFF}") { text.removeFirst() }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { throw EditorError("内容是空的。请导入 Mihomo YAML 配置、Base64 订阅或分享链接列表。") }
-        guard trimmed.utf8.count <= ConfigDocument.maxBytes else { throw EditorError("内容超过 2 MB，请先拆分后再导入。") }
+        guard !trimmed.isEmpty else { throw EditorError(String(localized: "内容是空的。请导入 Mihomo YAML 配置、Base64 订阅或分享链接列表。")) }
+        guard trimmed.utf8.count <= ConfigDocument.maxBytes else { throw EditorError(String(localized: "内容超过 2 MB，请先拆分后再导入。")) }
         if trimmed.range(of: #"^\s*(<!doctype html|<html)"#, options: [.regularExpression, .caseInsensitive]) != nil {
-            throw EditorError("这是一个网页，不是配置。订阅链接可能已失效、需要登录，或返回了错误页面。")
+            throw EditorError(String(localized: "这是一个网页，不是配置。订阅链接可能已失效、需要登录，或返回了错误页面。"))
         }
 
         if let yaml = try yamlContent(text) { return yaml }
@@ -102,7 +102,7 @@ public enum ConfigImporter {
             if let yaml = try? yamlContent(decoded) { return yaml }
         }
         if trimmed.contains("://") { return try links(trimmed, format: .plainLinks) }
-        throw EditorError("无法识别这份内容。Veer 支持 Mihomo / Clash YAML 配置、YAML 节点列表、Base64 订阅和分享链接列表（ss、ssr、vmess、vless、trojan、hysteria、hysteria2、tuic、socks5、http、anytls）。")
+        throw EditorError(String(localized: "无法识别这份内容。Veer 支持 Mihomo / Clash YAML 配置、YAML 节点列表、Base64 订阅和分享链接列表（ss、ssr、vmess、vless、trojan、hysteria、hysteria2、tuic、socks5、http、anytls）。"))
     }
 
     /// nil when the text is not YAML that Veer can use (a scalar, or unparsable).
@@ -111,7 +111,7 @@ public enum ConfigImporter {
         if let mapping = node.mapping {
             let keys = Set(mapping.keys.compactMap(\.string))
             if keys.contains("outbounds") && (keys.contains("inbounds") || keys.contains("route")) {
-                throw EditorError("这是 sing-box 配置。Veer 目前只编辑 Mihomo 配置，请导入 Mihomo / Clash 格式的订阅。")
+                throw EditorError(String(localized: "这是 sing-box 配置。Veer 目前只编辑 Mihomo 配置，请导入 Mihomo / Clash 格式的订阅。"))
             }
             if keys == ["proxies"], let list = mapping["proxies"]?.sequence {
                 return .nodes(.proxyListYAML, list.compactMap(value(from:)), skipped: [:])
@@ -129,7 +129,7 @@ public enum ConfigImporter {
         let parsed = ShareLinkParser.parse(text)
         guard !parsed.proxies.isEmpty else {
             let schemes = parsed.skipped.keys.sorted().joined(separator: "、")
-            throw EditorError(schemes.isEmpty ? "没有找到可以识别的分享链接。" : "没有可以转换的节点：\(schemes) 链接格式无法识别或不受支持。")
+            throw EditorError(schemes.isEmpty ? String(localized: "没有找到可以识别的分享链接。") : String(localized: "没有可以转换的节点：\(schemes) 链接格式无法识别或不受支持。"))
         }
         let proxies = parsed.proxies.map { proxy in proxy.map { ($0.0, $0.1) } }
         return .nodes(format, proxies.map { .map($0) }, skipped: parsed.skipped)
@@ -155,7 +155,7 @@ public enum ConfigImporter {
             } catch let error as EditorError {
                 throw EditorError("“\(part.label)”：\(error.message)")
             }
-            guard !proxies.isEmpty else { throw EditorError("“\(part.label)”里没有节点。") }
+            guard !proxies.isEmpty else { throw EditorError(String(localized: "“\(part.label)”里没有节点。")) }
             sources.append((part.label, proxies))
         }
 
@@ -225,14 +225,14 @@ public enum ConfigImporter {
             proxies.append(.map(pairs))
             proxyNames.append(name)
         }
-        guard !proxyNames.isEmpty else { throw EditorError("没有找到有效的节点（每个节点需要 name、type 和 server）。") }
-        guard proxyNames.count <= 2500 else { throw EditorError("节点超过 2500 个，请先缩小订阅范围。") }
+        guard !proxyNames.isEmpty else { throw EditorError(String(localized: "没有找到有效的节点（每个节点需要 name、type 和 server）。")) }
+        guard proxyNames.count <= 2500 else { throw EditorError(String(localized: "节点超过 2500 个，请先缩小订阅范围。")) }
 
         var regionGroups: [(String, [String])] = []
         for region in Region.allCases where region != .unknown {
             let members = proxyNames.filter { Region.infer(from: $0) == region }
             guard !members.isEmpty else { continue }
-            var groupName = "\(region.displayName)节点"
+            var groupName = "\(region.promptName)节点"
             while names.contains(groupName) { groupName += "-组" }
             names.insert(groupName)
             regionGroups.append((groupName, members))
