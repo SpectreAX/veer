@@ -33,8 +33,8 @@ Sources/
 | `state.json` | 上次的运行状态（是否运行、模式、系统代理、TUN）、系统代理快照 |
 | `secrets.json`（0600） | 订阅链接和 API Key（开发版） |
 
-- **正式版的密钥：** 订阅链接和 API Key 存进钥匙串，服务名 `app.veer.secrets`。第一次启动时，如果发现 `secrets.json`，就把内容迁移进钥匙串，然后删除这个文件。
-- **判断依据：** 签名里有 Team ID（`SecCodeCopySigningInformation`）就视为正式版。
+- **用证书签名的版本：** 订阅链接和 API Key 存进钥匙串，服务名 `app.veer.secrets`。第一次启动时，如果发现 `secrets.json`，就把内容迁移进钥匙串，然后删除这个文件。
+- **判断依据：** 签名里有 Team ID（`SecCodeCopySigningInformation`）就用钥匙串。测试阶段用的 Apple Development 证书和发布用的 Developer ID 都有 Team ID，签名身份稳定，重新编译后不会每次都弹出授权；只有 ad-hoc 签名的版本继续用文件。
 
 ## 2. “我的分流”层
 

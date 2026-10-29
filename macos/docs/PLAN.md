@@ -66,13 +66,13 @@
   - 出口 IP 和所选节点的地区一致。
 
 ### 第 4 步：TUN 后台服务
-- **前提：** 需要 Developer ID Application 证书和 Team ID，开工前确认已经拿到。
+- **签名：** 测试阶段用免费的 Apple Development 证书（本机已有）。开工后先验证 `SMAppService.daemon` 在这个签名下能不能注册和批准；不能的话，再决定是否提前加入付费计划。
 - **内容：**
   - `VeerHelper`：注册、批准状态、XPC 签名校验、以 root 运行内核、断开后清理；
   - `CoreRunner` 协议；
   - 失败时回退到系统代理；
   - 设置里加上“TUN”页。
-- **打包：** `build-app.sh` 把后台服务和 plist 放进应用包，并用 Developer ID 签名。
+- **打包：** `build-app.sh` 把后台服务和 plist 放进应用包，并用 Apple Development 证书签名；发布时换成 Developer ID。
 - **实机清单：**
   - 第一次开启 TUN 时，提示去系统设置批准，批准后 TUN 生效；
   - 终端里 `curl` 不设代理也能通过 Veer；
@@ -103,9 +103,11 @@
   - 公证后的 DMG 在另一台 Mac 上能直接打开，不弹出“无法验证”的提示。
 
 ## 开工前需要你准备的
+测试阶段不加入付费的 Apple Developer Program，开发和自用都用免费的 Apple Development 证书。
+
 | 事项 | 用于 | 最晚 |
 |---|---|---|
-| Apple Developer Program 和 Developer ID Application 证书 | TUN 后台服务、公证 | 第 4 步 |
+| Apple Developer Program 和 Developer ID Application 证书 | 公证、发给别人用 | 第 6 步发布；如果第 4 步 TUN 在免费签名下跑不通，提前到第 4 步 |
 | macOS 14 虚拟机（UTM 或 Parallels） | 检查旧系统界面 | 第 1 步验收 |
 | GitHub Sponsors 和爱发电账号 | 赞助链接 | 第 6 步 |
 

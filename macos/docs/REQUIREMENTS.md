@@ -20,7 +20,7 @@ Veer 是一个 Mihomo 代理客户端，让 AI 来决定流量走向。用户说
 
 | 平台 | 方式 |
 |---|---|
-| macOS | 官网免费下载，Developer ID 签名并公证。设置和“关于”页有 GitHub Sponsors 和爱发电的赞助链接，不弹窗、不催促 |
+| macOS | 官网免费下载，Developer ID 签名并公证（测试阶段只用免费的 Apple Development 证书，发布前再加入付费计划）。设置和“关于”页有 GitHub Sponsors 和爱发电的赞助链接，不弹窗、不催促 |
 | Mac App Store（付费支持版） | 暂缓。App Store 不允许以独立 root 进程运行 Mihomo，必须改用 Network Extension，而 Mihomo 是 GPL-3.0。要等 iOS 内核选型有结论后再一起做 |
 | iOS、Android | 一次性买断，14 天试用，以后再做 |
 
