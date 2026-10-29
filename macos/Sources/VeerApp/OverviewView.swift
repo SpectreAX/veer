@@ -214,19 +214,29 @@ private struct SystemProxyCard: View {
                 .toggleStyle(.switch).labelsHidden()
                 .disabled(!store.isRunning)
         } content: {
-            Text("端口 \(String(store.proxyPort))").font(.caption).foregroundStyle(.secondary)
+            Text(store.tunActive ? String(localized: "TUN 已接管全部流量") : String(localized: "端口 \(String(store.proxyPort))"))
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 }
 
-/// TUN arrives in a later step; the card says so instead of pretending.
+/// All traffic through a TUN device, run as root by the helper.
 private struct TUNCard: View {
+    @Environment(ProxyStore.self) private var store
+
     var body: some View {
         Card(String(localized: "TUN"), symbol: "shield.lefthalf.filled") {
-            Toggle(String(localized: "TUN"), isOn: .constant(false)).toggleStyle(.switch).labelsHidden().disabled(true)
+            Toggle(String(localized: "TUN"), isOn: Binding(get: { store.settings.tun }, set: { store.setTUN($0) }))
+                .toggleStyle(.switch).labelsHidden()
         } content: {
-            Text("即将推出").font(.caption).foregroundStyle(.secondary)
+            Text(status).font(.caption).foregroundStyle(.secondary).lineLimit(1)
         }
+    }
+
+    private var status: String {
+        if store.tunActive { return String(localized: "运行中") }
+        if !store.settings.tun { return String(localized: "已关闭") }
+        return store.isRunning ? String(localized: "未生效，已改用系统代理") : String(localized: "启动后生效")
     }
 }
 

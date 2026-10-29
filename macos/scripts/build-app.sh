@@ -13,10 +13,12 @@ if [[ ! -x "$core" ]]; then
 fi
 lipo -verify_arch "$(uname -m)" "$core"
 swift build -c release --product Veer
+swift build -c release --product VeerHelper
 bin_dir="$(swift build -c release --show-bin-path)"
 app="$PWD/dist/Veer.app"
 rm -rf "$app"
-mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources/bin" "$app/Contents/Resources/licenses"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources/bin" "$app/Contents/Resources/licenses" \
+  "$app/Contents/Library/LaunchServices" "$app/Contents/Library/LaunchDaemons"
 cp "$bin_dir/Veer" "$app/Contents/MacOS/Veer"
 # SwiftPM records the deployment target (14.0) as the SDK version too, and macOS only gives
 # apps built with the macOS 26 SDK its current design (Liquid Glass). Record the real one.
@@ -33,7 +35,31 @@ cp third_party/mihomo/LICENSE "$app/Contents/Resources/licenses/mihomo-LICENSE"
 cp .build/checkouts/Yams/LICENSE "$app/Contents/Resources/licenses/Yams-LICENSE"
 cp THIRD_PARTY_NOTICES.md "$app/Contents/Resources/licenses/THIRD_PARTY_NOTICES.md"
 cp LICENSE "$app/Contents/Resources/licenses/Veer-LICENSE"
-codesign --force --sign - "$app/Contents/Resources/bin/mihomo"
-codesign --force --sign - "$app"
+# TUN's privileged helper, registered through SMAppService from this plist.
+helper_label=com.yamax.veer.helper
+cp "$bin_dir/VeerHelper" "$app/Contents/Library/LaunchServices/$helper_label"
+cat > "$app/Contents/Library/LaunchDaemons/$helper_label.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$helper_label</string>
+  <key>BundleProgram</key><string>Contents/Library/LaunchServices/$helper_label</string>
+  <key>MachServices</key><dict><key>$helper_label</key><true/></dict>
+  <key>AssociatedBundleIdentifiers</key><array><string>com.yamax.veer</string></array>
+</dict>
+</plist>
+PLIST
+# The helper accepts only callers and cores signed by its own team, so everything is signed
+# with one identity: VEER_SIGN_IDENTITY, else the first Apple Development certificate. Without
+# one the app is signed ad hoc and TUN is unavailable.
+identity="${VEER_SIGN_IDENTITY:-$(security find-identity -v -p codesigning | awk -F'"' '/Apple Development/ { print $2; exit }')}"
+if [[ -z "$identity" ]]; then
+  print -u2 "没有找到 Apple Development 证书，改用临时签名，TUN 将不可用。"
+  identity=-
+fi
+codesign --force --timestamp=none --sign "$identity" "$app/Contents/Resources/bin/mihomo"
+codesign --force --timestamp=none --sign "$identity" --identifier "$helper_label" "$app/Contents/Library/LaunchServices/$helper_label"
+codesign --force --timestamp=none --sign "$identity" "$app"
 codesign --verify --deep --strict "$app"
 print -r -- "$app"

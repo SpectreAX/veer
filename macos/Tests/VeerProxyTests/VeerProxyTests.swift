@@ -394,3 +394,38 @@ struct FastBuildTests {
         #expect(await MihomoValidator(binary: CoreProcessTests.binary).validate(yaml).status == .passed)
     }
 }
+
+struct TUNConfigTests {
+    @Test func tunIsOffUnlessAskedAndAProfilesOwnIsDropped() throws {
+        let config = try RuntimeOverrideTests.config(RuntimeSettings())
+        #expect(config["tun"] == nil)
+    }
+
+    @Test func tunTurnsOnRoutesAndDNS() throws {
+        var settings = RuntimeSettings()
+        settings.tun = true
+        let config = try RuntimeOverrideTests.config(settings)
+        let tun = try #require(config["tun"] as? [String: Any])
+        #expect(tun["enable"] as? Bool == true && tun["stack"] as? String == "mixed" && tun["strict-route"] as? Bool == true)
+        #expect(tun["dns-hijack"] as? [String] == ["any:53", "tcp://any:53"])
+        #expect((tun["route-exclude-address"] as? [String])?.contains("100.64.0.0/10") == true)
+        // The profile's own DNS stays, switched on.
+        #expect((config["dns"] as? [String: Any])?["enable"] as? Bool == true)
+        // Both build paths agree.
+        let fast = try #require(try RuntimeConfig.buildKeepingSections(profile: RuntimeConfigTests.profile, settings: settings, controllerPort: 1, secret: "s"))
+        let parsed = try RuntimeConfig.buildByParsing(profile: RuntimeConfigTests.profile, settings: settings, controllerPort: 1, secret: "s")
+        #expect(try FastBuildTests.load(fast) == FastBuildTests.load(parsed))
+    }
+
+    @Test(.enabled(if: CoreProcessTests.binary != nil)) func theTUNConfigPassesMihomo() async throws {
+        var settings = RuntimeSettings()
+        settings.tun = true
+        let yaml = try RuntimeConfig.build(profile: RuntimeConfigTests.profile, settings: settings, controllerPort: 1, secret: "s")
+        #expect(await MihomoValidator(binary: CoreProcessTests.binary).validate(yaml).status == .passed)
+    }
+
+    @Test func pathsInTheInstallScriptAreQuoted() {
+        #expect(HelperClient.quoted("/Applications/Veer.app") == "'/Applications/Veer.app'")
+        #expect(HelperClient.quoted("/tmp/a'b") == "'/tmp/a'\\''b'")
+    }
+}

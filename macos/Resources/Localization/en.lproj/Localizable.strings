@@ -989,3 +989,38 @@
 "收起“%@”" = "Collapse “%@”";
 "切换配置、节点或分流后断开旧连接" = "Close old connections after switching profiles, nodes or routing";
 "%lld 条" = "%lld lines";
+
+/* TUN helper */
+"已取消。" = "Cancelled.";
+"安装失败。" = "Installation failed.";
+"无法连接后台服务。" = "Can't reach the background service.";
+"应用包里缺少后台服务，请重新安装 Veer。" = "The background service is missing from the app. Reinstall Veer.";
+"后台服务没有回应。可以在设置里重新安装它。" = "The background service isn't responding. You can reinstall it in Settings.";
+"无法注册后台服务：%@" = "Couldn't register the background service: %@";
+/* Replies from the helper, which runs without a language of its own. */
+"后台服务没有签名，无法确认内核来源。" = "The background service isn't signed, so it can't check where the core came from.";
+"已安装的内核签名不符，请重新安装后台服务。" = "The installed core's signature doesn't match. Reinstall the background service.";
+"Veer 里的内核签名不符，拒绝以管理员身份运行。" = "The core inside Veer has the wrong signature, so it won't be run as administrator.";
+"复制后的内核签名不符。" = "The copied core's signature doesn't match.";
+"TUN 已接管全部流量" = "TUN is handling all traffic";
+"已关闭" = "Off";
+"启动后生效" = "Applies when started";
+"未生效，已改用系统代理" = "Not active; using the system proxy";
+"TUN 未能启动，已改用系统代理。%@" = "TUN couldn't start, so Veer is using the system proxy. %@";
+"TUN 需要的后台服务还没有安装，可以在设置的 TUN 页安装。" = "The background service TUN needs isn't installed. You can install it in Settings → TUN.";
+"需要在系统设置的“登录项”中允许 Veer 的后台服务。" = "Allow Veer's background service in System Settings → Login Items.";
+"后台服务的版本较旧，请在设置的 TUN 页重新安装。" = "The background service is out of date. Reinstall it in Settings → TUN.";
+"启用 TUN" = "Use TUN";
+"TUN 让所有应用的流量都经过 Veer，包括不读取系统代理的终端和游戏。局域网和 Tailscale 地址不走 TUN。后台服务不可用时，Veer 会改用系统代理并说明原因。" = "TUN sends every app's traffic through Veer, including terminals and games that ignore the system proxy. Local network and Tailscale addresses stay off TUN. If the background service isn't available, Veer uses the system proxy and tells you why.";
+"后台服务" = "Background Service";
+"TUN 需要以管理员身份运行内核，由一个后台服务完成。它只接受 Veer 的连接，只运行同一签名的内核，Veer 退出 10 秒后停止内核。系统设置里无法批准时（例如开发版签名），可以手动安装：输入一次管理员密码，装到 /Library。" = "TUN needs the core to run as administrator, which a background service does. It only accepts Veer, only runs a core with the same signature, and stops the core 10 seconds after Veer quits. If System Settings can't approve it (for example with a development signature), install it manually: enter your administrator password once and it goes into /Library.";
+"安装" = "Install";
+"打开系统设置" = "Open System Settings";
+"手动安装…" = "Install Manually…";
+"重新安装…" = "Reinstall…";
+"卸载" = "Uninstall";
+"未安装" = "Not installed";
+"等待在系统设置中批准" = "Waiting for approval in System Settings";
+"已就绪" = "Ready";
+"已就绪（手动安装）" = "Ready (installed manually)";
+"版本较旧" = "Out of date";

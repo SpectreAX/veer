@@ -86,7 +86,8 @@ Sources/
 - **切换配置、修改分流或覆写时：** 只要端口和 TUN 没变，就用 `PUT /configs` 重新载入，不重启进程；端口或 TUN 变了才重启。
 
 ### 4.1 后台服务（TUN）
-- **注册：** 用 `SMAppService.daemon(plistName: "com.yamax.veer.helper.plist")`。可执行文件在 `Contents/Library/LaunchServices/VeerHelper`，plist 在 `Contents/Library/LaunchDaemons/`。
+- **注册：** 用 `SMAppService.daemon(plistName: "com.yamax.veer.helper.plist")`。可执行文件在 `Contents/Library/LaunchServices/com.yamax.veer.helper`，plist 在 `Contents/Library/LaunchDaemons/`（`BundleProgram` 指向前者，`MachServices` 是 `com.yamax.veer.helper`）。
+- **免费签名可用：** 2026-10-29 在 macOS 27.2 上验证，Apple Development 签名下 `SMAppService.daemon` 能注册、批准和运行，所以测试阶段也走这条路。
 - **状态和界面：**
 
 | 状态 | 界面 |
@@ -94,30 +95,31 @@ Sources/
 | `notRegistered` | TUN 开关旁显示“需要安装后台服务”，点击后注册 |
 | `requiresApproval` | 说明需要去“系统设置 → 通用 → 登录项与扩展”批准，并提供按钮直接打开（`SMAppService.openSystemSettingsLoginItems()`） |
 | `enabled` | 可以使用 TUN |
-| `notFound` 或注册失败 | 显示原因，提示重新安装 Veer |
+| `notFound` | 从没注册过的服务也报这个状态：应用包里有 plist 时按 `notRegistered` 处理，没有才提示重新安装 Veer |
+| 注册返回 EPERM | 第一次注册在等待批准时会返回这个错误，此时状态是 `requiresApproval`，不算失败 |
+| 版本不一致 | 后台服务通过 XPC 报告版本（`HelperConstants.version`）。旧版本显示“版本较旧”，点“重新安装”先注销再注册（注销后 launchd 需要片刻，注册会重试几次） |
 
 - **安全：**
   - **调用方校验：** 用代码签名要求校验调用方：同一个 Team ID，并且 bundle id 是 `com.yamax.veer`。macOS 13 起用 `NSXPCConnection.setCodeSigningRequirement`。
   - **能运行的程序：** 只运行 Veer 应用包内、通过同一签名校验的 `mihomo`，不接受任意路径。
   - **配置文件：** 以数据形式通过 XPC 传给后台服务，写进 `/Library/Application Support/Veer/core/`（属主 root，权限 0700）。控制器地址仍然是 127.0.0.1、随机端口、随机密钥。
 - **生命周期：**
-  - 应用断开连接（XPC invalidation）后等 10 秒，应用没重新连上，就停止内核。mihomo 退出时会自行清理路由。
-  - 如果还有残留，后台服务删除 `utun` 相关路由。
-- **失败回退：** 后台服务启动失败或崩溃时，改用用户进程运行内核并开启系统代理，同时显示“TUN 未能启动：原因”。
+  - 应用断开连接（XPC invalidation）后等 10 秒，应用没重新连上，就停止内核，然后后台服务自己退出。launchd 在下次调用时从应用包里的当前文件重新启动它，所以重新编译或升级后的 Veer 用的是新的后台服务。
+  - mihomo 退出时会自行清理路由。（“后台服务删除残留的 `utun` 路由”还没做，等实机上真的遇到残留再加。）
+- **失败回退：** 后台服务不可用或启动内核失败时，改用用户进程运行内核并开启系统代理，同时显示“TUN 未能启动，已改用系统代理。原因”。
+- **TUN 开关：** 在概览、菜单栏和设置的 TUN 页。运行中切换 TUN 会重启内核（系统代理保持原样）。第一次打开时如果还没安装，先注册后台服务并打开系统设置等待批准。
 
 ### 4.1.1 测试阶段的备用安装方式
-测试阶段没有 Developer ID。如果 `SMAppService.daemon` 在这种签名下注册失败（指的是返回错误；`requiresApproval` 不算失败），TUN 页改为提供“手动安装后台服务”。签名里有 Developer ID 的版本不提供这个方式。
+测试阶段没有 Developer ID。如果 `SMAppService.daemon` 在这种签名下注册失败（指的是返回错误；`requiresApproval` 不算失败），可以用“手动安装…”。目前 TUN 页在未安装、等待批准时都提供这个按钮；发布 Developer ID 版本时去掉。
 
 - **后台服务不变：** 和 4.1 是同一个 `VeerHelper`，XPC 接口、以 root 运行内核、断开后清理都不变，只是安装方式不同。
 - **安装：** 点击后弹出一次系统的管理员密码框（`do shell script … with administrator privileges`）。脚本内容固定写在应用里，路径都加引号，不拼接任何用户输入。脚本做以下几件事：
   1. 复制 `VeerHelper` 到 `/Library/PrivilegedHelperTools/com.yamax.veer.helper`（root:wheel，0755）；
   2. 复制 `mihomo` 到 `/Library/PrivilegedHelperTools/com.yamax.veer.mihomo`（root:wheel，0755）。手动安装的后台服务只运行这份 root 拥有的副本，普通用户改不了它，所以不必再校验应用包里的 `mihomo`；
   3. 写入 `/Library/LaunchDaemons/com.yamax.veer.helper.plist`（root:wheel，0644），`MachServices` 是 `com.yamax.veer.helper`；
-  4. 写入调用方校验要求 `/Library/Application Support/Veer/helper-requirement`（root:wheel，0644）；
-  5. 执行 `launchctl bootstrap system` 加载服务。
-- **调用方校验：** 后台服务从第 4 项的文件读取代码签名要求，用 `NSXPCConnection.setCodeSigningRequirement` 校验调用方：
-  - Apple Development 签名：要求同一个 Team ID，并且 bundle id 是 `com.yamax.veer`。重新编译后仍然有效。
-  - ad-hoc 签名：锁定安装时 Veer 的 cdhash。每次重新编译都会失效，Veer 发现连接被拒绝时，提示“后台服务需要重新安装”。
+  4. 执行 `launchctl bootstrap system` 加载服务。
+  安装前先注销 SMAppService 注册的同名服务。
+- **调用方校验：** 和 4.1 相同：后台服务读取自己签名里的 Team ID，要求调用方是同一个 Team ID、bundle id 是 `com.yamax.veer`，重新编译后仍然有效。没有 Team ID 的签名（ad-hoc）后台服务一律拒绝，所以 `build-app.sh` 默认用 Apple Development 证书签名，找不到证书时才退回 ad-hoc 并提示 TUN 不可用。
 - **版本：** 后台服务通过 XPC 报告自己的版本和内核版本。和 Veer 不一致时，TUN 页提示“重新安装后台服务”（同样要输入一次密码）。
 - **卸载：** TUN 页提供“卸载后台服务”：输入一次密码，执行 `launchctl bootout`，然后删除上面的文件。
 - **改用 SMAppService：** 以后换成 Developer ID 签名、`SMAppService` 能用时，Veer 先卸载手动安装的版本，再按 4.1 注册。

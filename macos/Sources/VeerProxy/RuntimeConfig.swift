@@ -24,6 +24,8 @@ public struct RuntimeSettings: Sendable, Equatable, Codable {
     public var dnsServers = RuntimeSettings.defaultDNSServers
     /// Keep a profile's own `dns` section; Veer's DNS settings apply only to profiles without one.
     public var preferProfileDNS = true
+    /// Route all traffic through a TUN device (the core then runs as root, through the helper).
+    public var tun = false
 
     public static let defaultDNSServers = ["https://dns.alidns.com/dns-query", "https://doh.pub/dns-query"]
 
@@ -46,6 +48,7 @@ public struct RuntimeSettings: Sendable, Equatable, Codable {
         dnsMode = try container.decodeIfPresent(DNSMode.self, forKey: .dnsMode) ?? defaults.dnsMode
         dnsServers = try container.decodeIfPresent([String].self, forKey: .dnsServers) ?? defaults.dnsServers
         preferProfileDNS = try container.decodeIfPresent(Bool.self, forKey: .preferProfileDNS) ?? defaults.preferProfileDNS
+        tun = try container.decodeIfPresent(Bool.self, forKey: .tun) ?? defaults.tun
     }
 }
 
@@ -92,10 +95,13 @@ public enum RuntimeConfig {
         // core would fail to start as the user. The rest of `dns` (resolvers, fake-IP) applies.
         if case .mapping(var dns)? = profileDNS, settings.preferProfileDNS {
             dns[Node("listen")] = nil
+            // TUN hijacks DNS to the core, which then has to answer it.
+            if settings.tun { dns[Node("enable")] = Node("true", Tag(.bool)) }
             pairs.append((Node("dns"), .mapping(dns)))
         } else {
             pairs.append((Node("dns"), dnsSection(settings)))
         }
+        if settings.tun { pairs.append((Node("tun"), tunSection)) }
         // Geodata is downloaded on the first start, before the proxy works; GitHub is often
         // unreachable then, so use the jsDelivr mirror unless the profile names its own.
         if !hasGeodataSource {
@@ -155,6 +161,25 @@ public enum RuntimeConfig {
             mapping[Node("rules")] = Node([Node(quicRule)] + rules.filter { $0.string != quicRule })
         }
         return ConfigImporter.readableUnicode(try Yams.serialize(node: .mapping(mapping), allowUnicode: true))
+    }
+
+    /// Addresses that stay off the TUN device: the local network, link-local, Tailscale's
+    /// 100.64/10 and its IPv6 range, and IPv6 link-local.
+    static let tunExcluded = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "100.64.0.0/10",
+                              "fd7a:115c:a1e0::/48", "fe80::/10"]
+
+    /// The TUN device: mixed stack, Mihomo setting the routes and finding the outgoing interface,
+    /// strict routing so nothing slips past, and every DNS query answered by the core.
+    static var tunSection: Node {
+        Node([
+            (Node("enable"), Node("true", Tag(.bool))),
+            (Node("stack"), Node("mixed")),
+            (Node("auto-route"), Node("true", Tag(.bool))),
+            (Node("auto-detect-interface"), Node("true", Tag(.bool))),
+            (Node("strict-route"), Node("true", Tag(.bool))),
+            (Node("dns-hijack"), Node([Node("any:53"), Node("tcp://any:53")])),
+            (Node("route-exclude-address"), Node(tunExcluded.map { Node($0) })),
+        ])
     }
 
     /// UDP to port 443 is QUIC (HTTP/3); rejecting it makes browsers retry over TCP.

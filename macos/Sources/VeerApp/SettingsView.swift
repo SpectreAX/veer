@@ -8,6 +8,7 @@ struct SettingsView: View {
             GeneralSettings().tabItem { Label(String(localized: "通用"), systemImage: "gearshape") }
             ProxySettings().tabItem { Label(String(localized: "代理"), systemImage: "network") }
             DNSSettings().tabItem { Label(String(localized: "DNS"), systemImage: "globe") }
+            TUNSettings().tabItem { Label(String(localized: "TUN"), systemImage: "shield.lefthalf.filled") }
             AISettingsPane().tabItem { Label("AI", systemImage: "sparkles") }
             PrivacySettingsPane().tabItem { Label(String(localized: "隐私"), systemImage: "hand.raised") }
         }
@@ -142,6 +143,93 @@ enum AppLanguage: String, CaseIterable, Identifiable {
                              String(ProcessInfo.processInfo.processIdentifier), Bundle.main.bundleURL.path]
         try? process.run()
         NSApp.terminate(nil)
+    }
+}
+
+/// TUN and the privileged helper it needs: its state, and installing or removing it.
+struct TUNSettings: View {
+    @Environment(ProxyStore.self) private var store
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle(String(localized: "启用 TUN"), isOn: Binding(get: { store.settings.tun }, set: { store.setTUN($0) }))
+                if let notice = store.notice {
+                    StatusBadge(kind: .warning, text: notice, compact: true).fixedSize(horizontal: false, vertical: true)
+                }
+            } footer: {
+                Text(String(localized: "TUN 让所有应用的流量都经过 Veer，包括不读取系统代理的终端和游戏。局域网和 Tailscale 地址不走 TUN。后台服务不可用时，Veer 会改用系统代理并说明原因。"))
+                    .font(.caption).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            Section {
+                LabeledContent(String(localized: "状态")) {
+                    if let state = store.helperState {
+                        StatusBadge(kind: Self.kind(state), text: Self.title(state), compact: true)
+                    } else {
+                        ProgressView().controlSize(.small)
+                    }
+                }
+                HStack {
+                    actions
+                    Spacer()
+                    if store.helperBusy { ProgressView().controlSize(.small) }
+                }
+                .disabled(store.helperBusy)
+            } header: {
+                Text(String(localized: "后台服务"))
+            } footer: {
+                Text(String(localized: "TUN 需要以管理员身份运行内核，由一个后台服务完成。它只接受 Veer 的连接，只运行同一签名的内核，Veer 退出 10 秒后停止内核。系统设置里无法批准时（例如开发版签名），可以手动安装：输入一次管理员密码，装到 /Library。"))
+                    .font(.caption).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .formStyle(.grouped)
+        .task { await store.refreshHelperState() }
+        // Coming back from System Settings after approving it.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await store.refreshHelperState() }
+        }
+    }
+
+    @ViewBuilder private var actions: some View {
+        switch store.helperState {
+        case .notInstalled?:
+            Button(String(localized: "安装")) { store.registerHelper() }.primaryAction(.regular)
+            Button(String(localized: "手动安装…")) { store.installHelperManually() }.neutralControl()
+        case .needsApproval?:
+            Button(String(localized: "打开系统设置")) { HelperClient.shared.openApprovalSettings() }.primaryAction(.regular)
+            Button(String(localized: "手动安装…")) { store.installHelperManually() }.neutralControl()
+            Button(String(localized: "卸载")) { store.uninstallHelper() }.neutralControl()
+        case .outdated?, .unavailable?:
+            Button(String(localized: "重新安装…")) { store.reinstallHelper() }.primaryAction(.regular)
+            Button(String(localized: "卸载")) { store.uninstallHelper() }.neutralControl()
+        case .ready?:
+            Button(String(localized: "卸载")) { store.uninstallHelper() }.neutralControl()
+        case nil:
+            EmptyView()
+        }
+    }
+
+    static func title(_ state: HelperState) -> String {
+        switch state {
+        case .notInstalled: String(localized: "未安装")
+        case .needsApproval: String(localized: "等待在系统设置中批准")
+        case .ready: HelperClient.shared.isInstalledManually ? String(localized: "已就绪（手动安装）") : String(localized: "已就绪")
+        case .outdated: String(localized: "版本较旧")
+        case .unavailable(let reason): reason
+        }
+    }
+
+    static func kind(_ state: HelperState) -> StatusKind {
+        switch state {
+        case .ready: .success
+        case .notInstalled: .neutral
+        case .needsApproval, .outdated: .warning
+        case .unavailable: .failure
+        }
     }
 }
 

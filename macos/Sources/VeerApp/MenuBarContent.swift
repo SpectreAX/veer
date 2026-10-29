@@ -35,6 +35,7 @@ struct MenuBarContent: View {
             .disabled(store.activeProfile == nil || store.phase == .starting)
         Toggle("系统代理", isOn: Binding(get: { store.systemProxyOn }, set: { store.setSystemProxy($0) }))
             .disabled(!store.isRunning)
+        Toggle("TUN", isOn: Binding(get: { store.settings.tun }, set: { store.setTUN($0) }))
         Picker("模式", selection: Binding(get: { store.mode }, set: { store.setMode($0) })) {
             ForEach(ProxyStore.Mode.allCases) { Text($0.title).tag($0) }
         }

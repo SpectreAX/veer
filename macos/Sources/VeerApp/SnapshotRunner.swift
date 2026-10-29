@@ -107,6 +107,20 @@ enum SnapshotRunner {
                   view: AnyView(SampleProfileSheet(tab: .routing))),
             Scene(name: "13-settings-general", size: CGSize(width: 520, height: 360), store: { sample() }, view: AnyView(GeneralSettings())),
             Scene(name: "14-settings-proxy", size: CGSize(width: 520, height: 300), store: { sample() }, view: AnyView(ProxySettings())),
+            Scene(name: "15-overview-tun", store: { running(tun: true) }, view: AnyView(MainView())),
+            Scene(name: "16-settings-tun-approval", size: CGSize(width: 560, height: 460), store: {
+                let store = sample()
+                store.settings.tun = true
+                store.helperProbe = { .needsApproval }
+                store.notice = String(localized: "TUN 未能启动，已改用系统代理。\(String(localized: "需要在系统设置的“登录项”中允许 Veer 的后台服务。"))")
+                return store
+            }, view: AnyView(TUNSettings())),
+            Scene(name: "17-settings-tun-ready", size: CGSize(width: 560, height: 420), store: {
+                let store = sample()
+                store.settings.tun = true
+                store.helperProbe = { .ready }
+                return store
+            }, view: AnyView(TUNSettings())),
         ]
     }
 
@@ -205,8 +219,11 @@ enum SnapshotRunner {
         return ProxyStore(paths: paths, systemProxy: SystemProxy(runner: { _ in "" }), binary: nil, defaults: defaults)
     }
 
-    static func running(page: Page = .overview) -> ProxyStore {
+    static func running(page: Page = .overview, tun: Bool = false) -> ProxyStore {
         let store = sample()
+        // Before the phase: turning TUN on in a running store restarts the core.
+        store.settings.tun = tun
+        store.tunActive = tun
         store.page = page
         store.phase = .running
         store.systemProxyOn = true

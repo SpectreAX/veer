@@ -59,6 +59,13 @@ final class ProxyStore {
     var groups: [Group] = []
     var mode: Mode = .rule
     var systemProxyOn = false
+    /// The core runs as root through the helper with a TUN device.
+    var tunActive = false
+    /// Where the privileged helper stands, as last checked; nil before the first check.
+    var helperState: HelperState?
+    /// How the helper's state is read; snapshots replace it.
+    @ObservationIgnored var helperProbe: () async -> HelperState = { await HelperClient.shared.state() }
+    var helperBusy = false
     var uploadRate: Int64 = 0
     var downloadRate: Int64 = 0
     var testingGroups: Set<String> = []
@@ -77,6 +84,11 @@ final class ProxyStore {
     var settings: RuntimeSettings {
         didSet {
             saveSettings()
+            // TUN changes who runs the core, so the core starts again.
+            if settings.tun != oldValue.tun {
+                if isRunning { restart() }
+                return
+            }
             // The port takes effect at the next start; everything else reloads into the running core.
             var withoutPort = settings, before = oldValue
             withoutPort.mixedPort = 0
@@ -124,7 +136,7 @@ final class ProxyStore {
     let systemProxy: SystemProxy
     let binary: URL?
     @ObservationIgnored private let defaults: UserDefaults
-    @ObservationIgnored private var core: CoreProcess?
+    @ObservationIgnored private var core: CoreRunning?
     @ObservationIgnored private var controller: MihomoController?
     /// The running core's controller port and secret, kept for reloads.
     @ObservationIgnored private var controllerAccess: (port: Int, secret: String)?
@@ -251,16 +263,35 @@ final class ProxyStore {
                 guard let port = Ports.free() else { throw EditorError(String(localized: "找不到可用的本机端口来控制内核。")) }
                 let secret = RuntimeConfig.makeSecret()
                 let text = try await effectiveTextInBackground(of: profile.id)
-                let path = paths.runtimeConfig, built = settings
-                try await Task.detached(priority: .userInitiated) {
-                    let yaml = try RuntimeConfig.build(profile: text, settings: built, controllerPort: port, secret: secret)
-                    try Data(yaml.utf8).write(to: path, options: .atomic)
-                }.value
-                let core = CoreProcess(binary: binary, home: paths.core)
-                try core.start(config: paths.runtimeConfig) { status, log in
-                    Task { @MainActor in self.coreExited(status: status, log: log) }
+                let path = paths.runtimeConfig, home = paths.core
+                // TUN needs the helper; without it the core runs as the user and the system
+                // proxy carries the traffic instead.
+                var tunFailure: String?
+                if settings.tun { tunFailure = await tunProblem() }
+                let base = settings
+                func launch(tun: Bool) async throws -> CoreRunning {
+                    var built = base
+                    built.tun = tun
+                    try await Task.detached(priority: .userInitiated) { [built] in
+                        let yaml = try RuntimeConfig.build(profile: text, settings: built, controllerPort: port, secret: secret)
+                        try Data(yaml.utf8).write(to: path, options: .atomic)
+                    }.value
+                    let core: CoreRunning = tun ? HelperCore(geodata: home) : CoreProcess(binary: binary, home: home)
+                    try await core.start(config: path) { status, log in
+                        Task { @MainActor in self.coreExited(status: status, log: log) }
+                    }
+                    return core
+                }
+                let useTUN = settings.tun && tunFailure == nil
+                let core: CoreRunning
+                do {
+                    core = try await launch(tun: useTUN)
+                } catch where useTUN {
+                    tunFailure = message(for: error)
+                    core = try await launch(tun: false)
                 }
                 self.core = core
+                tunActive = useTUN && tunFailure == nil
                 let controller = MihomoController(base: URL(string: "http://127.0.0.1:\(port)")!, secret: secret)
                 self.controller = controller
                 controllerAccess = (port, secret)
@@ -288,11 +319,113 @@ final class ProxyStore {
                 startLogs()
                 checkExit()
                 testEverythingOnce()
-                if state.systemProxy { setSystemProxy(true) }
+                if let tunFailure {
+                    // After the switch, which clears notices.
+                    if !systemProxyOn { setSystemProxy(true) }
+                    notice = String(localized: "TUN 未能启动，已改用系统代理。\(tunFailure)")
+                } else if state.systemProxy, !systemProxyOn {
+                    setSystemProxy(true)
+                }
             } catch {
                 core?.stop()
+                tunActive = false
                 phase = .failed(message(for: error), log: core?.tail ?? [])
             }
+        }
+    }
+
+    /// Why TUN cannot run now, or nil when the helper is ready.
+    private func tunProblem() async -> String? {
+        let state = await helperProbe()
+        helperState = state
+        switch state {
+        case .ready: return nil
+        case .notInstalled: return String(localized: "TUN 需要的后台服务还没有安装，可以在设置的 TUN 页安装。")
+        case .needsApproval: return String(localized: "需要在系统设置的“登录项”中允许 Veer 的后台服务。")
+        case .outdated: return String(localized: "后台服务的版本较旧，请在设置的 TUN 页重新安装。")
+        case .unavailable(let reason): return reason
+        }
+    }
+
+    /// Stops the core and starts it again with the current settings. The system proxy stays as
+    /// it is: the port does not change, so it points at the new core once it runs.
+    func restart() {
+        guard isRunning else { return }
+        tearDownCore()
+        phase = .stopped
+        start()
+    }
+
+    /// The TUN switch. Turning it on the first time registers the helper, which makes macOS ask
+    /// for approval in System Settings; a running core then restarts (falling back to the system
+    /// proxy until the helper is allowed).
+    func setTUN(_ on: Bool) {
+        notice = nil
+        Task {
+            if on, !HelperClient.shared.isInstalledManually, await HelperClient.shared.state() == .notInstalled {
+                do {
+                    try HelperClient.shared.register()
+                    if await HelperClient.shared.state() == .needsApproval { HelperClient.shared.openApprovalSettings() }
+                } catch {
+                    notice = message(for: error)
+                }
+            }
+            settings.tun = on
+            await refreshHelperState()
+        }
+    }
+
+    func refreshHelperState() async {
+        helperState = await helperProbe()
+    }
+
+    /// Settings' TUN page: register with SMAppService, install by hand, or remove the helper.
+    func registerHelper() {
+        runHelperAction {
+            try HelperClient.shared.register()
+            if await HelperClient.shared.state() == .needsApproval { HelperClient.shared.openApprovalSettings() }
+        }
+    }
+
+    /// An outdated or broken helper: installed again the way it was installed.
+    func reinstallHelper() {
+        if HelperClient.shared.isInstalledManually { return installHelperManually() }
+        runHelperAction {
+            try await HelperClient.shared.unregister()
+            // launchd takes a moment to remove the old job; registering before that fails.
+            for attempt in 1...10 {
+                do {
+                    try HelperClient.shared.register()
+                    break
+                } catch where attempt < 10 {
+                    try await Task.sleep(for: .milliseconds(500))
+                }
+            }
+            if await HelperClient.shared.state() == .needsApproval { HelperClient.shared.openApprovalSettings() }
+        }
+    }
+
+    func installHelperManually() {
+        runHelperAction { try await HelperClient.shared.installManually() }
+    }
+
+    func uninstallHelper() {
+        // The core must not keep running from the helper that is going away.
+        if settings.tun { settings.tun = false }
+        runHelperAction {
+            if HelperClient.shared.isInstalledManually { try await HelperClient.shared.uninstallManually() }
+            try await HelperClient.shared.unregister()
+        }
+    }
+
+    private func runHelperAction(_ action: @escaping () async throws -> Void) {
+        guard !helperBusy else { return }
+        helperBusy = true
+        notice = nil
+        Task {
+            defer { helperBusy = false }
+            do { try await action() } catch { notice = message(for: error) }
+            await refreshHelperState()
         }
     }
 
@@ -306,15 +439,21 @@ final class ProxyStore {
     func stop() {
         state.running = false
         if systemProxyOn { setSystemProxy(false) }
+        tearDownCore()
+        phase = .stopped
+    }
+
+    /// Stops the core and everything watching it; the system proxy and saved state stay.
+    private func tearDownCore() {
         trafficTask?.cancel()
         logTask?.cancel()
         connectionsTask?.cancel()
         core?.stop()
         core = nil
+        tunActive = false
         controller = nil
         controllerAccess = nil
         runningPort = nil
-        phase = .stopped
         groups = []
         uploadRate = 0
         downloadRate = 0
@@ -334,6 +473,7 @@ final class ProxyStore {
         logTask?.cancel()
         connectionsTask?.cancel()
         core = nil
+        tunActive = false
         controller = nil
         controllerAccess = nil
         runningPort = nil
