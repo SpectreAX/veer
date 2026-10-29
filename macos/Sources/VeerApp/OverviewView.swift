@@ -17,6 +17,7 @@ struct OverviewView: View {
                 VStack(alignment: .leading, spacing: Spacing.lg) {
                     if case .failed(let message, let log) = store.phase { FailurePanel(message: message, log: log) }
                     if let notice = store.notice { StatusBadge(kind: .warning, text: notice).fixedSize(horizontal: false, vertical: true) }
+                    SuggestionCards()
                     // Rows of two equal halves: cards shrink with the window (a Grid sizes cells to
                     // their widest content and overflowed it).
                     row { StatusCard() } right: { pair { TrafficCard(direction: .upload) } and: { TrafficCard(direction: .download) } }

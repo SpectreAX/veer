@@ -197,6 +197,47 @@ public struct MihomoController: Sendable {
 
     public static let delayURL = "https://www.gstatic.com/generate_204"
 
+    /// One answer record of `/dns/query`: `data` is the address, name or text.
+    public struct DNSAnswer: Sendable, Equatable, Decodable {
+        public let name: String
+        public let type: Int
+        public let ttl: Int
+        public let data: String
+
+        enum CodingKeys: String, CodingKey { case name, type, ttl = "TTL", data }
+
+        public init(name: String, type: Int, ttl: Int, data: String) {
+            self.name = name
+            self.type = type
+            self.ttl = ttl
+            self.data = data
+        }
+
+        /// "A", "AAAA", "CNAME"… for the record types people meet.
+        public var typeName: String {
+            [1: "A", 5: "CNAME", 28: "AAAA", 16: "TXT", 15: "MX", 2: "NS", 65: "HTTPS", 6: "SOA", 12: "PTR"][type] ?? String(type)
+        }
+    }
+
+    public struct DNSResult: Sendable, Equatable, Decodable {
+        /// 0 is success; 3 is "no such name".
+        public let status: Int
+        public let answers: [DNSAnswer]
+
+        enum CodingKeys: String, CodingKey { case status = "Status", answers = "Answer" }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            status = try container.decodeIfPresent(Int.self, forKey: .status) ?? 0
+            answers = try container.decodeIfPresent([DNSAnswer].self, forKey: .answers) ?? []
+        }
+    }
+
+    /// Resolves `name` through the core's own DNS, as its rules and nodes see it.
+    public func dnsQuery(_ name: String, type: String = "A") async throws -> DNSResult {
+        try await decode(request("GET", "/dns/query", query: ["name": name, "type": type]))
+    }
+
     /// `rule`, `global` or `direct`.
     public func mode() async throws -> String {
         struct Configs: Decodable { let mode: String }

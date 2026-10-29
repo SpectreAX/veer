@@ -172,6 +172,16 @@ final class ProxyStore {
     /// Live connections, newest first, while the connections page is open.
     var connections: [ConnectionRow] = []
     var connectionsPaused = false
+    /// Found on this Mac from logs, connections and delay tests; shown on the overview and Agent pages.
+    var suggestions: [Suggestion] = []
+    @ObservationIgnored private lazy var detector = SuggestionDetector(ignoredHosts: Set(defaults.stringArray(forKey: "ignoredSuggestionHosts") ?? []))
+    /// Recently closed connections, newest first, at most `requestLimit`; in memory only.
+    var requests: [ClosedRequest] = []
+    static let requestLimit = 1000
+    /// The connections page is open, so `connections` follows the core every second.
+    @ObservationIgnored private var connectionsVisible = false
+    /// The previous poll's connections, to see which closed.
+    @ObservationIgnored private var previousConnections: [String: ConnectionRow] = [:]
     /// The core's log while it runs, oldest first, at most `logLimit` lines.
     var logs: [LogEntry] = []
     var logsPaused = false
@@ -348,6 +358,7 @@ final class ProxyStore {
                 if let saved = state.mode.flatMap(Mode.init(rawValue:)), saved != mode { setMode(saved) }
                 startTraffic()
                 startLogs()
+                trackConnections()
                 checkExit()
                 testEverythingOnce()
                 if let tunFailure {
@@ -479,6 +490,7 @@ final class ProxyStore {
         trafficTask?.cancel()
         logTask?.cancel()
         connectionsTask?.cancel()
+        connections = []
         core?.stop()
         core = nil
         tunActive = false
@@ -503,6 +515,7 @@ final class ProxyStore {
         trafficTask?.cancel()
         logTask?.cancel()
         connectionsTask?.cancel()
+        connections = []
         core = nil
         tunActive = false
         controller = nil
@@ -561,6 +574,7 @@ final class ProxyStore {
             }
             testingGroups.remove(group)
             await refresh()
+            checkTestedNodes()
         }
     }
 
@@ -757,6 +771,7 @@ final class ProxyStore {
             _ = try? await controller.testDelay(group: "GLOBAL")
             testingGroups.remove("GLOBAL")
             await refresh()
+            checkTestedNodes()
         }
     }
 
@@ -777,13 +792,19 @@ final class ProxyStore {
 
     // MARK: Connections and logs
 
-    /// Polls `/connections` every second while `on` (the connections page is open).
+    /// The connections page shows live rows only while it is open.
     func watchConnections(_ on: Bool) {
+        connectionsVisible = on
+    }
+
+    /// Polls `/connections` every second while the core runs: closed connections become
+    /// requests, and the connections page gets its rows while it is open.
+    private func trackConnections() {
         connectionsTask?.cancel()
-        guard on else { return }
+        previousConnections = [:]
         connectionsTask = Task {
             while !Task.isCancelled {
-                if !connectionsPaused, let controller, let list = try? await controller.connections() {
+                if let controller, let list = try? await controller.connections() {
                     var rows: [ConnectionRow] = []
                     var bytes: [String: (Int64, Int64)] = [:]
                     for connection in list {
@@ -793,13 +814,63 @@ final class ProxyStore {
                         bytes[connection.id] = (connection.upload, connection.download)
                     }
                     lastConnectionBytes = bytes.mapValues { (upload: $0.0, download: $0.1) }
-                    connections = rows.sorted { ($0.start ?? .distantPast) > ($1.start ?? .distantPast) }
-                } else if !isRunning {
-                    connections = []
+                    recordClosed(now: rows)
+                    if connectionsVisible, !connectionsPaused {
+                        connections = rows.sorted { ($0.start ?? .distantPast) > ($1.start ?? .distantPast) }
+                    }
                 }
                 try? await Task.sleep(for: .seconds(1))
             }
         }
+    }
+
+    /// Connections in the last poll but not in this one have closed. New ones that fell through
+    /// to MATCH count toward a suggestion.
+    private func recordClosed(now rows: [ConnectionRow], at time: Date = .now) {
+        let current = Dictionary(rows.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        for row in rows where previousConnections[row.id] == nil && row.rule.hasPrefix("Match") && !row.isAddress {
+            suggest(detector.matchedFinalRule(host: row.host, at: time))
+        }
+        let closed = previousConnections.values.filter { current[$0.id] == nil }
+            .sorted { ($0.start ?? .distantPast) > ($1.start ?? .distantPast) }
+            .map { ClosedRequest(row: $0, closedAt: time) }
+        previousConnections = current
+        guard !closed.isEmpty else { return }
+        requests.insert(contentsOf: closed, at: 0)
+        if requests.count > Self.requestLimit { requests.removeLast(requests.count - Self.requestLimit) }
+    }
+
+    func clearRequests() { requests = [] }
+
+    // MARK: Suggestions
+
+    private func suggest(_ suggestion: Suggestion?) {
+        guard let suggestion, !suggestions.contains(where: { $0.id == suggestion.id }) else { return }
+        suggestions.append(suggestion)
+    }
+
+    /// After a delay test: a select group whose node timed out twice in a row.
+    private func checkTestedNodes() {
+        for group in groups where group.isSelectable {
+            guard let now = group.now, let member = group.members.first(where: { $0.name == now }), !member.isGroup else { continue }
+            suggest(detector.tested(node: now, in: group.name, delay: member.delay))
+        }
+    }
+
+    /// Closes a suggestion; `forever` stops suggestions about its host.
+    func dismiss(_ suggestion: Suggestion, forever: Bool = false) {
+        suggestions.removeAll { $0.id == suggestion.id }
+        detector.dismiss(suggestion)
+        if forever, let host = suggestion.host {
+            detector.ignoredHosts.insert(host)
+            defaults.set(Array(detector.ignoredHosts), forKey: "ignoredSuggestionHosts")
+        }
+    }
+
+    /// Asks the core's DNS, for the DNS page.
+    func lookUp(_ name: String, type: String) async throws -> MihomoController.DNSResult {
+        guard let controller else { throw EditorError(String(localized: "内核没有运行。")) }
+        return try await controller.dnsQuery(name, type: type)
     }
 
     /// After a node switch: connections that went through `group` keep their old node until they
@@ -833,6 +904,7 @@ final class ProxyStore {
         logTask = Task {
             do {
                 for try await line in controller.logs(level: level) {
+                    if let host = SuggestionDetector.failedHost(inLog: line.payload) { suggest(detector.connectionFailed(host: host)) }
                     guard !logsPaused else { continue }
                     logs.append(LogEntry(level: line.type, message: line.payload))
                     if logs.count > Self.logLimit { logs.removeFirst(logs.count - Self.logLimit) }

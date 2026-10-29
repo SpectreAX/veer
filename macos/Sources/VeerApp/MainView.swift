@@ -2,7 +2,7 @@ import SwiftUI
 import VeerProxy
 
 enum Page: String, CaseIterable, Identifiable, Hashable {
-    case overview, proxies, profiles, connections, logs, agent
+    case overview, proxies, profiles, connections, requests, logs, dns, agent
 
     enum Section: CaseIterable {
         case proxy, ai
@@ -23,7 +23,9 @@ enum Page: String, CaseIterable, Identifiable, Hashable {
         case .proxies: String(localized: "page.proxies", defaultValue: "代理")
         case .profiles: String(localized: "配置")
         case .connections: String(localized: "连接")
+        case .requests: String(localized: "请求")
         case .logs: String(localized: "日志")
+        case .dns: String(localized: "DNS")
         case .agent: String(localized: "Agent")
         }
     }
@@ -33,7 +35,9 @@ enum Page: String, CaseIterable, Identifiable, Hashable {
         case .proxies: "point.3.connected.trianglepath.dotted"
         case .profiles: "doc.text"
         case .connections: "arrow.left.arrow.right"
+        case .requests: "clock.arrow.circlepath"
         case .logs: "text.alignleft"
+        case .dns: "globe"
         case .agent: "sparkles"
         }
     }
@@ -83,7 +87,9 @@ struct MainView: View {
                 case .proxies: ProxiesView()
                 case .profiles: ProfilesView()
                 case .connections: ConnectionsView()
+                case .requests: RequestsView()
                 case .logs: LogsView()
+                case .dns: DNSView()
                 case .agent: AgentView()
                 }
             }

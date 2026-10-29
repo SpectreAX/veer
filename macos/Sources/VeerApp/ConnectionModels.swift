@@ -49,6 +49,13 @@ struct ConnectionRow: Identifiable, Equatable {
     }
 }
 
+/// A connection that has closed, for the requests page.
+struct ClosedRequest: Identifiable, Equatable {
+    let row: ConnectionRow
+    let closedAt: Date
+    var id: String { row.id }
+}
+
 /// One line of the core's log.
 struct LogEntry: Identifiable, Equatable {
     let id = UUID()

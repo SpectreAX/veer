@@ -13,8 +13,14 @@ struct AgentView: View {
             ThreadList()
                 .frame(width: Metrics.sidebarWidth)
             Divider()
-            conversation
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            VStack(spacing: 0) {
+                if !proxy.suggestions.isEmpty {
+                    SuggestionCards().padding(Spacing.lg)
+                    Divider()
+                }
+                conversation
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .overlay(alignment: .bottom) {
             if let toast = agent.toast {

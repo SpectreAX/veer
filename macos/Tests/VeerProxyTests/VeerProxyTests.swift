@@ -604,3 +604,35 @@ struct BackupTests {
         #expect(!all.contains("1.1.1.3") && !all.contains("password: x"))
     }
 }
+
+struct SuggestionTests {
+    @Test func failuresMatchesAndTimeoutsCrossTheirThresholdsOnce() {
+        var detector = SuggestionDetector()
+        let t = Date(timeIntervalSince1970: 1_800_000_000)
+        #expect(detector.connectionFailed(host: "a.com", at: t) == nil)
+        #expect(detector.connectionFailed(host: "a.com", at: t.addingTimeInterval(60)) == nil)
+        #expect(detector.connectionFailed(host: "a.com", at: t.addingTimeInterval(120))?.kind == .failing(host: "a.com", count: 3))
+        #expect(detector.connectionFailed(host: "a.com", at: t.addingTimeInterval(130)) == nil)
+        // Old failures fall out of the five-minute window.
+        #expect(detector.connectionFailed(host: "b.com", at: t) == nil)
+        #expect(detector.connectionFailed(host: "b.com", at: t.addingTimeInterval(200)) == nil)
+        #expect(detector.connectionFailed(host: "b.com", at: t.addingTimeInterval(400)) == nil)
+        for i in 0..<4 { #expect(detector.matchedFinalRule(host: "c.com", at: t.addingTimeInterval(Double(i))) == nil) }
+        #expect(detector.matchedFinalRule(host: "c.com", at: t.addingTimeInterval(5)) != nil)
+        #expect(detector.tested(node: "HK", in: "Proxy", delay: 0) == nil)
+        #expect(detector.tested(node: "HK", in: "Proxy", delay: 0)?.kind == .slowNode(group: "Proxy", node: "HK"))
+        #expect(detector.tested(node: "JP", in: "Proxy", delay: 0) == nil)
+        #expect(detector.tested(node: "JP", in: "Proxy", delay: 90) == nil)
+        #expect(detector.tested(node: "JP", in: "Proxy", delay: 0) == nil)
+    }
+
+    @Test func ignoredHostsStayQuiet() {
+        var detector = SuggestionDetector(ignoredHosts: ["a.com"])
+        for _ in 0..<5 { #expect(detector.connectionFailed(host: "a.com") == nil) }
+    }
+
+    @Test func readsTheFailedHostFromALogLine() {
+        #expect(SuggestionDetector.failedHost(inLog: "[TCP] dial 节点选择 (match RuleSet/openai) 127.0.0.1:52361(Safari) --> chatgpt.com:443 error: i/o timeout") == "chatgpt.com")
+        #expect(SuggestionDetector.failedHost(inLog: "[TCP] 127.0.0.1:1(git) --> api.github.com:443 match DomainSuffix(github.com) using Proxy") == nil)
+    }
+}
