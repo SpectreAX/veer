@@ -108,9 +108,11 @@ public struct EditorEngine: Sendable {
 
     public func run(_ request: Request, progress: @Sendable (Progress) async -> Void) async throws -> Output {
         await progress(.started(0))
-        if LocalIntentParser.isOutOfScope(request.prompt) {
+        // Switching nodes and testing delays are out of scope for an editor; in Veer the AI can do
+        // them as runtime actions, and only local parsing cannot.
+        if LocalIntentParser.isOutOfScope(request.prompt) && (!request.runtime || !request.useAI) {
             await progress(.finished(0, detail: "超出编辑范围"))
-            return .outOfScope(LocalIntentParser.outOfScopeMessage)
+            return .outOfScope(request.runtime ? LocalIntentParser.runtimeNeedsAIMessage : LocalIntentParser.outOfScopeMessage)
         }
         let hints = await lookup?.hints(for: request.prompt, exitNames: request.draft.targets.map(\.name))
         if let hints { await progress(.lookedUp(hints)) }

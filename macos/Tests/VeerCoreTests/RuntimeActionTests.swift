@@ -58,6 +58,29 @@ struct RuntimeActionTests {
         #expect(SystemPrompt.build(config: "rules: []", search: true, runtime: true).contains("五选一"))
     }
 
+    /// "换到延迟最低的节点" used to stop at the editor's out-of-scope check before the AI saw it.
+    @Test func switchingNodesReachesTheAIInVeer() async throws {
+        let draft = try ConfigDocument.parse(Self.config)
+        let ai = try #require(draft.target(named: "AI"))
+        let transport = UnderstandingAndRepairTests.Scripted([
+            #"{"understanding":"AI 策略组换到延迟最低的节点","runtime":{"actions":[{"kind":"select_fastest","groupId":"\#(ai.id)"}]}}"#,
+        ])
+        let engine = EditorEngine(ai: AIClient(transport: transport), validator: UnderstandingAndRepairTests.Pass(),
+                                  verifier: UnderstandingAndRepairTests.Verified())
+        var request = EditorEngine.Request(prompt: "“AI”换到延迟最低的节点", draft: draft, regions: [:], useAI: true, settings: AISettings(), apiKey: "k")
+        request.runtime = true
+        guard case .runtime(let steps) = try await engine.run(request, progress: { _ in }) else { Issue.record("expected runtime"); return }
+        #expect(steps == [.selectFastest(group: "AI", regions: [])])
+
+        // The editor, and Veer without the AI, still say what they cannot do.
+        request.runtime = false
+        guard case .outOfScope = try await engine.run(request, progress: { _ in }) else { Issue.record("expected out of scope"); return }
+        request.runtime = true
+        request.useAI = false
+        guard case .outOfScope(let message) = try await engine.run(request, progress: { _ in }) else { Issue.record("expected out of scope"); return }
+        #expect(message == LocalIntentParser.runtimeNeedsAIMessage)
+    }
+
     @Test func repliesFollowTheInterfaceLanguage() {
         #expect(!SystemPrompt.build(config: "rules: []").contains("# 回复语言"))
         let english = SystemPrompt.build(config: "rules: []", replyLanguage: "English")

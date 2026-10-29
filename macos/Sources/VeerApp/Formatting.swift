@@ -2,17 +2,18 @@ import Foundation
 import SwiftUI
 
 enum Format {
-    /// Bytes per second as `1.2 MB/s`; nothing reads `0 bytes/s`, not "Zero KB/s".
+    /// Bytes per second as `1.2 MB/s`, with the same English units in every language (the
+    /// system's would read "字节/s" in Chinese).
     static func rate(_ bytes: Int64) -> String {
-        rateFormatter.string(fromByteCount: bytes) + "/s"
+        let units = ["B", "KB", "MB", "GB", "TB"]
+        var value = Double(max(0, bytes)), unit = 0
+        while value >= 1024, unit < units.count - 1 {
+            value /= 1024
+            unit += 1
+        }
+        let number = unit == 0 || value >= 100 ? String(Int(value.rounded())) : String(format: "%.1f", value)
+        return "\(number) \(units[unit])/s"
     }
-
-    private static let rateFormatter: ByteCountFormatter = {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .binary
-        formatter.allowsNonnumericFormatting = false
-        return formatter
-    }()
 
     static func delay(_ delay: Int?) -> String {
         switch delay {

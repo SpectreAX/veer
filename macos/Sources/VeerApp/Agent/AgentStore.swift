@@ -543,7 +543,9 @@ final class AgentStore {
             return (String(localized: "“\(group)”已切换到 \(node)"), previous.map { .select(group: group, node: $0) })
         case let .selectFastest(group, regions):
             let delays = try await proxy.testNow(group)
-            let members = try await proxy.liveGroup(group).members.map(\.name)
+            // Real nodes only: DIRECT and nested groups would always look fastest.
+            let members = try await proxy.liveGroup(group).members
+                .filter { !$0.isGroup && !ConfigDocument.builtinPolicies.contains($0.name) }.map(\.name)
             let candidates = members.filter { name in
                 guard let delay = delays[name], delay > 0 else { return false }
                 return regions.isEmpty || regions.contains(Region.infer(from: name))

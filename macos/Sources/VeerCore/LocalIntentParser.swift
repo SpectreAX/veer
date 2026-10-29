@@ -95,6 +95,9 @@ public enum LocalIntentParser {
 
     public static let outOfScopeMessage = "我只编辑分流规则，不能测速、启动 VPN 或切换运行中的节点。你可以指定一个出口，例如“YouTube 走香港”。"
 
+    /// Veer with local parsing: runtime actions need the AI.
+    public static let runtimeNeedsAIMessage = "本地解析不能切换节点或测速。开启 AI 解析后可以用一句话完成，也可以在“代理”页手动切换。"
+
     /// True when the instruction asks for something outside rule editing. Checked before any AI call.
     public static func isOutOfScope(_ prompt: String) -> Bool { prompt.matches(outOfScopePattern) }
 
