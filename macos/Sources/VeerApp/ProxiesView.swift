@@ -47,6 +47,7 @@ struct ProxiesView: View {
 
 private struct GroupSection: View {
     @Environment(ProxyStore.self) private var store
+    @Environment(AgentStore.self) private var agent
     let group: ProxyStore.Group
     private let columns = [GridItem(.adaptive(minimum: 180), spacing: Spacing.sm)]
 
@@ -62,6 +63,13 @@ private struct GroupSection: View {
                 if store.testingGroups.contains(group.name) {
                     ProgressView().controlSize(.small)
                 }
+                Menu {
+                    Button("换到延迟最低的节点") { ask(String(localized: "“\(group.name)”换到延迟最低的节点")) }
+                    Button("哪些网站走这个策略组？") { ask(String(localized: "哪些网站走“\(group.name)”？")) }
+                    Button("问 AI…") { ask(String(localized: "关于策略组“\(group.name)”：")) }
+                } label: { Label("问 AI", systemImage: "sparkles") }
+                .menuStyle(.borderlessButton).fixedSize().neutralControl()
+                .help("让 Agent 处理这个策略组")
                 Button("测速") { store.testDelay(group.name) }
                     .secondaryAction()
                     .disabled(store.testingGroups.contains(group.name))
@@ -72,10 +80,19 @@ private struct GroupSection: View {
                     NodeTile(member: member, selected: member.name == group.now, selectable: group.isSelectable) {
                         store.select(member.name, in: group.name)
                     }
+                    .contextMenu {
+                        Button("问 AI…") { ask(String(localized: "关于节点“\(member.name)”（在“\(group.name)”里）：")) }
+                    }
                 }
             }
         }
         .panel()
+    }
+
+    /// Opens the Agent page with `text` in the composer, in a conversation about this profile.
+    private func ask(_ text: String) {
+        store.page = .agent
+        agent.ask(text)
     }
 
     static func typeLabel(_ type: String) -> String {

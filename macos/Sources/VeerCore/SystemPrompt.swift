@@ -87,6 +87,16 @@ public enum SystemPrompt {
 
     public static let askForExit = "请告诉我这些流量走哪个出口。可以在输入框输入 @ 选择策略组或节点；直连和拦截不需要选择。"
 
+    /// When the interface is not in Chinese: what the user reads comes in their language.
+    static func languageSection(_ language: String) -> String {
+        """
+        # 回复语言
+
+        用户界面的语言是 \(language)。understanding、clarification、options 的 label 和 prompt 都用这种语言写；JSON 字段名、规则、域名和出口标签保持原样。
+
+        """
+    }
+
     /// Added when Veer runs the core: actions on its running state, and explaining routes.
     static let runtimeSection = """
     # 运行状态
@@ -112,7 +122,8 @@ public enum SystemPrompt {
     /// `search`: the user allowed web search, so the model may ask Veer to look things up.
     /// `runtime`: Veer runs the core, so the model may switch nodes and the mode, test delays and
     /// close connections instead of only editing the config.
-    public static func build(config: String, search: Bool = false, mode: ExecutionMode = .manual, runtime: Bool = false) -> String {
+    public static func build(config: String, search: Bool = false, mode: ExecutionMode = .manual, runtime: Bool = false,
+                             replyLanguage: String? = nil) -> String {
         let formatCount = ["三", "四", "五"][(search ? 1 : 0) + (runtime ? 1 : 0)]
         let runtimeFormat = "\(search ? 5 : 4). 运行状态操作：{\"understanding\":\"…\",\"runtime\":{\"actions\":[…]}}，见下方“运行状态”。\n"
         return """
@@ -204,7 +215,7 @@ public enum SystemPrompt {
         之前的用户与助手消息属于同一个编辑会话。像“那就走香港”“用策略组2”这样的简短追问，要结合之前提到的服务或域名，返回一个完整计划。对已写入草稿的修改不要重复，除非用户要求。
         只有本次请求里确实带着之前的用户与助手消息时才这样结合；下面的“示例”不是会话历史，里面的服务不是用户说过的。没有之前的消息、指令只有出口而没有对象（例如“走日本”“用策略组2”）时，不要自己挑选服务，返回澄清，问用户要让哪些服务或域名走那里。
 
-        \(search ? searchSection : "")\(lookupSection)\(diagnoseSection)\(runtime ? runtimeSection : "")\(mode.promptSection)# 何时澄清而不是修改
+        \(search ? searchSection : "")\(lookupSection)\(diagnoseSection)\(runtime ? runtimeSection : "")\(replyLanguage.map(languageSection) ?? "")\(mode.promptSection)# 何时澄清而不是修改
 
         · “排除 / 不要 / 除了 + 地区”是可执行的：用操作 E 的 excludeRegions。只有用户说“不要走某个具体出口”而没有任何替代线索时才澄清。
         · 同一匹配值的冲突修改、组合需求里有无法支持的部分：对整个需求澄清，不要返回部分计划。

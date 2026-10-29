@@ -163,6 +163,12 @@ final class AgentStore {
 
     // MARK: Conversations
 
+    /// The interface language by name when it is not Chinese, so the AI answers in it.
+    static var replyLanguage: String? {
+        guard let code = Bundle.main.preferredLocalizations.first, !code.hasPrefix("zh") else { return nil }
+        return Locale(identifier: "en").localizedString(forIdentifier: code) ?? code
+    }
+
     /// A new conversation about the profile in use.
     func newThread() {
         guard let profile = proxy.activeProfile, let text = try? proxy.effectiveText(of: profile.id) else { return }
@@ -224,6 +230,7 @@ final class AgentStore {
         request.mode = turn.executionMode ?? .manual
         // Changes to the running core only make sense for the profile it runs.
         request.runtime = session.profileID == proxy.activeProfileID
+        request.replyLanguage = Self.replyLanguage
         let proxy = proxy
         request.liveConnections = { domains in await proxy.connectionSummary(for: domains) }
         if useAI { turn.sentPayload = EditorEngine.payload(for: request) }

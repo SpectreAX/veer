@@ -54,6 +54,8 @@ public struct EditorEngine: Sendable {
         public var mode: ExecutionMode = .manual
         /// Veer runs the core: the model may switch nodes and the mode instead of only editing.
         public var runtime = false
+        /// The language the user reads replies in, when not Chinese (for example "English").
+        public var replyLanguage: String?
         /// Veer: how the running core routed recent connections to these domains, in words with
         /// real names; added to a check's results so "why did X go through the proxy" has facts.
         public var liveConnections: (@Sendable ([String]) async -> String?)?
@@ -121,7 +123,8 @@ public struct EditorEngine: Sendable {
 
         let anonymized = AnonymizedConfig.make(document: request.draft, regions: request.regions, shareRuleLiterals: request.shareRuleLiterals,
                                                 instruction: request.prompt)
-        let system = SystemPrompt.build(config: anonymized.yaml, search: request.search != nil, mode: request.mode, runtime: request.runtime)
+        let system = SystemPrompt.build(config: anonymized.yaml, search: request.search != nil, mode: request.mode, runtime: request.runtime,
+                                        replyLanguage: request.replyLanguage)
         // Lookup results travel with the instruction (and are anonymized with it).
         let prompt = anonymized.context.anonymize(request.prompt + (hints.map { "\n\n" + $0.message } ?? ""))
         let model = request.settings.modelLabel

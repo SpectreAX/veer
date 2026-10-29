@@ -511,3 +511,14 @@
 "会删除本机保存的全部对话；已经应用的修改仍在“我的分流”里。" = "Every conversation saved on this Mac is deleted. Applied changes stay in My Routing.";
 "%@，已接受" = "%@, accepted";
 "%@，已拒绝" = "%@, rejected";
+
+/* Ask AI */
+"换到延迟最低的节点" = "Switch to the Fastest Node";
+"哪些网站走这个策略组？" = "Which Sites Use This Group?";
+"问 AI…" = "Ask AI…";
+"问 AI" = "Ask AI";
+"让 Agent 处理这个策略组" = "Let Agent handle this group";
+"“%@”换到延迟最低的节点" = "Switch “%@” to its fastest node";
+"哪些网站走“%@”？" = "Which sites go through “%@”?";
+"关于策略组“%@”：" = "About the group “%@”: ";
+"关于节点“%@”（在“%@”里）：" = "About the node “%1$@” (in “%2$@”): ";

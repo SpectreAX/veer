@@ -58,6 +58,12 @@ struct RuntimeActionTests {
         #expect(SystemPrompt.build(config: "rules: []", search: true, runtime: true).contains("五选一"))
     }
 
+    @Test func repliesFollowTheInterfaceLanguage() {
+        #expect(!SystemPrompt.build(config: "rules: []").contains("# 回复语言"))
+        let english = SystemPrompt.build(config: "rules: []", replyLanguage: "English")
+        #expect(english.contains("# 回复语言") && english.contains("English"))
+    }
+
     @Test func runsKnowWhenTheyCanBeUndone() {
         var run = RuntimeRun(steps: [.select(group: "AI", node: "a"), .test(group: "AI")])
         #expect(!run.finished && !run.canUndo)
