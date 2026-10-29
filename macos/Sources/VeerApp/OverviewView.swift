@@ -53,6 +53,12 @@ struct OverviewView: View {
                     Text("代理端口").foregroundStyle(.secondary)
                     Text(verbatim: "127.0.0.1:\(store.proxyPort)").font(Typography.code).textSelection(.enabled)
                 }
+                if store.isRunning, store.showExitIP {
+                    GridRow {
+                        Text("出口").foregroundStyle(.secondary)
+                        exitLine
+                    }
+                }
             }
             Divider()
             HStack(spacing: Spacing.md) {
@@ -69,6 +75,29 @@ struct OverviewView: View {
             }
         }
         .panel()
+    }
+
+    /// Where traffic leaves: flag, country, address and network, with a way to check again.
+    private var exitLine: some View {
+        HStack(spacing: Spacing.sm) {
+            if let exit = store.exit, !exit.ip.isEmpty {
+                Text(verbatim: [exit.flag, exit.country].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " "))
+                Text(exit.ip).font(Typography.code).textSelection(.enabled)
+                if let organization = exit.organization {
+                    Text(organization).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail)
+                }
+            } else if store.exit == .unknown {
+                Text("无法检测出口").foregroundStyle(.secondary)
+            } else {
+                ProgressView().controlSize(.small)
+                Text("正在检测…").foregroundStyle(.secondary)
+            }
+            Button { store.checkExit() } label: { Image(systemName: "arrow.clockwise") }
+                .buttonStyle(.borderless)
+                .help("重新检测出口")
+                .accessibilityLabel(String(localized: "重新检测出口"))
+        }
+        .onAppear { if store.exit == nil { store.checkExit() } }
     }
 
     private func failurePanel(_ message: String, _ log: [String]) -> some View {

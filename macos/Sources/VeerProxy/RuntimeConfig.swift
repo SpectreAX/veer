@@ -4,15 +4,46 @@ import Yams
 
 /// What the user sets for the running core, on top of any profile.
 public struct RuntimeSettings: Sendable, Equatable, Codable {
+    /// How the core answers DNS: fake IPs (fast, needed for TUN) or real ones.
+    public enum DNSMode: String, Sendable, Codable, CaseIterable {
+        case fakeIP = "fake-ip", redirHost = "redir-host"
+    }
+
     /// One port for HTTP and SOCKS; the system proxy points here.
     public var mixedPort = 7890
     public var allowLAN = false
     public var logLevel = "info"
+    public var ipv6 = false
+    /// Match rules by the process that opened a connection, and show it on the connections page.
+    public var processMatching = true
+    /// Reject QUIC (UDP 443) so browsers fall back to TCP, which proxies better.
+    public var disableQUIC = false
+    public var dnsMode = DNSMode.fakeIP
+    public var dnsServers = RuntimeSettings.defaultDNSServers
+    /// Keep a profile's own `dns` section; Veer's DNS settings apply only to profiles without one.
+    public var preferProfileDNS = true
+
+    public static let defaultDNSServers = ["https://dns.alidns.com/dns-query", "https://doh.pub/dns-query"]
 
     public init(mixedPort: Int = 7890, allowLAN: Bool = false, logLevel: String = "info") {
         self.mixedPort = mixedPort
         self.allowLAN = allowLAN
         self.logLevel = logLevel
+    }
+
+    /// Settings saved by an older Veer lack the newer fields; they take their defaults.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = RuntimeSettings()
+        mixedPort = try container.decodeIfPresent(Int.self, forKey: .mixedPort) ?? defaults.mixedPort
+        allowLAN = try container.decodeIfPresent(Bool.self, forKey: .allowLAN) ?? defaults.allowLAN
+        logLevel = try container.decodeIfPresent(String.self, forKey: .logLevel) ?? defaults.logLevel
+        ipv6 = try container.decodeIfPresent(Bool.self, forKey: .ipv6) ?? defaults.ipv6
+        processMatching = try container.decodeIfPresent(Bool.self, forKey: .processMatching) ?? defaults.processMatching
+        disableQUIC = try container.decodeIfPresent(Bool.self, forKey: .disableQUIC) ?? defaults.disableQUIC
+        dnsMode = try container.decodeIfPresent(DNSMode.self, forKey: .dnsMode) ?? defaults.dnsMode
+        dnsServers = try container.decodeIfPresent([String].self, forKey: .dnsServers) ?? defaults.dnsServers
+        preferProfileDNS = try container.decodeIfPresent(Bool.self, forKey: .preferProfileDNS) ?? defaults.preferProfileDNS
     }
 }
 
@@ -45,11 +76,21 @@ public enum RuntimeConfig {
         set("secret", Node(secret, Tag(.str), .doubleQuoted))
         // Keep the user's node choices and fake-IP mappings across restarts.
         set("profile", Node([(Node("store-selected"), Node("true", Tag(.bool))), (Node("store-fake-ip"), Node("true", Tag(.bool)))]))
+        set("ipv6", Node(settings.ipv6 ? "true" : "false", Tag(.bool)))
+        set("find-process-mode", Node(settings.processMatching ? "strict" : "off", Tag(.str), .doubleQuoted))
         // A DNS listener is only for TUN or redirection, and port 53 needs root: without it the
         // core would fail to start as the user. The rest of `dns` (resolvers, fake-IP) applies.
-        if case .mapping(var dns)? = mapping[Node("dns")] {
+        if case .mapping(var dns)? = mapping[Node("dns")], settings.preferProfileDNS {
             dns[Node("listen")] = nil
             set("dns", .mapping(dns))
+        } else {
+            set("dns", dnsSection(settings))
+        }
+        if settings.disableQUIC {
+            // First, so no rule sends QUIC to a proxy before it.
+            var rules: [Node] = []
+            if case .sequence(let existing)? = mapping[Node("rules")] { rules = Array(existing) }
+            set("rules", Node([Node(quicRule)] + rules.filter { $0.string != quicRule }))
         }
         // Geodata is downloaded on the first start, before the proxy works; GitHub is often
         // unreachable then, so use the jsDelivr mirror unless the profile names its own.
@@ -57,6 +98,31 @@ public enum RuntimeConfig {
             set("geox-url", Node(geodataMirrors.map { (Node($0.key), Node($0.url)) }))
         }
         return ConfigImporter.readableUnicode(try Yams.serialize(node: .mapping(mapping), allowUnicode: true))
+    }
+
+    /// UDP to port 443 is QUIC (HTTP/3); rejecting it makes browsers retry over TCP.
+    static let quicRule = "AND,((NETWORK,UDP),(DST-PORT,443)),REJECT"
+
+    /// Hosts that must get real addresses: the local network, Apple push, time servers and game
+    /// consoles break with fake ones.
+    static let fakeIPFilter = ["*.lan", "*.local", "+.push.apple.com", "time.*.com", "ntp.*.com", "+.ntp.org",
+                               "+.xboxlive.com", "+.playstation.net", "+.nintendo.net"]
+
+    /// Veer's DNS for profiles without their own: encrypted upstreams, also used to resolve the
+    /// proxy servers themselves.
+    static func dnsSection(_ settings: RuntimeSettings) -> Node {
+        let servers = Node(settings.dnsServers.map { Node($0) })
+        var pairs: [(Node, Node)] = [
+            (Node("enable"), Node("true", Tag(.bool))),
+            (Node("ipv6"), Node(settings.ipv6 ? "true" : "false", Tag(.bool))),
+            (Node("enhanced-mode"), Node(settings.dnsMode.rawValue)),
+        ]
+        if settings.dnsMode == .fakeIP {
+            pairs.append((Node("fake-ip-range"), Node("198.18.0.1/16")))
+            pairs.append((Node("fake-ip-filter"), Node(fakeIPFilter.map { Node($0) })))
+        }
+        pairs += [(Node("nameserver"), servers), (Node("proxy-server-nameserver"), servers)]
+        return Node(pairs)
     }
 
     /// The config to export with Veer's overrides written in: what `build` makes, without the

@@ -254,3 +254,66 @@ struct ProxySnapshotTests {
         #expect(StateStore(paths: VeerPaths(root: root)).load() == state)
     }
 }
+
+struct RuntimeOverrideTests {
+    static func config(_ settings: RuntimeSettings, profile: String = RuntimeConfigTests.profile) throws -> [String: Any] {
+        let yaml = try RuntimeConfig.build(profile: profile, settings: settings, controllerPort: 1, secret: "s")
+        return try #require(try Yams.load(yaml: yaml) as? [String: Any])
+    }
+
+    @Test func ipv6AndProcessMatchingFollowSettings() throws {
+        var settings = RuntimeSettings()
+        #expect(try Self.config(settings)["ipv6"] as? Bool == false)
+        #expect(try Self.config(settings)["find-process-mode"] as? String == "strict")
+        settings.ipv6 = true
+        settings.processMatching = false
+        #expect(try Self.config(settings)["ipv6"] as? Bool == true)
+        #expect(try Self.config(settings)["find-process-mode"] as? String == "off")
+    }
+
+    @Test func disablingQUICPutsOneRejectRuleFirst() throws {
+        var settings = RuntimeSettings()
+        #expect(try (Self.config(settings)["rules"] as? [String]) == ["MATCH,节点选择"])
+        settings.disableQUIC = true
+        let rules = try #require(try Self.config(settings)["rules"] as? [String])
+        #expect(rules == [RuntimeConfig.quicRule, "MATCH,节点选择"])
+        // Building on a config that already has it does not add a second one.
+        let again = try RuntimeConfig.build(profile: RuntimeConfig.build(profile: RuntimeConfigTests.profile, settings: settings, controllerPort: 1, secret: "s"),
+                                            settings: settings, controllerPort: 1, secret: "s")
+        #expect((try Yams.load(yaml: again) as? [String: Any])?["rules"] as? [String] == rules)
+    }
+
+    @Test func aProfilesOwnDNSWinsUnlessTheUserSaysOtherwise() throws {
+        var settings = RuntimeSettings()
+        let own = try #require(try Self.config(settings)["dns"] as? [String: Any])
+        #expect(own["nameserver"] as? [String] == ["223.5.5.5"] && own["listen"] == nil)
+        settings.preferProfileDNS = false
+        let veer = try #require(try Self.config(settings)["dns"] as? [String: Any])
+        #expect(veer["nameserver"] as? [String] == RuntimeSettings.defaultDNSServers)
+        #expect(veer["enhanced-mode"] as? String == "fake-ip" && (veer["fake-ip-filter"] as? [String])?.contains("+.push.apple.com") == true)
+    }
+
+    @Test func profilesWithoutDNSGetVeersAndRedirHostHasNoFakeRange() throws {
+        var settings = RuntimeSettings()
+        settings.dnsMode = .redirHost
+        settings.dnsServers = ["https://1.1.1.1/dns-query"]
+        let dns = try #require(try Self.config(settings, profile: "rules: [MATCH,DIRECT]")["dns"] as? [String: Any])
+        #expect(dns["enhanced-mode"] as? String == "redir-host" && dns["fake-ip-range"] == nil)
+        #expect(dns["proxy-server-nameserver"] as? [String] == ["https://1.1.1.1/dns-query"])
+    }
+
+    @Test func settingsSavedBeforeTheNewFieldsStillLoad() throws {
+        let old = try JSONDecoder().decode(RuntimeSettings.self, from: Data(#"{"mixedPort":7899,"allowLAN":true,"logLevel":"debug"}"#.utf8))
+        #expect(old.mixedPort == 7899 && old.allowLAN && old.logLevel == "debug")
+        #expect(old.processMatching && !old.disableQUIC && old.dnsMode == .fakeIP && old.preferProfileDNS)
+    }
+
+    @Test(.enabled(if: CoreProcessTests.binary != nil)) func everyOverridePassesMihomo() async throws {
+        var settings = RuntimeSettings()
+        settings.ipv6 = true
+        settings.disableQUIC = true
+        settings.preferProfileDNS = false
+        let yaml = try RuntimeConfig.build(profile: RuntimeConfigTests.profile, settings: settings, controllerPort: 1, secret: "s")
+        #expect(await MihomoValidator(binary: CoreProcessTests.binary).validate(yaml).status == .passed)
+    }
+}

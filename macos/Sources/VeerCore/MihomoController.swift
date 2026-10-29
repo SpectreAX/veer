@@ -104,6 +104,41 @@ public struct MihomoController: Sendable {
     }
 
     /// The core's open connections (`GET /connections`); closed ones are gone from it.
+    public func closeAllConnections() async throws {
+        try await expectNoContent(request("DELETE", "/connections"))
+    }
+
+    /// One line of the core's log.
+    public struct LogLine: Sendable, Equatable, Decodable {
+        /// debug, info, warning or error.
+        public let type: String
+        public let payload: String
+    }
+
+    /// The core's log from now on, at `level` and above, until cancelled or the core stops.
+    public func logs(level: String) -> AsyncThrowingStream<LogLine, Error> {
+        var stream = request("GET", "/logs", query: ["level": level])
+        stream.timeoutInterval = 60 * 60 * 24
+        let request = stream
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                    guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+                        throw EditorError(String(localized: "控制器返回了无法识别的响应。"))
+                    }
+                    for try await line in bytes.lines {
+                        if let entry = try? JSONDecoder().decode(LogLine.self, from: Data(line.utf8)) { continuation.yield(entry) }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
     public func closeConnection(_ id: String) async throws {
         try await expectNoContent(request("DELETE", "/connections/\(id)"))
     }

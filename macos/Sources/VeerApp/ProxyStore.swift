@@ -74,7 +74,28 @@ final class ProxyStore {
     var importing = false
     var importError: String?
 
-    var settings: RuntimeSettings { didSet { saveSettings() } }
+    var settings: RuntimeSettings {
+        didSet {
+            saveSettings()
+            // The port takes effect at the next start; everything else reloads into the running core.
+            var withoutPort = settings, before = oldValue
+            withoutPort.mixedPort = 0
+            before.mixedPort = 0
+            guard isRunning, withoutPort != before else { return }
+            settingsReload?.cancel()
+            settingsReload = Task {
+                try? await Task.sleep(for: .milliseconds(600))
+                guard !Task.isCancelled else { return }
+                await reloadRunningCore()
+                if settings.logLevel != oldValue.logLevel { startLogs() }
+            }
+        }
+    }
+    @ObservationIgnored private var settingsReload: Task<Void, Never>?
+    /// Where traffic leaves the proxy: shown on the overview while the core runs.
+    var exit: ExitInfo?
+    var showExitIP: Bool { didSet { defaults.set(showExitIP, forKey: "showExitIP"); if !showExitIP { exit = nil } } }
+    @ObservationIgnored private var exitCheck: Task<Void, Never>?
     /// Start the core, the system proxy and the mode as they were when Veer last quit.
     var restoreLastState: Bool { didSet { defaults.set(restoreLastState, forKey: "restoreLastState") } }
     var showRateInMenuBar: Bool { didSet { defaults.set(showRateInMenuBar, forKey: "showRateInMenuBar") } }
@@ -103,6 +124,18 @@ final class ProxyStore {
     @ObservationIgnored private var runningPort: Int?
     var proxyPort: Int { runningPort ?? settings.mixedPort }
     @ObservationIgnored private var trafficTask: Task<Void, Never>?
+    @ObservationIgnored private var logTask: Task<Void, Never>?
+    @ObservationIgnored private var connectionsTask: Task<Void, Never>?
+    /// The previous poll's byte counts, for per-connection speeds.
+    @ObservationIgnored private var lastConnectionBytes: [String: (upload: Int64, download: Int64)] = [:]
+
+    /// Live connections, newest first, while the connections page is open.
+    var connections: [ConnectionRow] = []
+    var connectionsPaused = false
+    /// The core's log while it runs, oldest first, at most `logLimit` lines.
+    var logs: [LogEntry] = []
+    var logsPaused = false
+    static let logLimit = 2000
     @ObservationIgnored private var lastTotals: (upload: Int64, download: Int64)?
     @ObservationIgnored private var state: ProxyState { didSet { if state != oldValue { stateStore.save(state) } } }
     @ObservationIgnored private var pathMonitor: NWPathMonitor?
@@ -118,6 +151,7 @@ final class ProxyStore {
         settings = defaults.data(forKey: "runtimeSettings").flatMap { try? JSONDecoder().decode(RuntimeSettings.self, from: $0) } ?? RuntimeSettings()
         restoreLastState = defaults.object(forKey: "restoreLastState") as? Bool ?? true
         showRateInMenuBar = defaults.bool(forKey: "showRateInMenuBar")
+        showExitIP = defaults.object(forKey: "showExitIP") as? Bool ?? true
         state = stateStore.load()
         profiles = profileStore.loadAll()
         activeProfileID = defaults.string(forKey: "activeProfile").flatMap(UUID.init(uuidString:)).flatMap { id in profiles.contains { $0.id == id } ? id : nil }
@@ -228,6 +262,8 @@ final class ProxyStore {
                 // The mode and system proxy the user last chose come back with the core.
                 if let saved = state.mode.flatMap(Mode.init(rawValue:)), saved != mode { setMode(saved) }
                 startTraffic()
+                startLogs()
+                checkExit()
                 if state.systemProxy { setSystemProxy(true) }
             } catch {
                 core?.stop()
@@ -247,6 +283,8 @@ final class ProxyStore {
         state.running = false
         if systemProxyOn { setSystemProxy(false) }
         trafficTask?.cancel()
+        logTask?.cancel()
+        connectionsTask?.cancel()
         core?.stop()
         core = nil
         controller = nil
@@ -269,6 +307,8 @@ final class ProxyStore {
         guard core != nil else { return }
         if systemProxyOn { restoreSystemProxy() }
         trafficTask?.cancel()
+        logTask?.cancel()
+        connectionsTask?.cancel()
         core = nil
         controller = nil
         controllerAccess = nil
@@ -310,6 +350,7 @@ final class ProxyStore {
         Task {
             do { try await controller.select(member, in: group) } catch { notice = message(for: error) }
             await refresh()
+            checkExit(after: .milliseconds(500))
         }
     }
 
@@ -332,6 +373,7 @@ final class ProxyStore {
                 try await controller.setMode(mode.rawValue)
                 self.mode = mode
                 state.mode = mode.rawValue
+                checkExit(after: .milliseconds(500))
             } catch { notice = message(for: error) }
         }
     }
@@ -404,6 +446,101 @@ final class ProxyStore {
         }
     }
 
+    // MARK: Exit IP
+
+    /// Asks a public IP service, through Veer's own port, where traffic leaves; a second service
+    /// answers when the first fails. Runs again after a node or mode switch.
+    func checkExit(after delay: Duration = .zero) {
+        exitCheck?.cancel()
+        guard showExitIP, isRunning else { exit = nil; return }
+        let port = proxyPort
+        exitCheck = Task {
+            if delay > .zero { try? await Task.sleep(for: delay) }
+            guard !Task.isCancelled else { return }
+            exit = await ExitInfo.lookUp(throughPort: port) ?? ExitInfo.unknown
+        }
+    }
+
+    // MARK: Connections and logs
+
+    /// Polls `/connections` every second while `on` (the connections page is open).
+    func watchConnections(_ on: Bool) {
+        connectionsTask?.cancel()
+        guard on else { return }
+        connectionsTask = Task {
+            while !Task.isCancelled {
+                if !connectionsPaused, let controller, let list = try? await controller.connections() {
+                    var rows: [ConnectionRow] = []
+                    var bytes: [String: (Int64, Int64)] = [:]
+                    for connection in list {
+                        let last = lastConnectionBytes[connection.id]
+                        rows.append(ConnectionRow(connection, uploadRate: last.map { max(0, connection.upload - $0.upload) } ?? 0,
+                                                  downloadRate: last.map { max(0, connection.download - $0.download) } ?? 0))
+                        bytes[connection.id] = (connection.upload, connection.download)
+                    }
+                    lastConnectionBytes = bytes.mapValues { (upload: $0.0, download: $0.1) }
+                    connections = rows.sorted { ($0.start ?? .distantPast) > ($1.start ?? .distantPast) }
+                } else if controller == nil {
+                    connections = []
+                }
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
+    }
+
+    func closeConnection(_ id: String) {
+        guard let controller else { return }
+        Task {
+            do { try await controller.closeConnection(id) } catch { notice = message(for: error) }
+            connections.removeAll { $0.id == id }
+        }
+    }
+
+    func closeAllConnections() {
+        guard let controller else { return }
+        Task {
+            do { try await controller.closeAllConnections() } catch { notice = message(for: error) }
+            connections = []
+        }
+    }
+
+    /// Streams the core's log for as long as it runs.
+    private func startLogs() {
+        logTask?.cancel()
+        guard let controller else { return }
+        let level = settings.logLevel
+        logTask = Task {
+            do {
+                for try await line in controller.logs(level: level) {
+                    guard !logsPaused else { continue }
+                    logs.append(LogEntry(level: line.type, message: line.payload))
+                    if logs.count > Self.logLimit { logs.removeFirst(logs.count - Self.logLimit) }
+                }
+            } catch {}
+        }
+    }
+
+    func clearLogs() { logs = [] }
+
+    /// Group and node names a manual rule can send traffic to: groups first, then built-ins.
+    func ruleTargets() -> [String] {
+        guard let id = activeProfileID, let text = try? effectiveText(of: id), let document = try? ConfigDocument.parse(text) else { return [] }
+        return document.targets.filter { $0.kind == .group }.map(\.name) + ["DIRECT", "REJECT"]
+    }
+
+    /// Adds `matchType,value,target` to the active profile's "my routing", at the top of the rules.
+    func addRule(matchType: String, value: String, target: String) throws {
+        guard let id = activeProfileID else { return }
+        let text = try effectiveText(of: id)
+        let document = try ConfigDocument.parse(text)
+        guard let exit = document.target(named: target) else { throw EditorError(String(localized: "找不到出口“\(target)”。")) }
+        let plan = EditPlan(operations: [.route(matchType: matchType, match: value, targetId: exit.id)])
+        let result = try PlanApplier.apply(plan, to: document)
+        let edit = RoutingLayer.Edit(source: .manual, prompt: String(localized: "\(value) 走 \(target)"), plan: plan,
+                                     accepted: Set(result.items.map(\.id)), items: result.items, base: text)
+        addEdit(edit, to: id)
+    }
+
     // MARK: Agent actions on the running core
 
     private func runningController() throws -> MihomoController {
@@ -429,6 +566,7 @@ final class ProxyStore {
         let previous = group.now
         try await controller.select(node, in: name)
         await refresh()
+        checkExit(after: .milliseconds(500))
         return previous
     }
 
@@ -447,6 +585,7 @@ final class ProxyStore {
         try await controller.setMode(mode.rawValue)
         self.mode = mode
         state.mode = mode.rawValue
+        checkExit(after: .milliseconds(500))
         return previous
     }
 

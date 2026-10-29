@@ -82,8 +82,8 @@ struct MainView: View {
                 case .overview: OverviewView()
                 case .proxies: ProxiesView()
                 case .profiles: ProfilesView()
-                case .connections: ComingLaterView(page: .connections, message: String(localized: "实时查看和关闭连接，以及为某个域名添加规则。"))
-                case .logs: ComingLaterView(page: .logs, message: String(localized: "内核的实时日志，可以筛选、搜索和暂停。"))
+                case .connections: ConnectionsView()
+                case .logs: LogsView()
                 case .agent: AgentView()
                 }
             }

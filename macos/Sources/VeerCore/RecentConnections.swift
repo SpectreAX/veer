@@ -26,16 +26,34 @@ extension MihomoController {
         /// The rule type as the core spells it (`RuleSet`, `DomainSuffix`, `Match`).
         public let rule: String
         public let rulePayload: String
+        /// Bytes so far in each direction.
+        public var upload: Int64 = 0
+        public var download: Int64 = 0
+        /// When the connection opened.
+        public var start: Date?
 
-        public init(id: String, metadata: Metadata, chains: [String], rule: String, rulePayload: String) {
+        public init(id: String, metadata: Metadata, chains: [String], rule: String, rulePayload: String,
+                    upload: Int64 = 0, download: Int64 = 0, start: Date? = nil) {
             self.id = id
             self.metadata = metadata
             self.chains = chains
             self.rule = rule
             self.rulePayload = rulePayload
+            self.upload = upload
+            self.download = download
+            self.start = start
         }
 
-        enum CodingKeys: String, CodingKey { case id, metadata, chains, rule, rulePayload }
+        enum CodingKeys: String, CodingKey { case id, metadata, chains, rule, rulePayload, upload, download, start }
+
+        /// The core writes times with fractional seconds and an offset (RFC 3339).
+        static func date(_ text: String) -> Date? {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = formatter.date(from: text) { return date }
+            formatter.formatOptions = [.withInternetDateTime]
+            return formatter.date(from: text)
+        }
 
         public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -44,6 +62,9 @@ extension MihomoController {
             chains = try container.decodeIfPresent([String].self, forKey: .chains) ?? []
             rule = try container.decodeIfPresent(String.self, forKey: .rule) ?? ""
             rulePayload = try container.decodeIfPresent(String.self, forKey: .rulePayload) ?? ""
+            upload = try container.decodeIfPresent(Int64.self, forKey: .upload) ?? 0
+            download = try container.decodeIfPresent(Int64.self, forKey: .download) ?? 0
+            start = try container.decodeIfPresent(String.self, forKey: .start).flatMap(Self.date)
         }
     }
 }

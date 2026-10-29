@@ -15,6 +15,19 @@ enum Format {
         return "\(number) \(units[unit])/s"
     }
 
+    /// A byte count as `3.2 MB`, with the same English units as speeds.
+    static func bytes(_ bytes: Int64) -> String {
+        String(rate(bytes).dropLast(2))
+    }
+
+    /// How long ago `start` was, as `42s`, `3m`, `1h 5m`.
+    static func duration(since start: Date, now: Date = .now) -> String {
+        let seconds = max(0, Int(now.timeIntervalSince(start)))
+        if seconds < 60 { return "\(seconds)s" }
+        if seconds < 3600 { return "\(seconds / 60)m" }
+        return "\(seconds / 3600)h \(seconds % 3600 / 60)m"
+    }
+
     static func delay(_ delay: Int?) -> String {
         switch delay {
         case nil: "—"
