@@ -68,11 +68,21 @@ public enum RuntimeConfig {
         ("asn", "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/GeoLite2-ASN.mmdb"),
     ]
 
-    public static func build(profile: String, settings: RuntimeSettings, controllerPort: Int, secret: String) throws -> String {
-        if let fast = try buildKeepingSections(profile: profile, settings: settings, controllerPort: controllerPort, secret: secret) {
+    /// `hot`: Veer's in-place rule sets (`HotRuleSets`), for the core Veer runs; never in exports.
+    public static func build(profile: String, settings: RuntimeSettings, controllerPort: Int, secret: String,
+                             hot: HotRuleSets? = nil) throws -> String {
+        if let fast = try buildKeepingSections(profile: profile, settings: settings, controllerPort: controllerPort, secret: secret, hot: hot) {
             return fast
         }
-        return try buildByParsing(profile: profile, settings: settings, controllerPort: controllerPort, secret: secret)
+        return try buildByParsing(profile: profile, settings: settings, controllerPort: controllerPort, secret: secret, hot: hot)
+    }
+
+    /// Rules Veer puts first, in order: the QUIC block, then the hot rule sets (single-quoted,
+    /// since a group name may hold characters YAML reads as syntax).
+    static func leadingRules(_ settings: RuntimeSettings, hot: HotRuleSets?, quoted: Bool) -> [String] {
+        var rules = settings.disableQUIC ? [quicRule] : []
+        rules += (hot?.rules ?? []).map { quoted ? "'" + $0.replacingOccurrences(of: "'", with: "''") + "'" : $0 }
+        return rules
     }
 
     /// Top-level keys Veer writes itself; the profile's own are dropped.
@@ -114,7 +124,8 @@ public enum RuntimeConfig {
     /// writes the keys Veer owns: parsing and writing a whole subscription of ten thousand lines
     /// took seconds on every reload. Nil when the text is not plain enough to cut safely
     /// (anchors and aliases, top-level flow style, documents), so the full parse handles it.
-    static func buildKeepingSections(profile: String, settings: RuntimeSettings, controllerPort: Int, secret: String) throws -> String? {
+    static func buildKeepingSections(profile: String, settings: RuntimeSettings, controllerPort: Int, secret: String,
+                                     hot: HotRuleSets? = nil) throws -> String? {
         guard let blocks = TopLevelBlocks(profile) else { return nil }
         var dns: Node?
         if settings.preferProfileDNS, let text = blocks["dns"] {
@@ -122,21 +133,35 @@ public enum RuntimeConfig {
             dns = section
         }
         var rules = blocks["rules"]
-        if settings.disableQUIC {
-            if let text = rules {
-                guard let withQUIC = TopLevelBlocks.prepending(quicRule, toSequence: text) else { return nil }
-                rules = withQUIC
+        let leading = leadingRules(settings, hot: hot, quoted: true)
+        if !leading.isEmpty {
+            if var text = rules {
+                for rule in leading.reversed() {
+                    guard let next = TopLevelBlocks.prepending(rule, toSequence: text) else { return nil }
+                    text = next
+                }
+                rules = text
             } else {
-                rules = "rules:\n  - \(quicRule)\n"
+                rules = "rules:\n" + leading.map { "  - \($0)\n" }.joined()
+            }
+        }
+        var providers = blocks["rule-providers"]
+        if let hot {
+            if let text = providers {
+                guard let merged = TopLevelBlocks.appending(hot.providerEntries, toMapping: text) else { return nil }
+                providers = merged
+            } else {
+                providers = "rule-providers:\n" + hot.providerEntries.map { "  \($0)\n" }.joined()
             }
         }
         let dropped = Set(removed + overridden)
         var output = ""
         for block in blocks.blocks {
             if let key = block.key, dropped.contains(key) { continue }
-            output += block.key == "rules" ? (rules ?? block.text) : block.text
+            output += block.key == "rules" ? (rules ?? block.text) : block.key == "rule-providers" ? (providers ?? block.text) : block.text
             if !output.hasSuffix("\n") { output += "\n" }
         }
+        if blocks["rule-providers"] == nil, let providers { output += providers }
         if blocks["rules"] == nil, let rules { output += rules }
         let ours = overrides(settings, controllerPort: controllerPort, secret: secret, profileDNS: dns, hasGeodataSource: blocks["geox-url"] != nil)
         output += "# Veer\n" + ConfigImporter.readableUnicode(try Yams.serialize(node: Node(ours), allowUnicode: true))
@@ -144,7 +169,8 @@ public enum RuntimeConfig {
     }
 
     /// The whole profile parsed and written again: for text the faster path cannot cut safely.
-    static func buildByParsing(profile: String, settings: RuntimeSettings, controllerPort: Int, secret: String) throws -> String {
+    static func buildByParsing(profile: String, settings: RuntimeSettings, controllerPort: Int, secret: String,
+                               hot: HotRuleSets? = nil) throws -> String {
         guard let root = try Yams.compose(yaml: profile), case .mapping(var mapping) = root else {
             throw EditorError(String(localized: "配置文件不是有效的 Mihomo 配置：顶层应该是键值对。"))
         }
@@ -154,11 +180,20 @@ public enum RuntimeConfig {
                                       hasGeodataSource: mapping[Node("geox-url")] != nil) {
             mapping[key] = value
         }
-        if settings.disableQUIC {
-            // First, so no rule sends QUIC to a proxy before it.
+        if let hot {
+            if case .mapping(var providers)? = mapping[Node("rule-providers")] {
+                for (key, value) in hot.providerNodes { providers[key] = value }
+                mapping[Node("rule-providers")] = .mapping(providers)
+            } else {
+                mapping[Node("rule-providers")] = Node(hot.providerNodes)
+            }
+        }
+        // First, so no rule sends QUIC to a proxy before it, and Veer's hot rules win over the profile's.
+        let leading = leadingRules(settings, hot: hot, quoted: false)
+        if !leading.isEmpty {
             var rules: [Node] = []
             if case .sequence(let existing)? = mapping[Node("rules")] { rules = Array(existing) }
-            mapping[Node("rules")] = Node([Node(quicRule)] + rules.filter { $0.string != quicRule })
+            mapping[Node("rules")] = Node(leading.map { Node($0) } + rules.filter { !leading.contains($0.string ?? "") })
         }
         return ConfigImporter.readableUnicode(try Yams.serialize(node: .mapping(mapping), allowUnicode: true))
     }
@@ -270,6 +305,21 @@ struct TopLevelBlocks {
         guard after.isEmpty || after.first == " " || after.first == "\t" else { return nil }
         let key = line[..<colon].trimmingCharacters(in: .whitespaces)
         return key.isEmpty ? nil : key
+    }
+
+    /// `entries` (`name: value` lines) added at the end of a block-style mapping, at its own
+    /// indent. Nil for anything else, such as `rule-providers: {…}`.
+    static func appending(_ entries: [String], toMapping block: String) -> String? {
+        var lines = block.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        guard let header = lines.first, let colon = header.firstIndex(of: ":") else { return nil }
+        let after = header[header.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+        guard after.isEmpty || after.hasPrefix("#") else { return nil }
+        let children = lines.dropFirst().filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty && !$0.trimmingCharacters(in: .whitespaces).hasPrefix("#") }
+        let indent = children.first.map { String($0.prefix { $0 == " " }) } ?? "  "
+        guard !indent.isEmpty else { return nil }
+        while let last = lines.last, last.trimmingCharacters(in: .whitespaces).isEmpty { lines.removeLast() }
+        lines += entries.map { indent + $0 }
+        return lines.joined(separator: "\n") + "\n"
     }
 
     /// `rule` as the first item of a block-style sequence (`rules:` then `- …` lines), without a

@@ -661,3 +661,75 @@ struct LogRouteTests {
         #expect(LogRoute.parse("[Provider] reject-list pull error") == nil)
     }
 }
+
+struct HotRuleSetsTests {
+    @Test func onlyRoutesARuleSetCanHoldBecomeLines() {
+        #expect(HotRuleSets.line(matchType: "DOMAIN-SUFFIX", match: "netflix.com") == "DOMAIN-SUFFIX,netflix.com")
+        #expect(HotRuleSets.line(matchType: "ip-cidr", match: "1.2.3.0/24") == "IP-CIDR,1.2.3.0/24")
+        #expect(HotRuleSets.line(matchType: "GEOSITE", match: "netflix") == nil)
+        #expect(HotRuleSets.line(matchType: "RULE-SET", match: "x") == nil)
+        #expect(HotRuleSets.line(matchType: "DOMAIN", match: "a,b") == nil)
+    }
+
+    @Test func linesMatchHostsLikeTheCoreDoes() {
+        #expect(HotRuleSets.matches("DOMAIN-SUFFIX,netflix.com", host: "www.NETFLIX.com"))
+        #expect(HotRuleSets.matches("DOMAIN-SUFFIX,netflix.com", host: "netflix.com"))
+        #expect(!HotRuleSets.matches("DOMAIN-SUFFIX,netflix.com", host: "notnetflix.com"))
+        #expect(HotRuleSets.matches("DOMAIN,a.com", host: "a.com") && !HotRuleSets.matches("DOMAIN,a.com", host: "b.a.com"))
+        #expect(HotRuleSets.matches("DOMAIN-KEYWORD,flix", host: "netflix.com"))
+    }
+
+    @Test func oneSetPerGroupThenDirectAndReject() throws {
+        let hot = try #require(HotRuleSets.forProfile(RuleTemplateTests.profile))
+        #expect(hot.sets.map(\.target) == ["Old", "DIRECT", "REJECT"])
+        #expect(hot.sets.first?.path == "./veer-hot/veer-hot-1.yaml")
+    }
+
+    @Test(arguments: [RuntimeConfigTests.profile, RuleTemplateTests.profile])
+    func bothBuildPathsAgreeAndPutVeersRulesFirst(profile: String) throws {
+        var settings = RuntimeSettings()
+        settings.disableQUIC = true
+        let hot = try #require(HotRuleSets.forProfile(profile))
+        let fast = try #require(try RuntimeConfig.buildKeepingSections(profile: profile, settings: settings, controllerPort: 1, secret: "s", hot: hot))
+        let parsed = try RuntimeConfig.buildByParsing(profile: profile, settings: settings, controllerPort: 1, secret: "s", hot: hot)
+        #expect(try FastBuildTests.load(fast) == FastBuildTests.load(parsed))
+        let config = try #require(try Yams.load(yaml: fast) as? [String: Any])
+        let rules = try #require(config["rules"] as? [String])
+        #expect(rules.first == RuntimeConfig.quicRule)
+        #expect(Array(rules.dropFirst().prefix(hot.sets.count)) == hot.sets.map { "RULE-SET,\($0.name),\($0.target)" })
+        let providers = try #require(config["rule-providers"] as? [String: Any])
+        for set in hot.sets { #expect((providers[set.name] as? [String: Any])?["behavior"] as? String == "classical") }
+        // The profile's own rule sets stay.
+        if profile == RuleTemplateTests.profile { #expect(providers["old"] != nil) }
+    }
+
+    @Test func exportsNeverCarryThem() throws {
+        let exported = try RuntimeConfig.export(profile: RuleTemplateTests.profile, settings: RuntimeSettings())
+        #expect(!exported.contains("veer-hot"))
+    }
+
+    @Test(.enabled(if: CoreProcessTests.binary != nil)) func aRealCoreLoadsAWrittenRouteWithoutAReload() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("veer-hot-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let paths = VeerPaths(root: root)
+        try paths.prepare()
+        let port = try #require(Ports.free()), mixed = try #require(Ports.free())
+        let secret = RuntimeConfig.makeSecret()
+        let hot = try #require(HotRuleSets.forProfile(RuntimeConfigTests.profile))
+        try hot.resetFiles(in: paths.core)
+        let yaml = try RuntimeConfig.build(profile: RuntimeConfigTests.profile, settings: RuntimeSettings(mixedPort: mixed), controllerPort: port, secret: secret, hot: hot)
+        try yaml.write(to: paths.runtimeConfig, atomically: true, encoding: .utf8)
+        let core = CoreProcess(binary: try #require(CoreProcessTests.binary), home: paths.core)
+        try core.start(config: paths.runtimeConfig) { status, tail in Issue.record("core exited \(status): \(tail.suffix(5))") }
+        defer { core.stop() }
+        let controller = MihomoController(base: URL(string: "http://127.0.0.1:\(port)")!, secret: secret)
+        for _ in 0..<100 { if (try? await controller.version()) != nil { break }; try await Task.sleep(for: .milliseconds(100)) }
+        let set = try #require(hot.set(for: "节点选择"))
+        #expect(try await controller.ruleProviders()[set.name]?.ruleCount == 0)
+        try hot.write(["DOMAIN-SUFFIX,netflix.com", "DOMAIN,example.org"], to: set, in: paths.core)
+        try await controller.refreshRuleProvider(set.name)
+        #expect(try await controller.ruleProviders()[set.name]?.ruleCount == 2)
+        let first = try await controller.rules().first
+        #expect(first?.payload == set.name)
+    }
+}

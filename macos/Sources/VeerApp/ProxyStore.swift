@@ -180,6 +180,10 @@ final class ProxyStore {
     static let requestLimit = 1000
     /// The connections page is open, so `connections` follows the core every second.
     @ObservationIgnored private var connectionsVisible = false
+    /// The running core's in-place rule sets, and the rule lines each holds since the last full
+    /// build (see `HotRuleSets`); nil sets under TUN or before the core starts.
+    @ObservationIgnored private var hotSets: HotRuleSets?
+    @ObservationIgnored private var hotLines: [String: [String]] = [:]
     /// The previous poll's connections, to see which closed.
     @ObservationIgnored private var previousConnections: [String: ConnectionRow] = [:]
     /// Routes from the log waiting to learn whether a poll saw them.
@@ -314,28 +318,34 @@ final class ProxyStore {
                 var tunFailure: String?
                 if settings.tun { tunFailure = await tunProblem() }
                 let base = settings
-                func launch(tun: Bool) async throws -> CoreRunning {
+                func launch(tun: Bool) async throws -> (CoreRunning, HotRuleSets?) {
                     var built = base
                     built.tun = tun
-                    try await Task.detached(priority: .userInitiated) { [built] in
-                        let yaml = try RuntimeConfig.build(profile: text, settings: built, controllerPort: port, secret: secret)
+                    // A root core's home is not Veer's to write, so TUN goes without hot rule sets.
+                    let hot = try await Task.detached(priority: .userInitiated) { [built] () -> HotRuleSets? in
+                        let hot = tun ? nil : HotRuleSets.forProfile(text)
+                        try hot?.resetFiles(in: home)
+                        let yaml = try RuntimeConfig.build(profile: text, settings: built, controllerPort: port, secret: secret, hot: hot)
                         try Data(yaml.utf8).write(to: path, options: .atomic)
+                        return hot
                     }.value
                     let core: CoreRunning = tun ? HelperCore(geodata: home) : CoreProcess(binary: binary, home: home)
                     try await core.start(config: path) { status, log in
                         Task { @MainActor in self.coreExited(status: status, log: log) }
                     }
-                    return core
+                    return (core, hot)
                 }
                 let useTUN = settings.tun && tunFailure == nil
-                let core: CoreRunning
+                let core: CoreRunning, hot: HotRuleSets?
                 do {
-                    core = try await launch(tun: useTUN)
+                    (core, hot) = try await launch(tun: useTUN)
                 } catch where useTUN {
                     tunFailure = message(for: error)
-                    core = try await launch(tun: false)
+                    (core, hot) = try await launch(tun: false)
                 }
                 self.core = core
+                hotSets = hot
+                hotLines = [:]
                 tunActive = useTUN && tunFailure == nil
                 let controller = MihomoController(base: URL(string: "http://127.0.0.1:\(port)")!, secret: secret)
                 self.controller = controller
@@ -496,6 +506,8 @@ final class ProxyStore {
         connectionsTask?.cancel()
         connections = []
         loggedRoutes = []
+        hotSets = nil
+        hotLines = [:]
         core?.stop()
         core = nil
         tunActive = false
@@ -521,6 +533,8 @@ final class ProxyStore {
         logTask?.cancel()
         connectionsTask?.cancel()
         connections = []
+        hotSets = nil
+        hotLines = [:]
         core = nil
         tunActive = false
         controller = nil
@@ -745,13 +759,18 @@ final class ProxyStore {
             var running = settings
             running.mixedPort = proxyPort
             let text = try await effectiveTextInBackground(of: profile.id)
-            let path = paths.runtimeConfig, port = access.port, secret = access.secret, built = running
-            let yaml = try await Task.detached(priority: .userInitiated) {
-                let yaml = try RuntimeConfig.build(profile: text, settings: built, controllerPort: port, secret: secret)
+            let path = paths.runtimeConfig, port = access.port, secret = access.secret, built = running, home = paths.core, tun = tunActive
+            // The config now holds every route, so the hot rule sets start over empty.
+            let (yaml, hot) = try await Task.detached(priority: .userInitiated) { () -> (String, HotRuleSets?) in
+                let hot = tun ? nil : HotRuleSets.forProfile(text)
+                try hot?.resetFiles(in: home)
+                let yaml = try RuntimeConfig.build(profile: text, settings: built, controllerPort: port, secret: secret, hot: hot)
                 try Data(yaml.utf8).write(to: path, options: .atomic)
-                return yaml
+                return (yaml, hot)
             }.value
             try await controller.apply(yaml, mode: .config)
+            hotSets = hot
+            hotLines = [:]
             if closingConnections && reconnectAfterChanges { try? await controller.closeAllConnections() }
             await refresh()
         } catch {
@@ -1135,7 +1154,70 @@ final class ProxyStore {
     @discardableResult func addEdit(_ edit: RoutingLayer.Edit, to id: UUID) -> Bool {
         var layer = routingStore.load(id)
         layer.edits.append(edit)
+        // Routes alone go into the running core's hot rule sets: no reload, other connections kept.
+        if id == activeProfileID, isRunning, let entries = hotEntries(for: edit) {
+            do { try routingStore.save(layer, for: id) } catch {
+                notice = message(for: error)
+                return false
+            }
+            forgetEffective(id)
+            Task { await applyHot(entries, profile: id) }
+            return true
+        }
         return saveLayer(layer, for: id)
+    }
+
+    /// The hot rule sets an edit's routes go into; nil when any part needs a full reload (a new
+    /// group, a removal, a rule set, a rule type rule sets cannot hold, a policy without a set).
+    private func hotEntries(for edit: RoutingLayer.Edit) -> [(set: HotRuleSets.RuleSet, line: String)]? {
+        guard let hot = hotSets, !tunActive else { return nil }
+        let items = edit.items.filter { edit.accepted.contains($0.id) }
+        guard !items.isEmpty else { return nil }
+        var entries: [(set: HotRuleSets.RuleSet, line: String)] = []
+        for item in items {
+            guard item.kind == .route, let target = item.targetName, let set = hot.set(for: target),
+                  let line = HotRuleSets.line(matchType: item.matchType, match: item.match) else { return nil }
+            entries.append((set, line))
+        }
+        return entries
+    }
+
+    /// Writes the routes into their rule sets, the newest winning over the same rule elsewhere,
+    /// reloads only the sets that changed, and closes the connections the routes now send
+    /// elsewhere. Anything going wrong falls back to a full reload.
+    private func applyHot(_ entries: [(set: HotRuleSets.RuleSet, line: String)], profile id: UUID) async {
+        guard let controller, let hot = hotSets else { return await reloadRunningCore(closingConnections: true) }
+        var changed = Set<String>()
+        for entry in entries {
+            for (name, lines) in hotLines where name != entry.set.name && lines.contains(entry.line) {
+                hotLines[name] = lines.filter { $0 != entry.line }
+                changed.insert(name)
+            }
+            if !(hotLines[entry.set.name] ?? []).contains(entry.line) {
+                hotLines[entry.set.name, default: []].append(entry.line)
+                changed.insert(entry.set.name)
+            }
+        }
+        do {
+            for set in hot.sets where changed.contains(set.name) {
+                try hot.write(hotLines[set.name] ?? [], to: set, in: paths.core)
+                try await controller.refreshRuleProvider(set.name)
+            }
+        } catch {
+            return await reloadRunningCore(closingConnections: true)
+        }
+        if reconnectAfterChanges, let list = try? await controller.connections() {
+            let lines = entries.map(\.line)
+            for connection in list {
+                let host = connection.metadata.host.flatMap { $0.isEmpty ? nil : $0 } ?? connection.metadata.destinationIP ?? ""
+                // An address rule has no host to compare; such a route closes every connection.
+                if lines.contains(where: { HotRuleSets.matches($0, host: host) || $0.hasPrefix("IP-CIDR") }) {
+                    try? await controller.closeConnection(connection.id)
+                }
+            }
+        }
+        // Views and the Agent read the effective config: the route is part of it now.
+        _ = try? await effectiveTextInBackground(of: id)
     }
 
     func setEdit(_ editID: UUID, enabled: Bool, in id: UUID) {

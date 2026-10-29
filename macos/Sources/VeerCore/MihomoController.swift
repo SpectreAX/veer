@@ -197,6 +197,12 @@ public struct MihomoController: Sendable {
 
     public static let delayURL = "https://www.gstatic.com/generate_204"
 
+    /// Reloads one rule set from its file (or URL): the rest of the config stays as it is.
+    public func refreshRuleProvider(_ name: String) async throws {
+        let escaped = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? name
+        try await expectNoContent(request("PUT", "/providers/rules/" + escaped))
+    }
+
     /// One answer record of `/dns/query`: `data` is the address, name or text.
     public struct DNSAnswer: Sendable, Equatable, Decodable {
         public let name: String
