@@ -55,7 +55,14 @@ final class ProxyStore {
     var page: Page = .overview
     var phase: Phase = .stopped
     var profiles: [Profile] = []
-    var activeProfileID: UUID? { didSet { defaults.set(activeProfileID?.uuidString, forKey: "activeProfile") } }
+    var activeProfileID: UUID? {
+        didSet {
+            defaults.set(activeProfileID?.uuidString, forKey: "activeProfile")
+            regionMarks = activeProfileID.map { routingStore.load($0).regionMarks } ?? [:]
+        }
+    }
+    /// The active profile's hand-set node regions, by node name.
+    var regionMarks: [String: String] = [:]
     var groups: [Group] = []
     var mode: Mode = .rule
     var systemProxyOn = false
@@ -104,6 +111,10 @@ final class ProxyStore {
         }
     }
     @ObservationIgnored private var settingsReload: Task<Void, Never>?
+    @ObservationIgnored private var updateSchedule: Task<Void, Never>?
+    @ObservationIgnored private var lastAutomaticUpdate: [UUID: Date] = [:]
+    /// Shows a usage alert; a system notification in the app, replaced in tests.
+    @ObservationIgnored var notifier: ((title: String, body: String)) -> Void = { UsageNotifier.post($0) }
     /// Effective configs by profile, so views and the Agent do not rebuild them on every draw.
     @ObservationIgnored private var effectiveCache: [UUID: EffectiveConfig] = [:]
     /// Where traffic leaves the proxy: shown on the overview while the core runs.
@@ -188,6 +199,24 @@ final class ProxyStore {
         activeProfileID = defaults.string(forKey: "activeProfile").flatMap(UUID.init(uuidString:)).flatMap { id in profiles.contains { $0.id == id } ? id : nil }
             ?? profiles.first?.id
         if profiles.isEmpty { onboarding = .addProfile }
+        regionMarks = activeProfileID.map { routingStore.load($0).regionMarks } ?? [:]
+    }
+
+    /// Where a node of the active profile exits, as an ISO code: the user's mark, else its name.
+    func region(of node: String) -> String? { regionMarks[node] ?? NodeLocator.locate(node) }
+
+    /// Sets (or with nil clears) a node's region by hand. Only the template's region groups and
+    /// edits that pick nodes by region read it, so the core reloads only when those exist.
+    func markRegion(_ node: String, code: String?) {
+        guard let id = activeProfileID else { return }
+        var layer = routingStore.load(id)
+        layer.regionMarks[node] = code
+        regionMarks = layer.regionMarks
+        if layer.template != nil || layer.edits.contains(where: \.enabled) {
+            saveLayer(layer, for: id)
+        } else {
+            do { try routingStore.save(layer, for: id) } catch { notice = message(for: error) }
+        }
     }
 
     /// The Mihomo inside the app bundle, or `VEER_MIHOMO_BIN` when running from the package.
@@ -205,6 +234,8 @@ final class ProxyStore {
     func launch() {
         recoverStaleSystemProxy()
         watchNetwork()
+        scheduleSubscriptionUpdates()
+        for profile in profiles { alertAboutUsage(of: profile) }
         if restoreLastState, state.running, activeProfile != nil { start() }
     }
 
@@ -994,6 +1025,14 @@ final class ProxyStore {
         saveLayer(layer, for: id)
     }
 
+    /// Uses a built-in rule template for a profile, or with nil goes back to its own rules.
+    func setTemplate(_ template: String?, for id: UUID) {
+        var layer = routingStore.load(id)
+        guard layer.template != template else { return }
+        layer.template = template
+        saveLayer(layer, for: id)
+    }
+
     func deleteEdit(_ editID: UUID, in id: UUID) {
         var layer = routingStore.load(id)
         layer.edits.removeAll { $0.id == editID }
@@ -1069,9 +1108,10 @@ final class ProxyStore {
             do {
                 if SubscriptionFetcher.looksLikeLink(input) {
                     let url = try SubscriptionFetcher.validate(input)
-                    let response = try await SubscriptionFetcher().fetch(url)
+                    let response = try await fetchSubscription(url)
                     let result = try ConfigImporter.normalize(response.text)
-                    let profile = Profile(name: response.title ?? url.host() ?? String(localized: "订阅"), isSubscription: true, nodeCount: result.nodeCount, usage: response.usage)
+                    var profile = Profile(name: response.title ?? url.host() ?? String(localized: "订阅"), isSubscription: true, nodeCount: result.nodeCount, usage: response.usage)
+                    profile.updateIntervalHours = response.updateIntervalHours
                     try profileStore.save(profile, text: result.text)
                     try profileStore.setSubscriptionURL(url, for: profile.id)
                     added(profile)
@@ -1110,25 +1150,90 @@ final class ProxyStore {
         if onboarding == .addProfile { onboarding = .routing }
     }
 
-    func update(_ id: UUID) {
+    /// Downloads a subscription again. A manual update reports a failure as a notice; an
+    /// automatic one records it on the profile and stays quiet.
+    func update(_ id: UUID, automatic: Bool = false) {
         guard let url = profileStore.subscriptionURL(of: id), var profile = profiles.first(where: { $0.id == id }), !updatingProfiles.contains(id) else { return }
         updatingProfiles.insert(id)
-        notice = nil
+        if !automatic { notice = nil }
         Task {
             defer { updatingProfiles.remove(id) }
             do {
-                let response = try await SubscriptionFetcher().fetch(url)
+                let response = try await fetchSubscription(url)
                 let result = try ConfigImporter.normalize(response.text)
                 profile.nodeCount = result.nodeCount
                 profile.updatedAt = .now
                 profile.usage = response.usage ?? profile.usage
+                profile.updateIntervalHours = response.updateIntervalHours ?? profile.updateIntervalHours
+                profile.updateError = nil
                 try profileStore.save(profile, text: result.text)
                 forgetEffective(id)
                 profiles = profileStore.loadAll()
+                alertAboutUsage(of: profile)
                 if id == activeProfileID { await reloadRunningCore(closingConnections: true) }
             } catch {
-                notice = String(localized: "“\(profile.name)”更新失败：\(message(for: error))")
+                if automatic {
+                    profile.updateError = message(for: error)
+                    try? profileStore.saveInfo(profile)
+                    profiles = profileStore.loadAll()
+                } else {
+                    notice = String(localized: "“\(profile.name)”更新失败：\(message(for: error))")
+                }
             }
+        }
+    }
+
+    /// Straight out first, so a broken node cannot stop an update; through the running core
+    /// when that fails, for subscriptions blocked on the local network.
+    private func fetchSubscription(_ url: URL) async throws -> SubscriptionResponse {
+        do {
+            return try await SubscriptionFetcher(route: .direct).fetch(url)
+        } catch {
+            guard isRunning else { throw error }
+            return try await SubscriptionFetcher(route: .proxy(port: proxyPort)).fetch(url)
+        }
+    }
+
+    /// Every ten minutes, updates the subscriptions that are due. One that just failed waits
+    /// an hour before the next try.
+    private func scheduleSubscriptionUpdates() {
+        updateSchedule?.cancel()
+        updateSchedule = Task {
+            try? await Task.sleep(for: .seconds(30))
+            while !Task.isCancelled {
+                updateDueSubscriptions()
+                try? await Task.sleep(for: .seconds(600))
+            }
+        }
+    }
+
+    func updateDueSubscriptions(now: Date = .now) {
+        for profile in profiles where profile.isSubscription && profile.nextUpdate <= now {
+            if let tried = lastAutomaticUpdate[profile.id], now.timeIntervalSince(tried) < 3600 { continue }
+            lastAutomaticUpdate[profile.id] = now
+            update(profile.id, automatic: true)
+        }
+    }
+
+    /// Low traffic or a near expiry, as one system notification each (see `UsageAlertLedger`).
+    func alertAboutUsage(of profile: Profile, now: Date = .now) {
+        for alert in UsageAlertLedger(defaults: defaults).take(for: profile, now: now) {
+            notifier(Self.alertText(alert, profile: profile, now: now))
+        }
+    }
+
+    static func alertText(_ alert: UsageAlert, profile: Profile, now: Date) -> (title: String, body: String) {
+        switch alert {
+        case .traffic:
+            let left = max((profile.usage?.total ?? 0) - (profile.usage?.used ?? 0), 0)
+            return (String(localized: "“\(profile.name)”的流量快用完了"),
+                    String(localized: "还剩 \(Format.bytes(left))，已不到总量的十分之一。"))
+        case .expiry:
+            let expire = profile.usage?.expire ?? now
+            return expire <= now
+                ? (String(localized: "“\(profile.name)”已经到期"), String(localized: "续费后更新这份配置即可继续使用。"))
+                : (String(localized: "“\(profile.name)”即将到期"),
+                   String(localized: "到期时间：\(expire.formatted(date: .abbreviated, time: .shortened))。"))
         }
     }
 

@@ -83,13 +83,16 @@ private struct RoutingStep: View {
                            detail: String(localized: "大多数订阅已经配好了常用分流，推荐直接使用。"),
                            selected: choice == .keep) { choice = .keep }
                 OptionCard(title: String(localized: "使用内置模板"),
-                           detail: String(localized: "用 Veer 内置的规则模板替换订阅自带的规则。即将推出。"),
+                           detail: String(localized: "用 Veer 的规则模板替换订阅自带的规则：按地区分组，AI 服务优先走美国，国内网站直连。"),
                            selected: choice == .template) { choice = .template }
-                    .disabled(true)
             }
             HStack {
                 Spacer()
-                Button("继续") { store.onboarding = .start }.keyboardShortcut(.defaultAction).primaryAction()
+                Button("继续") {
+                    if let id = store.activeProfileID { store.setTemplate(choice == .template ? RuleTemplate.standard : nil, for: id) }
+                    store.onboarding = .start
+                }
+                .keyboardShortcut(.defaultAction).primaryAction()
             }
         }
     }

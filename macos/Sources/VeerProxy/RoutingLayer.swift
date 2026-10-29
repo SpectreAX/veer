@@ -47,14 +47,32 @@ public struct RoutingLayer: Codable, Sendable, Equatable {
     public var excludedNodes: Set<String>
     /// The built-in rule template in use; nil keeps the profile's own rules.
     public var template: String?
+    /// Regions the user set by hand for nodes whose names say nothing (ISO codes, by node name).
+    public var regionMarks: [String: String]
 
-    public init(edits: [Edit] = [], excludedNodes: Set<String> = [], template: String? = nil) {
+    public init(edits: [Edit] = [], excludedNodes: Set<String> = [], template: String? = nil, regionMarks: [String: String] = [:]) {
         self.edits = edits
         self.excludedNodes = excludedNodes
         self.template = template
+        self.regionMarks = regionMarks
     }
 
-    public var isEmpty: Bool { edits.isEmpty && excludedNodes.isEmpty && template == nil }
+    /// Layers saved before a field existed decode with it empty.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        edits = try container.decodeIfPresent([Edit].self, forKey: .edits) ?? []
+        excludedNodes = try container.decodeIfPresent(Set<String>.self, forKey: .excludedNodes) ?? []
+        template = try container.decodeIfPresent(String.self, forKey: .template)
+        regionMarks = try container.decodeIfPresent([String: String].self, forKey: .regionMarks) ?? [:]
+    }
+
+    public var isEmpty: Bool { edits.isEmpty && excludedNodes.isEmpty && template == nil && regionMarks.isEmpty }
+
+    /// Where a node exits: the user's mark, else what its name says.
+    public func region(of node: String) -> String? { regionMarks[node] ?? NodeLocator.locate(node) }
+
+    /// Marks as the AI's regions, for replaying edits that pick nodes by region.
+    var regionOverrides: [String: Region] { regionMarks.compactMapValues(Region.init(rawValue:)) }
 }
 
 /// The config the core runs and an export writes: the profile with the layer applied.
@@ -71,11 +89,13 @@ public struct EffectiveConfig: Sendable, Equatable {
 }
 
 public extension RoutingLayer {
-    /// Replays the enabled edits onto `profile`, then takes the excluded nodes out.
+    /// Puts the template's groups and rules in (when one is chosen), replays the enabled edits
+    /// onto that, then takes the excluded nodes out.
     func apply(to profile: String) throws -> EffectiveConfig {
+        let base = try template.map { try RuleTemplate.apply($0, to: profile, regionMarks: regionMarks) } ?? profile
         let active = edits.filter(\.enabled).map(\.replayable)
-        let replay = active.isEmpty ? nil : EditReplay.replay(active, onto: profile)
-        let replayed = replay?.text ?? profile
+        let replay = active.isEmpty ? nil : EditReplay.replay(active, onto: base, regionOverrides: regionOverrides)
+        let replayed = replay?.text ?? base
         guard !excludedNodes.isEmpty else {
             return EffectiveConfig(text: replayed, replay: replay, emptiedGroups: [], keptNodes: [])
         }

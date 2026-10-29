@@ -1024,3 +1024,33 @@
 "已就绪" = "Ready";
 "已就绪（手动安装）" = "Ready (installed manually)";
 "版本较旧" = "Out of date";
+
+/* Subscription extras: node map, regions, updates, alerts, templates */
+"%@ %@：%@ 个节点，最低延迟 %@" = "%1$@ %2$@: %3$@ nodes, best delay %4$@";
+"%@，%@ 个节点，最低延迟 %@" = "%1$@, %2$@ nodes, best delay %3$@";
+"全部地区" = "All Regions";
+"地区" = "Regions";
+"未识别 %@ 个" = "%@ not recognized";
+"在代理页的节点上右键，可以手动标记地区。" = "Right-click a node on the Proxies page to set its region by hand.";
+"在“%@”中使用这个节点" = "Use this node in “%@”";
+"用 Veer 的规则模板替换订阅自带的规则：按地区分组，AI 服务优先走美国，国内网站直连。" = "Replace the subscription's rules with Veer's template: groups by region, AI services through the US first, Chinese sites direct.";
+"自动更新失败：%@" = "Automatic update failed: %@";
+"下次自动更新：%@" = "Next automatic update: %@";
+"%@ 到期" = "expires %@";
+"订阅自带的规则" = "The subscription's own rules";
+"模板按地区为这份配置的节点分组，并用内核自带的 GEOSITE 和 GEOIP 数据分流：AI 服务优先走美国，国内网站和苹果服务直连，广告拦截。下面的修改在模板之上重新应用。" = "The template groups this profile's nodes by region and routes with the core's own GEOSITE and GEOIP data: AI services through the US first, Chinese sites and Apple services direct, ads blocked. The changes below are applied again on top of it.";
+"标记地区" = "Set Region";
+"按名称识别" = "From the Name";
+"显示方式" = "View";
+"网格" = "Grid";
+"地图" = "Map";
+"按策略组或在地图上查看节点" = "Show nodes by group or on a map";
+"“%@”的流量快用完了" = "“%@” is running out of data";
+"还剩 %@，已不到总量的十分之一。" = "Only %@ left, less than a tenth of the total.";
+"“%@”已经到期" = "“%@” has expired";
+"续费后更新这份配置即可继续使用。" = "Renew it, then update this profile to keep using it.";
+"“%@”即将到期" = "“%@” expires soon";
+"到期时间：%@。" = "Expires %@.";
+"Veer 标准模板" = "Veer Standard Template";
+"找不到规则模板“%@”。" = "Can't find the rule template “%@”.";
+"这个配置没有节点，无法套用模板。" = "This profile has no nodes, so the template can't be used.";

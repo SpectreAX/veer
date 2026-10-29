@@ -96,6 +96,10 @@ private struct ProfileRow: View {
                     if active { Tag(text: String(localized: "使用中"), tint: .statusSuccess) }
                 }
                 Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                if let error = profile.updateError {
+                    StatusBadge(kind: .warning, text: String(localized: "自动更新失败：\(error)"), compact: true)
+                        .lineLimit(1)
+                }
             }
             Spacer(minLength: Spacing.sm)
             if store.updatingProfiles.contains(profile.id) { ProgressView().controlSize(.small) }
@@ -103,6 +107,7 @@ private struct ProfileRow: View {
                 Button("更新") { store.update(profile.id) }
                     .secondaryAction()
                     .disabled(store.updatingProfiles.contains(profile.id))
+                    .help(String(localized: "下次自动更新：\(profile.nextUpdate.formatted(date: .abbreviated, time: .shortened))"))
             }
             if !active {
                 Button("使用") { store.activate(profile.id) }.secondaryAction()
@@ -124,10 +129,10 @@ private struct ProfileRow: View {
     private var detail: String {
         var parts = [String(localized: "\(profile.nodeCount) 个节点"), String(localized: "更新于 \(Format.relative(profile.updatedAt))")]
         if let usage = profile.usage, let total = usage.total, total > 0 {
-            let used = (usage.upload ?? 0) + (usage.download ?? 0)
-            let usedText = ByteCountFormatter.string(fromByteCount: used, countStyle: .binary)
-            let totalText = ByteCountFormatter.string(fromByteCount: total, countStyle: .binary)
-            parts.append(String(localized: "已用 \(usedText) / \(totalText)"))
+            parts.append(String(localized: "已用 \(Format.bytes(usage.used ?? 0)) / \(Format.bytes(total))"))
+        }
+        if let expire = profile.usage?.expire {
+            parts.append(String(localized: "\(expire.formatted(date: .numeric, time: .omitted)) 到期"))
         }
         return parts.joined(separator: " · ")
     }
@@ -201,6 +206,22 @@ struct ProfileDetailSheet: View {
     }
 
     @ViewBuilder private var routingList: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            Picker("规则", selection: Binding(get: { layer.template ?? "" }, set: { value in
+                store.setTemplate(value.isEmpty ? nil : value, for: profile.id)
+                reload()
+            })) {
+                Text("订阅自带的规则").tag("")
+                Text(RuleTemplate.title(RuleTemplate.standard)).tag(RuleTemplate.standard)
+            }
+            .fixedSize()
+            Text("模板按地区为这份配置的节点分组，并用内核自带的 GEOSITE 和 GEOIP 数据分流：AI 服务优先走美国，国内网站和苹果服务直连，广告拦截。下面的修改在模板之上重新应用。")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            edits
+        }
+    }
+
+    @ViewBuilder private var edits: some View {
         if layer.edits.isEmpty {
             StateView(symbol: "arrow.triangle.branch", title: String(localized: "还没有修改"),
                       message: String(localized: "在 Agent 里说一句话（比如“Netflix 走日本”），应用后的修改会记在这里，订阅更新后自动重新应用。"))

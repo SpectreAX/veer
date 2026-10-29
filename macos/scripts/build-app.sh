@@ -30,6 +30,8 @@ cp Resources/Info.plist "$app/Contents/Info.plist"
 cp Resources/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
 # Interface strings: Simplified Chinese is the source text, English translates it.
 cp -R Resources/Localization/*.lproj "$app/Contents/Resources/"
+# World outlines for the node map (Natural Earth, public domain).
+cp -R Resources/Map "$app/Contents/Resources/Map"
 cp "$core" "$app/Contents/Resources/bin/mihomo"
 cp third_party/mihomo/LICENSE "$app/Contents/Resources/licenses/mihomo-LICENSE"
 cp .build/checkouts/Yams/LICENSE "$app/Contents/Resources/licenses/Yams-LICENSE"

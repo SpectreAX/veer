@@ -209,7 +209,15 @@ public struct SubscriptionResponse: Sendable {
 /// that plain HTTP is allowed to loopback and private LAN hosts, where self-hosted subscription
 /// managers such as Sub-Store usually run.
 public struct SubscriptionFetcher: Sendable {
-    public init() {}
+    /// How requests leave: the system's settings, straight out, or through a local proxy port.
+    public enum Route: Sendable, Equatable {
+        case system, direct
+        case proxy(port: Int)
+    }
+
+    public let route: Route
+
+    public init(route: Route = .system) { self.route = route }
 
     /// Checks the link and returns the URL to fetch; Sub-Store downloads get `target=mihomo`.
     public static func validate(_ raw: String) throws -> URL {
@@ -288,7 +296,18 @@ public struct SubscriptionFetcher: Sendable {
         final class NoRedirect: NSObject, URLSessionTaskDelegate {
             func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest) async -> URLRequest? { nil }
         }
-        let session = URLSession(configuration: .ephemeral, delegate: NoRedirect(), delegateQueue: nil)
+        let configuration = URLSessionConfiguration.ephemeral
+        switch route {
+        case .system: break
+        // An empty dictionary means no proxy at all, ignoring the system's.
+        case .direct: configuration.connectionProxyDictionary = [:]
+        case .proxy(let port):
+            configuration.connectionProxyDictionary = [
+                kCFNetworkProxiesHTTPEnable as String: 1, kCFNetworkProxiesHTTPProxy as String: "127.0.0.1", kCFNetworkProxiesHTTPPort as String: port,
+                kCFNetworkProxiesHTTPSEnable as String: 1, kCFNetworkProxiesHTTPSProxy as String: "127.0.0.1", kCFNetworkProxiesHTTPSPort as String: port,
+            ]
+        }
+        let session = URLSession(configuration: configuration, delegate: NoRedirect(), delegateQueue: nil)
         defer { session.finishTasksAndInvalidate() }
         var request = URLRequest(url: url, timeoutInterval: 30)
         // Many subscription services return Mihomo YAML only to clients that identify as clash/mihomo.

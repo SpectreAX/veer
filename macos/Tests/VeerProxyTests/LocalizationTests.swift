@@ -36,7 +36,7 @@ struct LocalizationTests {
                 let text = try String(contentsOf: folder.appendingPathComponent(path), encoding: .utf8)
                 for (number, line) in text.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
                     // Comments, and text sent to the AI, which stays in Chinese.
-                    if line.trimmingCharacters(in: .whitespaces).hasPrefix("//") || line.contains("// for the AI") { continue }
+                    if line.trimmingCharacters(in: .whitespaces).hasPrefix("//") || line.contains("// for the AI") || line.contains("// written into the config") { continue }
                     for match in line.matches(of: literal) {
                         let body = String(line[match.range].dropFirst().dropLast())
                         guard body.unicodeScalars.contains(where: { (0x4E00...0x9FFF).contains($0.value) }) else { continue }

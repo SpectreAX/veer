@@ -429,3 +429,109 @@ struct TUNConfigTests {
         #expect(HelperClient.quoted("/tmp/a'b") == "'/tmp/a'\\''b'")
     }
 }
+
+struct SubscriptionExtrasTests {
+    static let gb: Int64 = 1 << 30
+
+    @Test func trafficAlertBelowTenPercentAndExpiryWithinThreeDays() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        #expect(UsageAlert.due(SubscriptionUsage(upload: 0, download: 95 * Self.gb, total: 100 * Self.gb), now: now) == [.traffic])
+        #expect(UsageAlert.due(SubscriptionUsage(upload: 0, download: 80 * Self.gb, total: 100 * Self.gb), now: now).isEmpty)
+        #expect(UsageAlert.due(SubscriptionUsage(expire: now.addingTimeInterval(2 * 86_400)), now: now) == [.expiry])
+        #expect(UsageAlert.due(SubscriptionUsage(expire: now.addingTimeInterval(-60)), now: now) == [.expiry])
+        #expect(UsageAlert.due(SubscriptionUsage(expire: now.addingTimeInterval(10 * 86_400)), now: now).isEmpty)
+        #expect(UsageAlert.due(nil).isEmpty)
+    }
+
+    @Test func eachAlertGoesOutOnceUntilItClears() {
+        let defaults = UserDefaults(suiteName: "veer-alerts-\(UUID().uuidString)")!
+        let ledger = UsageAlertLedger(defaults: defaults)
+        var profile = Profile(name: "p", isSubscription: true, nodeCount: 1, usage: SubscriptionUsage(upload: 0, download: 95 * Self.gb, total: 100 * Self.gb))
+        #expect(ledger.take(for: profile) == [.traffic])
+        #expect(ledger.take(for: profile).isEmpty)
+        // A new month resets the traffic; running low again warns again.
+        profile.usage?.download = Self.gb
+        #expect(ledger.take(for: profile).isEmpty)
+        profile.usage?.download = 99 * Self.gb
+        #expect(ledger.take(for: profile) == [.traffic])
+    }
+
+    @Test func subscriptionsAreDueAtTheirOwnIntervalOrDaily() {
+        let then = Date(timeIntervalSince1970: 1_800_000_000)
+        var profile = Profile(name: "p", isSubscription: true, updatedAt: then, nodeCount: 1)
+        #expect(profile.nextUpdate == then.addingTimeInterval(24 * 3600))
+        profile.updateIntervalHours = 1
+        #expect(profile.nextUpdate == then.addingTimeInterval(3600))
+    }
+
+    @Test func olderIndexesAndLayersStillDecode() throws {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let profile = try decoder.decode(Profile.self, from: Data(#"{"id":"6749D364-CFA1-4DAE-9DB1-DAE9076D3A6C","name":"p","isSubscription":true,"updatedAt":"2026-10-29T00:00:00Z","nodeCount":3}"#.utf8))
+        #expect(profile.updateIntervalHours == nil && profile.updateError == nil)
+        let layer = try JSONDecoder().decode(RoutingLayer.self, from: Data(#"{"edits":[],"excludedNodes":["a"]}"#.utf8))
+        #expect(layer.excludedNodes == ["a"] && layer.regionMarks.isEmpty)
+    }
+
+    @Test func handMarksWinOverNames() {
+        let layer = RoutingLayer(regionMarks: ["Node 7": "NL", "🇯🇵 东京 01": "US"])
+        #expect(layer.region(of: "Node 7") == "NL")
+        #expect(layer.region(of: "🇯🇵 东京 01") == "US")
+        #expect(layer.region(of: "香港 02") == "HK")
+        #expect(layer.region(of: "Node 8") == nil)
+    }
+}
+
+struct RuleTemplateTests {
+    static let profile = """
+    mixed-port: 7890
+    proxies:
+      - {name: "🇯🇵 东京 01", type: ss, server: 1.1.1.1, port: 443, cipher: aes-128-gcm, password: x}
+      - {name: "🇯🇵 东京 02", type: ss, server: 1.1.1.2, port: 443, cipher: aes-128-gcm, password: x}
+      - {name: "香港 01", type: ss, server: 1.1.1.3, port: 443, cipher: aes-128-gcm, password: x}
+      - {name: "US LA 01", type: ss, server: 1.1.1.4, port: 443, cipher: aes-128-gcm, password: x}
+      - {name: "Node X", type: ss, server: 1.1.1.5, port: 443, cipher: aes-128-gcm, password: x}
+      - {name: "剩余流量：100 GB", type: ss, server: 1.1.1.6, port: 443, cipher: aes-128-gcm, password: x}
+    proxy-groups:
+      - {name: Old, type: select, proxies: ["🇯🇵 东京 01"]}
+    rule-providers:
+      old: {type: http, behavior: domain, url: "https://example.invalid/old.yaml", interval: 86400}
+    rules:
+      - RULE-SET,old,Old
+      - MATCH,Old
+    """
+
+    @Test func replacesGroupsAndRulesAndBuildsRegionGroups() throws {
+        let text = try RuleTemplate.apply(RuleTemplate.standard, to: Self.profile, regionMarks: ["Node X": "NL"])
+        let config = try #require(try Yams.load(yaml: text) as? [String: Any])
+        #expect(config["rule-providers"] == nil)
+        #expect((config["proxies"] as? [Any])?.count == 6)
+        let groups = try #require(config["proxy-groups"] as? [[String: Any]])
+        let names = groups.compactMap { $0["name"] as? String }
+        #expect(!names.contains("Old"))
+        let japan = try #require(groups.first { $0["name"] as? String == "🇯🇵 日本节点" })
+        #expect(japan["proxies"] as? [String] == ["🇯🇵 东京 01", "🇯🇵 东京 02"])
+        // The hand mark puts Node X in a Netherlands group; the info row joins nothing.
+        #expect(names.contains("🇳🇱 荷兰节点"))
+        #expect(!groups.contains { ($0["proxies"] as? [String])?.contains("剩余流量：100 GB") == true })
+        // AI prefers the US and never offers Hong Kong.
+        let ai = try #require(groups.first { $0["name"] as? String == "🤖 AI 服务" })
+        #expect((ai["proxies"] as? [String])?.first == "🇺🇸 美国节点")
+        #expect((ai["proxies"] as? [String])?.contains("🇭🇰 香港节点") == false)
+        #expect((config["rules"] as? [String])?.last == "MATCH,🐟 漏网之鱼")
+    }
+
+    @Test func theLayerAppliesTheTemplateBeforeExclusions() throws {
+        let layer = RoutingLayer(excludedNodes: ["🇯🇵 东京 02"], template: RuleTemplate.standard)
+        let effective = try layer.apply(to: Self.profile)
+        #expect(effective.text.contains("🚀 节点选择") && !effective.text.contains("RULE-SET,old"))
+        #expect(!effective.text.contains("🇯🇵 东京 02"))
+    }
+
+    @Test(.enabled(if: CoreProcessTests.binary != nil)) func theTemplatePassesMihomo() async throws {
+        let text = try RuleTemplate.apply(RuleTemplate.standard, to: Self.profile)
+        let yaml = try RuntimeConfig.build(profile: text, settings: RuntimeSettings(), controllerPort: 1, secret: "s")
+        let result = await MihomoValidator(binary: CoreProcessTests.binary).validate(yaml)
+        #expect(result.status == .passed, "\(result.message)")
+    }
+}

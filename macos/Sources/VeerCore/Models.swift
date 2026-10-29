@@ -99,7 +99,10 @@ public enum Region: String, CaseIterable, Sendable, Codable {
             guard let pattern = region.namePattern else { return false }
             return name.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
         }
-        let region = matches.count == 1 ? matches[0] : .unknown
+        // Two patterns matching is ambiguous on purpose; none matching may still be a code or
+        // city the wider table knows ("[A]HK 01", "Tokyo").
+        let region = matches.count == 1 ? matches[0]
+            : matches.isEmpty ? NodeLocator.locate(name).flatMap(Region.init(rawValue:)) ?? .unknown : .unknown
         InferenceCache.shared.set(name, region)
         return region
     }

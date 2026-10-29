@@ -9,6 +9,13 @@ public struct Profile: Codable, Identifiable, Sendable, Equatable {
     public var updatedAt: Date
     public var nodeCount: Int
     public var usage: SubscriptionUsage?
+    /// From the subscription's `profile-update-interval` header, in hours.
+    public var updateIntervalHours: Int?
+    /// Why the last automatic update failed; nil after a success.
+    public var updateError: String?
+
+    /// When the subscription is due for an automatic update: its own interval, else daily.
+    public var nextUpdate: Date { updatedAt.addingTimeInterval(TimeInterval(max(updateIntervalHours ?? 24, 1)) * 3600) }
 
     public init(id: UUID = UUID(), name: String, isSubscription: Bool, updatedAt: Date = .now, nodeCount: Int, usage: SubscriptionUsage? = nil) {
         self.id = id
@@ -58,6 +65,16 @@ public final class ProfileStore: @unchecked Sendable {
         }
     }
 
+    /// Replaces a profile's entry in the index, leaving its config text alone.
+    public func saveInfo(_ profile: Profile) throws {
+        try lock.withLock {
+            var all = Self.read(paths.profileIndex)
+            guard let index = all.firstIndex(where: { $0.id == profile.id }) else { return }
+            all[index] = profile
+            try Self.write(all, to: paths.profileIndex)
+        }
+    }
+
     public func delete(_ id: UUID) {
         lock.withLock {
             try? FileManager.default.removeItem(at: file(id))
@@ -86,5 +103,44 @@ public final class ProfileStore: @unchecked Sendable {
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(profiles).write(to: url, options: .atomic)
+    }
+}
+
+/// A subscription running low on traffic or close to its end, worth one notification.
+public enum UsageAlert: String, Sendable, CaseIterable {
+    case traffic, expiry
+
+    /// The alerts `usage` calls for at `now`: under 10% of the traffic left, or three days or
+    /// less until it expires (or already expired).
+    public static func due(_ usage: SubscriptionUsage?, now: Date = .now) -> Set<UsageAlert> {
+        guard let usage else { return [] }
+        var alerts: Set<UsageAlert> = []
+        if let total = usage.total, total > 0, let used = usage.used, total - used < total / 10 { alerts.insert(.traffic) }
+        if let expire = usage.expire, expire.timeIntervalSince(now) < 3 * 86_400 { alerts.insert(.expiry) }
+        return alerts
+    }
+}
+
+/// Which usage alerts went out, so each is sent once while its condition holds. When it clears
+/// (a renewed plan, a new month), the next time it holds it is sent again.
+public struct UsageAlertLedger {
+    let defaults: UserDefaults
+
+    public init(defaults: UserDefaults) { self.defaults = defaults }
+
+    /// The alerts to send now for `profile`, recorded as sent.
+    public func take(for profile: Profile, now: Date = .now) -> [UsageAlert] {
+        let due = UsageAlert.due(profile.usage, now: now)
+        var send: [UsageAlert] = []
+        for alert in UsageAlert.allCases {
+            let key = "usageAlert.\(profile.id.uuidString).\(alert.rawValue)"
+            if !due.contains(alert) {
+                defaults.removeObject(forKey: key)
+            } else if !defaults.bool(forKey: key) {
+                defaults.set(true, forKey: key)
+                send.append(alert)
+            }
+        }
+        return send
     }
 }

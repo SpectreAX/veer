@@ -89,7 +89,7 @@ public struct CleanupReport: Sendable, Equatable {
     }
 }
 
-enum NodeCleanup {
+public enum NodeCleanup {
     /// Phrases that only appear in notices a provider disguises as nodes. Kept specific on
     /// purpose: real node names often carry rates ("0.5x") or plan tiers, which must stay.
     static let infoPhrases = [
@@ -106,7 +106,7 @@ enum NodeCleanup {
         #"\b(19|20)\d{2}[-/.年]\d{1,2}[-/.月]\d{1,2}"#,
     ]
 
-    static func isInfoNode(_ name: String) -> Bool {
+    public static func isInfoNode(_ name: String) -> Bool {
         let lowered = name.lowercased()
         if infoPhrases.contains(where: { lowered.contains($0) }) { return true }
         return infoPatterns.contains { name.range(of: $0, options: [.regularExpression, .caseInsensitive]) != nil }

@@ -1,10 +1,12 @@
 import SwiftUI
+import VeerCore
 import VeerProxy
 
 /// Policy groups and their members: pick a node for a select group, test delays.
 struct ProxiesView: View {
     @Environment(ProxyStore.self) private var store
     @State private var query = ""
+    @AppStorage("proxiesShowMap") private var showMap = false
 
     /// Groups whose name or members match the search; members filtered to the matches.
     private var shownGroups: [ProxyStore.Group] {
@@ -22,13 +24,21 @@ struct ProxiesView: View {
             .searchable(text: $query, placement: .toolbar, prompt: Text("搜索节点或策略组"))
             .toolbar {
                 ToolbarItem {
+                    Picker(String(localized: "显示方式"), selection: $showMap) {
+                        Label("网格", systemImage: "square.grid.2x2").tag(false)
+                        Label("地图", systemImage: "map").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .help(String(localized: "按策略组或在地图上查看节点"))
+                }
+                ToolbarItem {
                     let allCollapsed = !store.groups.isEmpty && store.groups.allSatisfy { store.collapsedGroups.contains($0.name) }
                     Button { store.setAllCollapsed(!allCollapsed) } label: {
                         allCollapsed ? Label("全部展开", systemImage: "rectangle.expand.vertical")
                                      : Label("全部收起", systemImage: "rectangle.compress.vertical")
                     }
                     .help(allCollapsed ? String(localized: "展开全部策略组") : String(localized: "收起全部策略组"))
-                    .disabled(store.groups.isEmpty)
+                    .disabled(store.groups.isEmpty || showMap)
                 }
             }
     }
@@ -42,6 +52,8 @@ struct ProxiesView: View {
         } else if store.groups.isEmpty {
             StateView(symbol: "square.stack.3d.up.slash", title: String(localized: "这个配置没有策略组"),
                       message: String(localized: "所有流量按规则直接发往节点或直连。"))
+        } else if showMap {
+            NodeMapView()
         } else if shownGroups.isEmpty {
             StateView(symbol: "magnifyingglass", title: String(localized: "没有匹配“\(query)”的节点或策略组"))
         } else {
@@ -101,11 +113,14 @@ private struct GroupSection: View {
             if !collapsed {
             LazyVGrid(columns: columns, alignment: .leading, spacing: Spacing.sm) {
                 ForEach(group.members) { member in
-                    NodeTile(member: member, selected: member.name == group.now, selectable: group.isSelectable) {
+                    NodeTile(member: member, flag: flag(for: member), selected: member.name == group.now, selectable: group.isSelectable) {
                         store.select(member.name, in: group.name)
                     }
                     .contextMenu {
                         Button("问 AI…") { ask(String(localized: "关于节点“\(member.name)”（在“\(group.name)”里）：")) }
+                        if !member.isGroup, !NodeMapView.builtins.contains(member.name), !NodeCleanup.isInfoNode(member.name) {
+                            RegionMarkMenu(node: member.name)
+                        }
                     }
                 }
             }
@@ -139,6 +154,12 @@ private struct GroupSection: View {
         }
     }
 
+    /// A flag for a node whose name has none, from a hand-set mark or a code or city in the name.
+    private func flag(for member: ProxyStore.Group.Member) -> String? {
+        guard !member.isGroup, !NodeLocator.hasFlag(member.name) else { return nil }
+        return store.region(of: member.name).flatMap(NodeLocator.place)?.flag
+    }
+
     /// Opens the Agent page with `text` in the composer, in a conversation about this profile.
     private func ask(_ text: String) {
         store.page = .agent
@@ -161,6 +182,7 @@ private struct GroupSection: View {
 /// select group it is a button; in an automatic group it is plain content, since clicks do nothing.
 private struct NodeTile: View {
     let member: ProxyStore.Group.Member
+    let flag: String?
     let selected: Bool
     let selectable: Bool
     let select: () -> Void
@@ -189,7 +211,7 @@ private struct NodeTile: View {
                 .foregroundStyle(selected ? Color.veerAccent : Color.secondary)
                 .opacity(selectable || selected || member.isGroup ? 1 : 0)
             VStack(alignment: .leading, spacing: Spacing.xxs) {
-                Text(member.name).lineLimit(1).truncationMode(.middle)
+                Text(verbatim: flag.map { "\($0) \(member.name)" } ?? member.name).lineLimit(1).truncationMode(.middle)
                 Text(Format.delay(member.delay)).font(.caption.monospacedDigit()).foregroundStyle(Format.delayKind(member.delay).color)
             }
             Spacer(minLength: 0)
@@ -202,5 +224,26 @@ private struct NodeTile: View {
         .overlay(RoundedRectangle(cornerRadius: Radius.medium, style: .continuous)
             .strokeBorder(selected ? Color.veerAccent.opacity(0.5) : Color.separatorLine))
         .contentShape(RoundedRectangle(cornerRadius: Radius.medium, style: .continuous))
+    }
+}
+
+/// Sets where a node exits when its name does not say, or goes back to reading the name.
+private struct RegionMarkMenu: View {
+    @Environment(ProxyStore.self) private var store
+    let node: String
+
+    var body: some View {
+        let marked = store.regionMarks[node]
+        Menu("标记地区") {
+            Button { store.markRegion(node, code: nil) } label: {
+                if marked == nil { Label("按名称识别", systemImage: "checkmark") } else { Text("按名称识别") }
+            }
+            Divider()
+            ForEach(NodeLocator.places.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) { place in
+                Button { store.markRegion(node, code: place.code) } label: {
+                    if marked == place.code { Label("\(place.flag) \(place.name)", systemImage: "checkmark") } else { Text(verbatim: "\(place.flag) \(place.name)") }
+                }
+            }
+        }
     }
 }

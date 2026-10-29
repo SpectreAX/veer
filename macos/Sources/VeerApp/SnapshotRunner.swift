@@ -108,6 +108,21 @@ enum SnapshotRunner {
             Scene(name: "13-settings-general", size: CGSize(width: 520, height: 360), store: { sample() }, view: AnyView(GeneralSettings())),
             Scene(name: "14-settings-proxy", size: CGSize(width: 520, height: 300), store: { sample() }, view: AnyView(ProxySettings())),
             Scene(name: "15-overview-tun", store: { running(tun: true) }, view: AnyView(MainView())),
+            Scene(name: "18-proxies-map", size: CGSize(width: 900, height: 520), store: { running(page: .proxies) }, view: AnyView(NodeMapView())),
+            Scene(name: "19-profiles-update-failed", store: {
+                let store = running(page: .profiles)
+                if var first = store.profiles.first {
+                    first.updateError = String(localized: "无法下载订阅：网络错误或超时。")
+                    first.usage?.expire = .now.addingTimeInterval(2 * 86_400)
+                    store.profiles[0] = first
+                }
+                return store
+            }, view: AnyView(MainView())),
+            Scene(name: "20-profile-template", size: CGSize(width: 560, height: 520), store: {
+                let store = sample()
+                if let id = store.profiles.first?.id { store.setTemplate(RuleTemplate.standard, for: id) }
+                return store
+            }, view: AnyView(SampleProfileSheet(tab: .routing))),
             Scene(name: "16-settings-tun-approval", size: CGSize(width: 560, height: 460), store: {
                 let store = sample()
                 store.settings.tun = true

@@ -27,6 +27,12 @@ Veer 随应用打包以下组件，各自适用其许可证；许可证全文位
 - License: MIT (`licenses/Yams-LICENSE`).
 - Source: <https://github.com/jpsim/Yams>.
 
+## Natural Earth
+
+- `Resources/Map/land-110m.json` is the 1:110m land layer of Natural Earth, simplified, used to
+  draw the node map. Public domain. Made with Natural Earth: <https://www.naturalearthdata.com>.
+- 节点地图的世界轮廓来自 Natural Earth 1:110m 陆地数据（公有领域）。
+
 ## Reference projects · 参考项目
 
 FlClash (chen08209/FlClash) and Bettbox (appshubcc/Bettbox), both GPL-3.0, informed which
