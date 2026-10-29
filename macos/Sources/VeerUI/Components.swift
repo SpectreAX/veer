@@ -197,7 +197,7 @@ public struct StateView: View {
                 Text(message).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
             if let actionTitle, let action {
-                Button(actionTitle, action: action).buttonStyle(.bordered)
+                Button(actionTitle, action: action).secondaryAction()
             }
         }
         .frame(maxWidth: 320)
@@ -230,7 +230,9 @@ public struct ExitLabel: View {
 /// Primary glass action. Uses native Liquid Glass on macOS 26, where the system falls back to an
 /// opaque treatment when Reduce Transparency is on; older systems get the bordered prominent style.
 public struct PrimaryActionStyle: ViewModifier {
-    public init() {}
+    public init(size: ControlSize = .large) { self.size = size }
+
+    public let size: ControlSize
 
     public func body(content: Content) -> some View {
         Group {
@@ -241,12 +243,43 @@ public struct PrimaryActionStyle: ViewModifier {
             }
         }
         .tint(.veerAccent)
-        .controlSize(.large)
+        .controlSize(size)
+    }
+}
+
+/// Secondary action beside content (Update, Test, Use): clear Liquid Glass on macOS 26, the
+/// bordered style before it. Uncolored, so the accent stays on the one primary action.
+public struct SecondaryActionStyle: ViewModifier {
+    public init() {}
+
+    public func body(content: Content) -> some View {
+        Group {
+            if #available(macOS 26, *) {
+                content.buttonStyle(.glass)
+            } else {
+                content.buttonStyle(.bordered)
+            }
+        }
+        .tint(nil)
     }
 }
 
 public extension View {
-    func primaryAction() -> some View { modifier(PrimaryActionStyle()) }
+    func primaryAction(_ size: ControlSize = .large) -> some View { modifier(PrimaryActionStyle(size: size)) }
+    func secondaryAction() -> some View { modifier(SecondaryActionStyle()) }
+
+    /// A panel that floats above the window, such as onboarding: Liquid Glass on macOS 26, the
+    /// regular material before it. Not for ordinary content, which stays on solid `panel()`.
+    @ViewBuilder func floatingPanel(padding: CGFloat = Spacing.xl) -> some View {
+        let shape = RoundedRectangle(cornerRadius: Radius.large * 1.5, style: .continuous)
+        if #available(macOS 26, *) {
+            self.padding(padding).glassEffect(.regular, in: shape)
+        } else {
+            self.padding(padding)
+                .background(.regularMaterial, in: shape)
+                .overlay(shape.strokeBorder(Color.separatorLine.opacity(0.6)))
+        }
+    }
 
     /// Solid content panel: no glass on content.
     func panel(padding: CGFloat = Spacing.lg) -> some View {

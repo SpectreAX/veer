@@ -124,7 +124,7 @@ public extension RoutingLayer {
             }
             mapping[Node("proxy-groups")] = .sequence(groups)
         }
-        return (try Yams.serialize(node: .mapping(mapping), allowUnicode: true), emptied, kept)
+        return (ConfigImporter.readableUnicode(try Yams.serialize(node: .mapping(mapping), allowUnicode: true)), emptied, kept)
     }
 }
 

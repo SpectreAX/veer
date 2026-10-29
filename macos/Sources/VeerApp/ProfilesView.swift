@@ -94,11 +94,11 @@ private struct ProfileRow: View {
             if store.updatingProfiles.contains(profile.id) { ProgressView().controlSize(.small) }
             if profile.isSubscription {
                 Button("更新") { store.update(profile.id) }
-                    .buttonStyle(.bordered).neutralControl()
+                    .secondaryAction()
                     .disabled(store.updatingProfiles.contains(profile.id))
             }
             if !active {
-                Button("使用") { store.activate(profile.id) }.buttonStyle(.bordered).neutralControl()
+                Button("使用") { store.activate(profile.id) }.secondaryAction()
             }
             Menu {
                 Button("节点与分流…", action: showDetails)
@@ -155,7 +155,7 @@ struct ProfileDetailSheet: View {
             }
             HStack {
                 Spacer()
-                Button("完成") { dismiss() }.keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
+                Button("完成") { dismiss() }.keyboardShortcut(.defaultAction).primaryAction(.regular)
             }
         }
         .padding(Spacing.xl)
@@ -307,7 +307,7 @@ struct ImportForm: View {
                 if let cancel { Button("取消", action: cancel).keyboardShortcut(.cancelAction).neutralControl() }
                 Button("导入") { store.importFromText() }
                     .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
+                    .primaryAction(.regular)
                     .disabled(store.importText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.importing)
             }
         }

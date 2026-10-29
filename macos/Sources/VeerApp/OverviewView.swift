@@ -89,7 +89,7 @@ struct OverviewView: View {
             HStack {
                 SettingsLink { Text("打开设置…") }.neutralControl()
                 Spacer()
-                Button("重试") { store.start() }.buttonStyle(.borderedProminent)
+                Button("重试") { store.start() }.primaryAction(.regular)
             }
         }
         .panel()

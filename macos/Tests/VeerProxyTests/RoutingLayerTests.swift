@@ -70,6 +70,13 @@ struct RoutingLayerTests {
         #expect(effective.emptiedGroups == ["美国"] && effective.keptNodes.isEmpty)
     }
 
+    @Test func flagEmojiStayReadableWhenTheLayerRewritesTheFile() throws {
+        let effective = try RoutingLayer(excludedNodes: ["🇯🇵 大阪 02"]).apply(to: Self.profile)
+        #expect(effective.text.contains("🇯🇵 东京 01") && !effective.text.contains("\\U0001F1"))
+        let exported = try RuntimeConfig.export(profile: effective.text, settings: RuntimeSettings())
+        #expect(exported.contains("🇺🇸 洛杉矶 01") && !exported.contains("\\U0001F1"))
+    }
+
     @Test func aNodeARuleNamesStays() throws {
         let effective = try RoutingLayer(excludedNodes: ["🇯🇵 东京 01"]).apply(to: Self.profile)
         #expect(effective.keptNodes == ["🇯🇵 东京 01"])

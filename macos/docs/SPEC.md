@@ -300,7 +300,12 @@ AI 服务商不在引导里配置。
 - **不翻译的内容：** 规则内容、策略组名、节点名、日志原文。
 
 ## 10. 视觉
-- **`VeerUI` 提供的组件：** `GlassCard`、`GlassButtonStyle`、`Toolbar` 背景等。macOS 26 上用 `glassEffect` 和 `.glass` / `.glassProminent` 按钮样式；macOS 14 和 15 上用 `.regularMaterial`、`.borderedProminent`，并加上圆角和描边。页面代码只用 `VeerUI` 的组件。
+- **Liquid Glass 的来源：** 系统只给用 macOS 26 SDK 编译的应用新设计，而 SwiftPM 会把部署目标（14.0）同时记成 SDK 版本。`build-app.sh` 打包时用 `vtool` 把 SDK 版本改回实际的 26.x，窗口工具栏、侧栏按钮、模式切换和搜索框因此用上系统的 Liquid Glass。
+- **`VeerUI` 提供的样式：** macOS 26 上用 Liquid Glass，macOS 14 和 15 上用对应的标准样式。页面代码只用这些样式，不直接调用 `glassEffect`。
+  - `primaryAction()`：每个页面唯一的主要操作。26 上是 `.glassProminent`，之前是 `.borderedProminent`，都用强调色。
+  - `secondaryAction()`：内容旁的次要操作（更新、测速、使用）。26 上是 `.glass`，之前是 `.bordered`，不着色。
+  - `floatingPanel()`：浮在窗口上的面板，比如首次引导。26 上是 `glassEffect`，之前是 `.regularMaterial` 加描边。
+- **内容区：** 内容面板（`panel()`）保持实色，不用玻璃，这是 Apple 的建议：玻璃只用在控件和导航层。
 - **颜色：** 沿用现有的设计令牌，浅色和深色都要检查。延迟颜色：小于 200ms 为好，200 到 500ms 为一般，大于 500ms 为差，超时用红色。
 
 ## 11. 更新、备份与诊断

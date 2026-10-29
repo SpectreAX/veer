@@ -264,7 +264,7 @@ public enum ConfigImporter {
 
     /// libyaml writes characters outside the BMP (flag emoji) as `\UXXXXXXXX` escapes. Put the
     /// characters back so the exported file is readable; keep the escaped form if anything differs.
-    static func readableUnicode(_ yaml: String) -> String {
+    public static func readableUnicode(_ yaml: String) -> String {
         guard let regex = try? NSRegularExpression(pattern: #"(?<!\\)\\U([0-9A-Fa-f]{8})"#) else { return yaml }
         var output = yaml
         for match in regex.matches(in: yaml, range: NSRange(yaml.startIndex..., in: yaml)).reversed() {

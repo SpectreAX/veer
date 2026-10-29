@@ -18,6 +18,11 @@ app="$PWD/dist/Veer.app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources/bin" "$app/Contents/Resources/licenses"
 cp "$bin_dir/Veer" "$app/Contents/MacOS/Veer"
+# SwiftPM records the deployment target (14.0) as the SDK version too, and macOS only gives
+# apps built with the macOS 26 SDK its current design (Liquid Glass). Record the real one.
+min_os="$(plutil -extract LSMinimumSystemVersion raw Resources/Info.plist)"
+sdk_version="$(xcrun --sdk "$SDKROOT" --show-sdk-version)"
+vtool -set-build-version macos "$min_os" "$sdk_version" -replace -output "$app/Contents/MacOS/Veer" "$app/Contents/MacOS/Veer"
 cp Resources/Info.plist "$app/Contents/Info.plist"
 # Drawn by scripts/make-icon.swift; regenerate it there rather than editing the .icns.
 cp Resources/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"

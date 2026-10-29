@@ -63,7 +63,7 @@ private struct GroupSection: View {
                     ProgressView().controlSize(.small)
                 }
                 Button("测速") { store.testDelay(group.name) }
-                    .buttonStyle(.bordered).neutralControl()
+                    .secondaryAction()
                     .disabled(store.testingGroups.contains(group.name))
                     .help("测试这个策略组里每个成员的延迟")
             }

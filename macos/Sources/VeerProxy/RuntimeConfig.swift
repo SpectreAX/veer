@@ -56,7 +56,7 @@ public enum RuntimeConfig {
         if mapping[Node("geox-url")] == nil {
             set("geox-url", Node(geodataMirrors.map { (Node($0.key), Node($0.url)) }))
         }
-        return try Yams.serialize(node: .mapping(mapping), allowUnicode: true)
+        return ConfigImporter.readableUnicode(try Yams.serialize(node: .mapping(mapping), allowUnicode: true))
     }
 
     /// The config to export with Veer's overrides written in: what `build` makes, without the
@@ -66,7 +66,7 @@ public enum RuntimeConfig {
         guard let root = try Yams.compose(yaml: built), case .mapping(var mapping) = root else { return built }
         mapping[Node("external-controller")] = nil
         mapping[Node("secret")] = nil
-        return try Yams.serialize(node: .mapping(mapping), allowUnicode: true)
+        return ConfigImporter.readableUnicode(try Yams.serialize(node: .mapping(mapping), allowUnicode: true))
     }
 
     /// A random controller secret for one run of the core.
