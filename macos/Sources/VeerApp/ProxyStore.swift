@@ -623,7 +623,7 @@ final class ProxyStore {
                     }
                     lastConnectionBytes = bytes.mapValues { (upload: $0.0, download: $0.1) }
                     connections = rows.sorted { ($0.start ?? .distantPast) > ($1.start ?? .distantPast) }
-                } else if controller == nil {
+                } else if !isRunning {
                     connections = []
                 }
                 try? await Task.sleep(for: .seconds(1))

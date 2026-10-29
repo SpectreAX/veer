@@ -266,12 +266,18 @@ public enum ConfigImporter {
     /// characters back so the exported file is readable; keep the escaped form if anything differs.
     public static func readableUnicode(_ yaml: String) -> String {
         guard let regex = try? NSRegularExpression(pattern: #"(?<!\\)\\U([0-9A-Fa-f]{8})"#) else { return yaml }
+        let matches = regex.matches(in: yaml, range: NSRange(yaml.startIndex..., in: yaml))
+        guard !matches.isEmpty else { return yaml }
         var output = yaml
-        for match in regex.matches(in: yaml, range: NSRange(yaml.startIndex..., in: yaml)).reversed() {
+        for match in matches.reversed() {
             guard let range = Range(match.range, in: output), let hexRange = Range(match.range(at: 1), in: yaml),
                   let code = UInt32(yaml[hexRange], radix: 16), let scalar = Unicode.Scalar(code) else { continue }
             output.replaceSubrange(range, with: String(Character(scalar)))
         }
+        // The pattern skips "\\U" after one backslash; only text with a doubled backslash ("\\\\U…",
+        // an escaped backslash before a U) can fool it. Parsing a large config twice to prove
+        // nothing changed took seconds, so the proof runs only then.
+        guard yaml.contains("\\\\") else { return output }
         guard let before = try? compose(yaml: yaml), let after = try? compose(yaml: output), before == after else { return yaml }
         return output
     }

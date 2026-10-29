@@ -81,26 +81,26 @@ struct ConnectionsView: View {
                     if row.network == "udp" { Text(verbatim: "UDP").font(.caption2).foregroundStyle(.secondary) }
                 }
             }
-            .width(min: 160, ideal: 220)
+            .width(min: 120, ideal: 180)
             TableColumn("进程") { row in Text(row.process ?? "—").lineLimit(1).foregroundStyle(row.process == nil ? .secondary : .primary) }
-                .width(min: 70, ideal: 110)
+                .width(min: 60, ideal: 90)
             TableColumn("规则") { row in Text(row.rule).lineLimit(1).help(row.rule) }
-                .width(min: 90, ideal: 150)
+                .width(min: 80, ideal: 120)
             TableColumn("代理链") { row in Text(row.chain.joined(separator: " → ")).lineLimit(1).truncationMode(.middle).help(row.chain.joined(separator: " → ")) }
-                .width(min: 140, ideal: 240)
+                .width(min: 120, ideal: 190)
             TableColumn("流量") { row in
                 Text(verbatim: "↑\(Format.bytes(row.upload)) ↓\(Format.bytes(row.download))").font(Typography.codeSmall).foregroundStyle(.secondary)
             }
-            .width(min: 120, ideal: 140)
+            .width(min: 110, ideal: 120)
             TableColumn("速率") { row in
                 Text(verbatim: Format.rate(row.downloadRate + row.uploadRate)).font(Typography.codeSmall)
                     .foregroundStyle(row.downloadRate + row.uploadRate > 0 ? .primary : .secondary)
             }
-            .width(min: 70, ideal: 80)
+            .width(min: 60, ideal: 70)
             TableColumn("时长") { row in
                 Text(verbatim: row.start.map { Format.duration(since: $0) } ?? "—").font(Typography.codeSmall).foregroundStyle(.secondary)
             }
-            .width(min: 50, ideal: 64)
+            .width(min: 44, ideal: 52)
         }
         .contextMenu(forSelectionType: ConnectionRow.ID.self) { ids in
             if let row = rows(ids).first {

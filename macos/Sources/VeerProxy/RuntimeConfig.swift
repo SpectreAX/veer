@@ -15,6 +15,8 @@ public struct RuntimeSettings: Sendable, Equatable, Codable {
     public var logLevel = "info"
     public var ipv6 = false
     /// Match rules by the process that opened a connection, and show it on the connections page.
+    /// Mihomo's "strict" only looks processes up when a rule names one, which leaves the
+    /// connections page without them, so Veer asks for "always".
     public var processMatching = true
     /// Reject QUIC (UDP 443) so browsers fall back to TCP, which proxies better.
     public var disableQUIC = false
@@ -64,38 +66,93 @@ public enum RuntimeConfig {
     ]
 
     public static func build(profile: String, settings: RuntimeSettings, controllerPort: Int, secret: String) throws -> String {
+        if let fast = try buildKeepingSections(profile: profile, settings: settings, controllerPort: controllerPort, secret: secret) {
+            return fast
+        }
+        return try buildByParsing(profile: profile, settings: settings, controllerPort: controllerPort, secret: secret)
+    }
+
+    /// Top-level keys Veer writes itself; the profile's own are dropped.
+    static let overridden = ["mixed-port", "allow-lan", "log-level", "external-controller", "secret", "profile", "ipv6", "find-process-mode", "dns"]
+
+    /// Veer's keys, in the order they are written.
+    static func overrides(_ settings: RuntimeSettings, controllerPort: Int, secret: String, profileDNS: Node?, hasGeodataSource: Bool) -> [(Node, Node)] {
+        var pairs: [(Node, Node)] = [
+            (Node("mixed-port"), Node(String(settings.mixedPort), Tag(.int))),
+            (Node("allow-lan"), Node(settings.allowLAN ? "true" : "false", Tag(.bool))),
+            (Node("log-level"), Node(settings.logLevel)),
+            (Node("external-controller"), Node("127.0.0.1:\(controllerPort)")),
+            (Node("secret"), Node(secret, Tag(.str), .doubleQuoted)),
+            // Keep the user's node choices and fake-IP mappings across restarts.
+            (Node("profile"), Node([(Node("store-selected"), Node("true", Tag(.bool))), (Node("store-fake-ip"), Node("true", Tag(.bool)))])),
+            (Node("ipv6"), Node(settings.ipv6 ? "true" : "false", Tag(.bool))),
+            (Node("find-process-mode"), Node(settings.processMatching ? "always" : "off", Tag(.str), .doubleQuoted)),
+        ]
+        // A DNS listener is only for TUN or redirection, and port 53 needs root: without it the
+        // core would fail to start as the user. The rest of `dns` (resolvers, fake-IP) applies.
+        if case .mapping(var dns)? = profileDNS, settings.preferProfileDNS {
+            dns[Node("listen")] = nil
+            pairs.append((Node("dns"), .mapping(dns)))
+        } else {
+            pairs.append((Node("dns"), dnsSection(settings)))
+        }
+        // Geodata is downloaded on the first start, before the proxy works; GitHub is often
+        // unreachable then, so use the jsDelivr mirror unless the profile names its own.
+        if !hasGeodataSource {
+            pairs.append((Node("geox-url"), Node(geodataMirrors.map { (Node($0.key), Node($0.url)) })))
+        }
+        return pairs
+    }
+
+    /// Keeps the profile's large sections (proxies, groups, rules, providers) as written and only
+    /// writes the keys Veer owns: parsing and writing a whole subscription of ten thousand lines
+    /// took seconds on every reload. Nil when the text is not plain enough to cut safely
+    /// (anchors and aliases, top-level flow style, documents), so the full parse handles it.
+    static func buildKeepingSections(profile: String, settings: RuntimeSettings, controllerPort: Int, secret: String) throws -> String? {
+        guard let blocks = TopLevelBlocks(profile) else { return nil }
+        var dns: Node?
+        if settings.preferProfileDNS, let text = blocks["dns"] {
+            guard case .mapping(let mapping)? = try? Yams.compose(yaml: text), let section = mapping[Node("dns")] else { return nil }
+            dns = section
+        }
+        var rules = blocks["rules"]
+        if settings.disableQUIC {
+            if let text = rules {
+                guard let withQUIC = TopLevelBlocks.prepending(quicRule, toSequence: text) else { return nil }
+                rules = withQUIC
+            } else {
+                rules = "rules:\n  - \(quicRule)\n"
+            }
+        }
+        let dropped = Set(removed + overridden)
+        var output = ""
+        for block in blocks.blocks {
+            if let key = block.key, dropped.contains(key) { continue }
+            output += block.key == "rules" ? (rules ?? block.text) : block.text
+            if !output.hasSuffix("\n") { output += "\n" }
+        }
+        if blocks["rules"] == nil, let rules { output += rules }
+        let ours = overrides(settings, controllerPort: controllerPort, secret: secret, profileDNS: dns, hasGeodataSource: blocks["geox-url"] != nil)
+        output += "# Veer\n" + ConfigImporter.readableUnicode(try Yams.serialize(node: Node(ours), allowUnicode: true))
+        return output
+    }
+
+    /// The whole profile parsed and written again: for text the faster path cannot cut safely.
+    static func buildByParsing(profile: String, settings: RuntimeSettings, controllerPort: Int, secret: String) throws -> String {
         guard let root = try Yams.compose(yaml: profile), case .mapping(var mapping) = root else {
             throw EditorError(String(localized: "配置文件不是有效的 Mihomo 配置：顶层应该是键值对。"))
         }
         for key in removed { mapping[Node(key)] = nil }
-        func set(_ key: String, _ value: Node) { mapping[Node(key)] = value }
-        set("mixed-port", Node(String(settings.mixedPort), Tag(.int)))
-        set("allow-lan", Node(settings.allowLAN ? "true" : "false", Tag(.bool)))
-        set("log-level", Node(settings.logLevel))
-        set("external-controller", Node("127.0.0.1:\(controllerPort)"))
-        set("secret", Node(secret, Tag(.str), .doubleQuoted))
-        // Keep the user's node choices and fake-IP mappings across restarts.
-        set("profile", Node([(Node("store-selected"), Node("true", Tag(.bool))), (Node("store-fake-ip"), Node("true", Tag(.bool)))]))
-        set("ipv6", Node(settings.ipv6 ? "true" : "false", Tag(.bool)))
-        set("find-process-mode", Node(settings.processMatching ? "strict" : "off", Tag(.str), .doubleQuoted))
-        // A DNS listener is only for TUN or redirection, and port 53 needs root: without it the
-        // core would fail to start as the user. The rest of `dns` (resolvers, fake-IP) applies.
-        if case .mapping(var dns)? = mapping[Node("dns")], settings.preferProfileDNS {
-            dns[Node("listen")] = nil
-            set("dns", .mapping(dns))
-        } else {
-            set("dns", dnsSection(settings))
+        let dns = mapping[Node("dns")]
+        for (key, value) in overrides(settings, controllerPort: controllerPort, secret: secret, profileDNS: dns,
+                                      hasGeodataSource: mapping[Node("geox-url")] != nil) {
+            mapping[key] = value
         }
         if settings.disableQUIC {
             // First, so no rule sends QUIC to a proxy before it.
             var rules: [Node] = []
             if case .sequence(let existing)? = mapping[Node("rules")] { rules = Array(existing) }
-            set("rules", Node([Node(quicRule)] + rules.filter { $0.string != quicRule }))
-        }
-        // Geodata is downloaded on the first start, before the proxy works; GitHub is often
-        // unreachable then, so use the jsDelivr mirror unless the profile names its own.
-        if mapping[Node("geox-url")] == nil {
-            set("geox-url", Node(geodataMirrors.map { (Node($0.key), Node($0.url)) }))
+            mapping[Node("rules")] = Node([Node(quicRule)] + rules.filter { $0.string != quicRule })
         }
         return ConfigImporter.readableUnicode(try Yams.serialize(node: .mapping(mapping), allowUnicode: true))
     }
@@ -138,5 +195,73 @@ public enum RuntimeConfig {
     /// A random controller secret for one run of the core.
     public static func makeSecret() -> String {
         (0..<32).map { _ in String("abcdefghijklmnopqrstuvwxyz0123456789".randomElement()!) }.joined()
+    }
+}
+
+/// A YAML document cut at its top-level keys, each block kept as written.
+struct TopLevelBlocks {
+    struct Block {
+        /// Nil for comments before the first key.
+        let key: String?
+        var text: String
+    }
+
+    private(set) var blocks: [Block] = []
+
+    /// Anchors (`&base`) and aliases (`*base`, `<<: *base`) tie blocks together: dropping one
+    /// could break another. `*.lan` is a wildcard, not an alias.
+    static let anchorOrAlias = try! NSRegularExpression(pattern: #"(^|[:\-\[,{]\s*)[&*][A-Za-z0-9_\-]+[ \t]*($|[,\]}\s])"#, options: .anchorsMatchLines)
+
+    init?(_ text: String) {
+        guard Self.anchorOrAlias.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) == nil else { return nil }
+        var keys = Set<String>()
+        var current = Block(key: nil, text: "")
+        for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            // "- item" at column 0 belongs to the key above it ("rules:" then "- MATCH,DIRECT").
+            if let first = line.first, first != " ", first != "\t", first != "#", !(first == "-" && current.key != nil && !line.hasPrefix("---")) {
+                guard !"-[{%&*!|>".contains(first), !line.hasPrefix("---"), !line.hasPrefix("..."),
+                      let key = Self.key(of: line), keys.insert(key).inserted else { return nil }
+                blocks.append(current)
+                current = Block(key: key, text: "")
+            }
+            current.text += line + "\n"
+        }
+        blocks.append(current)
+        if blocks.first?.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true { blocks.removeFirst() }
+        guard !keys.isEmpty else { return nil }
+    }
+
+    subscript(key: String) -> String? { blocks.first { $0.key == key }?.text }
+
+    /// `key:` at the start of a line; quoted keys are unquoted.
+    static func key(of line: Substring) -> String? {
+        if let quote = line.first, quote == "'" || quote == "\"" {
+            let rest = line.dropFirst()
+            guard let close = rest.firstIndex(of: quote), rest[rest.index(after: close)...].hasPrefix(":") else { return nil }
+            return String(rest[..<close])
+        }
+        guard let colon = line.firstIndex(of: ":") else { return nil }
+        let after = line[line.index(after: colon)...]
+        guard after.isEmpty || after.first == " " || after.first == "\t" else { return nil }
+        let key = line[..<colon].trimmingCharacters(in: .whitespaces)
+        return key.isEmpty ? nil : key
+    }
+
+    /// `rule` as the first item of a block-style sequence (`rules:` then `- …` lines), without a
+    /// second copy of it. Nil for anything else, such as `rules: [a, b]`.
+    static func prepending(_ rule: String, toSequence block: String) -> String? {
+        var lines = block.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        guard let header = lines.first, let colon = header.firstIndex(of: ":"),
+              header[header.index(after: colon)...].trimmingCharacters(in: .whitespaces).isEmpty
+                || header[header.index(after: colon)...].trimmingCharacters(in: .whitespaces).hasPrefix("#") else { return nil }
+        let items = lines.dropFirst().filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty && !$0.trimmingCharacters(in: .whitespaces).hasPrefix("#") }
+        let indent = items.first.map { String($0.prefix { $0 == " " }) } ?? "  "
+        guard items.allSatisfy({ $0.hasPrefix(indent + "- ") || $0.hasPrefix(indent + "  ") }) else { return nil }
+        lines.removeAll { line in
+            let item = line.trimmingCharacters(in: .whitespaces)
+            return item == "- \(rule)" || item == "- '\(rule)'" || item == "- \"\(rule)\""
+        }
+        lines.insert(indent + "- " + rule, at: 1)
+        return lines.joined(separator: "\n")
     }
 }

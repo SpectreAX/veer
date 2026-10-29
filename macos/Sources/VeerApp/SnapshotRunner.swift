@@ -84,6 +84,17 @@ enum SnapshotRunner {
                 agent.settings.provider = .ollama
                 sampleThread(agent, status: .written)
             }),
+            Scene(name: "09e-connections", store: {
+                let store = running(page: .connections)
+                store.connectionsPaused = true
+                store.connections = sampleConnections()
+                return store
+            }, view: AnyView(MainView())),
+            Scene(name: "09f-logs", store: {
+                let store = running(page: .logs)
+                store.logs = sampleLogs()
+                return store
+            }, view: AnyView(MainView())),
             Scene(name: "10-import", size: CGSize(width: 560, height: 360), store: {
                 let store = sample()
                 store.importText = "https://sub.example.invalid/api/v1/client/subscribe?token=demo"
@@ -96,6 +107,38 @@ enum SnapshotRunner {
                   view: AnyView(SampleProfileSheet(tab: .routing))),
             Scene(name: "13-settings-general", size: CGSize(width: 520, height: 360), store: { sample() }, view: AnyView(GeneralSettings())),
             Scene(name: "14-settings-proxy", size: CGSize(width: 520, height: 300), store: { sample() }, view: AnyView(ProxySettings())),
+        ]
+    }
+
+    static func sampleConnections() -> [ConnectionRow] {
+        typealias Connection = MihomoController.Connection
+        let now = Date()
+        let rows: [(String, String?, String, String, [String], Int64, Int64, Int64, TimeInterval)] = [
+            ("www.youtube.com", "Google Chrome", "RuleSet", "youtube", ["🇯🇵 日本 东京 IPLC 01 | 0.5x 高速稳定线路", "节点选择"], 182_000, 48_300_000, 2_400_000, 95),
+            ("api.github.com", "git", "DomainSuffix", "github.com", ["🇭🇰 香港 01", "自动选择", "节点选择"], 3_200, 21_000, 0, 12),
+            ("chatgpt.com", "Safari", "RuleSet", "openai", ["🇺🇸 美国 洛杉矶 01", "节点选择"], 64_000, 1_250_000, 31_000, 340),
+            ("www.apple.com", "Safari", "DomainSuffix", "apple.com", ["DIRECT"], 1_800, 9_400, 0, 4),
+            ("api.telegram.org", "Telegram", "RuleSet", "telegram", ["🇸🇬 新加坡 01", "节点选择"], 22_000, 18_000, 120, 1_830),
+            ("149.154.167.51:443", "Telegram", "Match", "", ["🇸🇬 新加坡 01", "节点选择"], 4_000, 2_000, 0, 60),
+        ]
+        return rows.enumerated().map { index, row in
+            let connection = Connection(id: "c\(index)", metadata: .init(network: "tcp", host: row.0.contains(":") ? "" : row.0,
+                                                                        destinationIP: row.0.contains(":") ? "149.154.167.51" : nil,
+                                                                        destinationPort: "443", process: row.1),
+                                        chains: row.4, rule: row.2, rulePayload: row.3, upload: row.5, download: row.6,
+                                        start: now.addingTimeInterval(-row.8))
+            return ConnectionRow(connection, uploadRate: row.7 / 20, downloadRate: row.7)
+        }
+    }
+
+    static func sampleLogs() -> [LogEntry] {
+        [
+            LogEntry(level: "info", message: "[TCP] 127.0.0.1:52344(Google Chrome) --> www.youtube.com:443 match RuleSet(youtube) using 节点选择[🇯🇵 日本 东京 IPLC 01 | 0.5x 高速稳定线路]"),
+            LogEntry(level: "info", message: "[TCP] 127.0.0.1:52350(git) --> api.github.com:443 match DomainSuffix(github.com) using 节点选择[🇭🇰 香港 01]"),
+            LogEntry(level: "warning", message: "[TCP] dial 节点选择 (match RuleSet/openai) 127.0.0.1:52361(Safari) --> chatgpt.com:443 error: i/o timeout"),
+            LogEntry(level: "info", message: "[TCP] 127.0.0.1:52370(Safari) --> www.apple.com:443 match DomainSuffix(apple.com) using DIRECT"),
+            LogEntry(level: "error", message: "[Provider] reject-list pull error: Get \"https://cdn.jsdelivr.net/…\": context deadline exceeded"),
+            LogEntry(level: "info", message: "[UDP] 127.0.0.1:61502(Google Chrome) --> www.youtube.com:443 match AND((NETWORK,UDP),(DST-PORT,443)) using REJECT"),
         ]
     }
 

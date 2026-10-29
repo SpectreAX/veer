@@ -264,7 +264,7 @@ struct RuntimeOverrideTests {
     @Test func ipv6AndProcessMatchingFollowSettings() throws {
         var settings = RuntimeSettings()
         #expect(try Self.config(settings)["ipv6"] as? Bool == false)
-        #expect(try Self.config(settings)["find-process-mode"] as? String == "strict")
+        #expect(try Self.config(settings)["find-process-mode"] as? String == "always")
         settings.ipv6 = true
         settings.processMatching = false
         #expect(try Self.config(settings)["ipv6"] as? Bool == true)
@@ -314,6 +314,83 @@ struct RuntimeOverrideTests {
         settings.disableQUIC = true
         settings.preferProfileDNS = false
         let yaml = try RuntimeConfig.build(profile: RuntimeConfigTests.profile, settings: settings, controllerPort: 1, secret: "s")
+        #expect(await MihomoValidator(binary: CoreProcessTests.binary).validate(yaml).status == .passed)
+    }
+}
+
+/// The faster build keeps the profile's sections as written; it must mean the same as parsing.
+struct FastBuildTests {
+    static let profiles = [
+        RuntimeConfigTests.profile,
+        // Comments, quoted keys, block-style rules, a dns section with a listener, emoji.
+        """
+        # From a subscription
+        'mixed-port': 7892
+        dns:
+          enable: true
+          listen: 0.0.0.0:1053
+          nameserver: [https://1.1.1.1/dns-query]
+        proxies:
+          - name: "🇯🇵 东京 01"
+            type: ss
+            server: jp.example.invalid
+            port: 1
+            cipher: aes-128-gcm
+            password: "p"
+        proxy-groups:
+          - {name: 节点选择, type: select, proxies: [🇯🇵 东京 01, DIRECT]}
+        rules:
+          # Ads first
+          - DOMAIN-SUFFIX,ads.example,REJECT
+          - MATCH,节点选择
+        """,
+        "rules: [MATCH,DIRECT]",
+        "proxies: []\nrules:\n- MATCH,DIRECT\n",
+    ]
+
+    static func load(_ yaml: String) throws -> NSDictionary {
+        try #require(try Yams.load(yaml: yaml) as? NSDictionary)
+    }
+
+    @Test(arguments: [false, true]) func keepingSectionsMeansTheSameAsParsing(quicOff: Bool) throws {
+        var settings = RuntimeSettings()
+        settings.disableQUIC = !quicOff
+        for (index, profile) in Self.profiles.enumerated() {
+            for preferProfileDNS in [true, false] {
+                settings.preferProfileDNS = preferProfileDNS
+                if settings.disableQUIC && profile.hasPrefix("rules: [") {
+                    // Flow-style rules: the QUIC rule needs the full parse.
+                    #expect(try RuntimeConfig.buildKeepingSections(profile: profile, settings: settings, controllerPort: 1, secret: "s") == nil)
+                    continue
+                }
+                let fast = try #require(try RuntimeConfig.buildKeepingSections(profile: profile, settings: settings, controllerPort: 1, secret: "s"),
+                                        "profile \(index) fell back")
+                let parsed = try RuntimeConfig.buildByParsing(profile: profile, settings: settings, controllerPort: 1, secret: "s")
+                #expect(try Self.load(fast) == Self.load(parsed), "profile \(index), quic \(!quicOff), profile dns \(preferProfileDNS)")
+            }
+        }
+    }
+
+    @Test func textItCannotCutSafelyFallsBack() throws {
+        let anchors = "base: &base {type: ss}\nproxies:\n  - {<<: *base, name: a}\nrules: [MATCH,DIRECT]"
+        var quic = RuntimeSettings()
+        quic.disableQUIC = true
+        #expect(try RuntimeConfig.buildKeepingSections(profile: anchors, settings: .init(), controllerPort: 1, secret: "s") == nil)
+        #expect(try RuntimeConfig.buildKeepingSections(profile: "{rules: [MATCH,DIRECT]}", settings: .init(), controllerPort: 1, secret: "s") == nil)
+        // Flow-style rules cannot take a QUIC rule by text.
+        #expect(try RuntimeConfig.buildKeepingSections(profile: "rules: [MATCH,DIRECT]", settings: quic, controllerPort: 1, secret: "s") == nil)
+        // A wildcard is not an alias.
+        #expect(try RuntimeConfig.buildKeepingSections(profile: "dns:\n  fake-ip-filter:\n    - '*.lan'\n    - \"+.local\"\nrules: [MATCH,DIRECT]",
+                                                       settings: .init(), controllerPort: 1, secret: "s") != nil)
+        // Both still build, through the full parse.
+        #expect(try Self.load(RuntimeConfig.build(profile: anchors, settings: .init(), controllerPort: 1, secret: "s"))["proxies"] != nil)
+    }
+
+    @Test(.enabled(if: CoreProcessTests.binary != nil)) func theKeptTextPassesMihomo() async throws {
+        var settings = RuntimeSettings()
+        settings.disableQUIC = true
+        let yaml = try #require(try RuntimeConfig.buildKeepingSections(profile: Self.profiles[1], settings: settings, controllerPort: 1, secret: "s"))
+        #expect(yaml.contains("🇯🇵 东京 01") && !yaml.contains("\\U0001F1"))
         #expect(await MihomoValidator(binary: CoreProcessTests.binary).validate(yaml).status == .passed)
     }
 }

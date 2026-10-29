@@ -34,11 +34,6 @@ struct LogsView: View {
         content
             .searchable(text: $query, placement: .toolbar, prompt: Text("搜索日志"))
             .toolbar {
-                ToolbarItem(placement: .principal) {
-                    SegmentedControl(label: String(localized: "级别"), selection: $level,
-                                     options: Level.allCases.map { .init(value: $0, title: $0.title) })
-                        .fixedSize()
-                }
                 ToolbarItemGroup(placement: .primaryAction) {
                     Button { store.logsPaused.toggle() } label: {
                         store.logsPaused ? Label("继续", systemImage: "play") : Label("暂停", systemImage: "pause")
@@ -62,6 +57,24 @@ struct LogsView: View {
                       title: store.logs.isEmpty ? String(localized: "还没有日志") : String(localized: "没有匹配的日志"),
                       message: store.logs.isEmpty ? String(localized: "日志级别是“\(store.settings.logLevel)”，可以在设置中调整。") : nil)
         } else {
+            VStack(spacing: 0) {
+                HStack {
+                    SegmentedControl(label: String(localized: "级别"), selection: $level,
+                                     options: Level.allCases.map { .init(value: $0, title: $0.title) })
+                        .fixedSize()
+                    Spacer()
+                    Text("\(shown.count) 条").font(.callout).foregroundStyle(.secondary).monospacedDigit()
+                }
+                .padding(.horizontal, Spacing.lg)
+                .padding(.vertical, Spacing.sm)
+                Divider()
+                logList
+            }
+        }
+    }
+
+    private var logList: some View {
+        Group {
             ScrollViewReader { proxy in
                 List(shown, selection: $selection) { entry in
                     HStack(alignment: .firstTextBaseline, spacing: Spacing.sm) {

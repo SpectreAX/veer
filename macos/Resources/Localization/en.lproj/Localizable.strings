@@ -988,3 +988,4 @@
 "展开“%@”" = "Expand “%@”";
 "收起“%@”" = "Collapse “%@”";
 "切换配置、节点或分流后断开旧连接" = "Close old connections after switching profiles, nodes or routing";
+"%lld 条" = "%lld lines";
