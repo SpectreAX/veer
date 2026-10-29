@@ -66,7 +66,7 @@
   - 出口 IP 和所选节点的地区一致。
 
 ### 第 4 步：TUN 后台服务
-- **签名：** 测试阶段用免费的 Apple Development 证书（本机已有）。开工后先验证 `SMAppService.daemon` 在这个签名下能不能注册和批准；不能的话，再决定是否提前加入付费计划。
+- **签名：** 测试阶段用免费的 Apple Development 证书（本机已有）。开工后先验证 `SMAppService.daemon` 在这个签名下能不能注册和批准；不能的话，改用 SPEC 4.1.1 的手动安装方式，不必为了测试提前加入付费计划。
 - **内容：**
   - `VeerHelper`：注册、批准状态、XPC 签名校验、以 root 运行内核、断开后清理；
   - `CoreRunner` 协议；
@@ -78,7 +78,8 @@
   - 终端里 `curl` 不设代理也能通过 Veer；
   - 局域网和 Tailscale 地址不走 TUN；
   - 强制退出 Veer，10 秒后内核停止，网络恢复正常；
-  - 拒绝批准时，Veer 回退到系统代理并说明原因。
+  - 拒绝批准时，Veer 回退到系统代理并说明原因；
+  - 如果用的是手动安装：输入一次密码后安装成功；重新编译 Veer 后 TUN 仍然能用（Apple Development 签名）；卸载后 `/Library/LaunchDaemons/` 和 `/Library/PrivilegedHelperTools/` 里没有残留。
 
 ### 第 5 步：订阅增强
 - 节点地区离线识别、手动标记、世界地图视图。
@@ -107,7 +108,7 @@
 
 | 事项 | 用于 | 最晚 |
 |---|---|---|
-| Apple Developer Program 和 Developer ID Application 证书 | 公证、发给别人用 | 第 6 步发布；如果第 4 步 TUN 在免费签名下跑不通，提前到第 4 步 |
+| Apple Developer Program 和 Developer ID Application 证书 | 公证、发给别人用 | 第 6 步发布（TUN 在免费签名下跑不通时，改用手动安装后台服务，不需要提前） |
 | macOS 14 虚拟机（UTM 或 Parallels） | 检查旧系统界面 | 第 1 步验收 |
 | GitHub Sponsors 和爱发电账号 | 赞助链接 | 第 6 步 |
 

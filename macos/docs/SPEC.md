@@ -105,6 +105,23 @@ Sources/
   - 如果还有残留，后台服务删除 `utun` 相关路由。
 - **失败回退：** 后台服务启动失败或崩溃时，改用用户进程运行内核并开启系统代理，同时显示“TUN 未能启动：原因”。
 
+### 4.1.1 测试阶段的备用安装方式
+测试阶段没有 Developer ID。如果 `SMAppService.daemon` 在这种签名下注册失败（指的是返回错误；`requiresApproval` 不算失败），TUN 页改为提供“手动安装后台服务”。签名里有 Developer ID 的版本不提供这个方式。
+
+- **后台服务不变：** 和 4.1 是同一个 `VeerHelper`，XPC 接口、以 root 运行内核、断开后清理都不变，只是安装方式不同。
+- **安装：** 点击后弹出一次系统的管理员密码框（`do shell script … with administrator privileges`）。脚本内容固定写在应用里，路径都加引号，不拼接任何用户输入。脚本做以下几件事：
+  1. 复制 `VeerHelper` 到 `/Library/PrivilegedHelperTools/app.veer.helper`（root:wheel，0755）；
+  2. 复制 `mihomo` 到 `/Library/PrivilegedHelperTools/app.veer.mihomo`（root:wheel，0755）。手动安装的后台服务只运行这份 root 拥有的副本，普通用户改不了它，所以不必再校验应用包里的 `mihomo`；
+  3. 写入 `/Library/LaunchDaemons/app.veer.helper.plist`（root:wheel，0644），`MachServices` 是 `app.veer.helper`；
+  4. 写入调用方校验要求 `/Library/Application Support/Veer/helper-requirement`（root:wheel，0644）；
+  5. 执行 `launchctl bootstrap system` 加载服务。
+- **调用方校验：** 后台服务从第 4 项的文件读取代码签名要求，用 `NSXPCConnection.setCodeSigningRequirement` 校验调用方：
+  - Apple Development 签名：要求同一个 Team ID，并且 bundle id 是 `app.veer.Veer`。重新编译后仍然有效。
+  - ad-hoc 签名：锁定安装时 Veer 的 cdhash。每次重新编译都会失效，Veer 发现连接被拒绝时，提示“后台服务需要重新安装”。
+- **版本：** 后台服务通过 XPC 报告自己的版本和内核版本。和 Veer 不一致时，TUN 页提示“重新安装后台服务”（同样要输入一次密码）。
+- **卸载：** TUN 页提供“卸载后台服务”：输入一次密码，执行 `launchctl bootout`，然后删除上面的文件。
+- **改用 SMAppService：** 以后换成 Developer ID 签名、`SMAppService` 能用时，Veer 先卸载手动安装的版本，再按 4.1 注册。
+
 ### 4.2 系统代理
 - **开启前保存快照：** 对每个已启用的网络服务，记下 web、secure web、socks 三种代理的开关、地址、端口，以及绕过列表，存进 `state.json`。
 - **关闭时恢复：** 按快照逐项恢复，而不是一律关掉；用户原来自己设置的代理会回来。没有快照的服务，按现有行为只关掉指向 Veer 的代理。
