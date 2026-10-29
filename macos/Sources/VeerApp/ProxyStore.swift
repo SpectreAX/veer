@@ -940,6 +940,24 @@ final class ProxyStore {
         addEdit(edit, to: id)
     }
 
+    /// What the health check finds in a profile as it runs (with "my routing" applied).
+    func healthFindings(of id: UUID) async -> [HealthFinding] {
+        guard let text = try? await effectiveTextInBackground(of: id) else { return [] }
+        return await Task.detached { ConfigHealthCheck.run(text).sorted { $0.severity < $1.severity } }.value
+    }
+
+    /// Records a finding's safe fix in "my routing", so it holds after the subscription updates.
+    func applyFix(_ finding: HealthFinding, in id: UUID) async throws {
+        let text = try await effectiveTextInBackground(of: id)
+        let edit = try await Task.detached(priority: .userInitiated) { () -> RoutingLayer.Edit in
+            let plan = EditPlan(operations: finding.fix)
+            let result = try PlanApplier.apply(plan, to: try ConfigDocument.parse(text))
+            return RoutingLayer.Edit(source: .healthCheck, prompt: finding.fixTitle ?? finding.title, plan: plan,
+                                     accepted: Set(result.items.map(\.id)), items: result.items, base: text)
+        }.value
+        addEdit(edit, to: id)
+    }
+
     // MARK: Agent actions on the running core
 
     private func runningController() throws -> MihomoController {

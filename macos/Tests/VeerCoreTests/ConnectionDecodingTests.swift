@@ -28,3 +28,15 @@ struct ConnectionDecodingTests {
         #expect(line == MihomoController.LogLine(type: "warning", payload: "dial failed"))
     }
 }
+
+struct DNSQueryDecodingTests {
+    @Test func decodesTheControllersAnswer() throws {
+        let json = #"{"AD":false,"Status":0,"Question":[{"Name":"github.com.","Qtype":1,"Qclass":1}],"Answer":[{"TTL":36,"data":"20.205.243.166","name":"github.com.","type":1}]}"#
+        let result = try JSONDecoder().decode(MihomoController.DNSResult.self, from: Data(json.utf8))
+        #expect(result.status == 0)
+        #expect(result.answers == [MihomoController.DNSAnswer(name: "github.com.", type: 1, ttl: 36, data: "20.205.243.166")])
+        #expect(result.answers[0].typeName == "A")
+        let none = try JSONDecoder().decode(MihomoController.DNSResult.self, from: Data(#"{"Status":3}"#.utf8))
+        #expect(none.status == 3 && none.answers.isEmpty)
+    }
+}

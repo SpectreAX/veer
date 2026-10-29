@@ -63,15 +63,22 @@ if [[ -z "$identity" ]]; then
   print -u2 "没有找到 Apple Development 证书，改用临时签名，TUN 将不可用。"
   identity=-
 fi
-codesign --force --timestamp=none --sign "$identity" "$app/Contents/Resources/bin/mihomo"
+# A Developer ID build is notarized: that needs the hardened runtime and a secure timestamp.
+if [[ "$identity" == "Developer ID Application"* ]]; then
+  stamp=(--timestamp) runtime=(--options runtime)
+else
+  stamp=(--timestamp=none) runtime=()
+fi
+flags=("${stamp[@]}" "${runtime[@]}")
+codesign --force "${flags[@]}" --sign "$identity" "$app/Contents/Resources/bin/mihomo"
 # Sparkle's helpers inside out, then the framework (its own documented order).
 sparkle="$app/Contents/Frameworks/Sparkle.framework"
 for item in "$sparkle/Versions/B/XPCServices/Installer.xpc" "$sparkle/Versions/B/XPCServices/Downloader.xpc" \
             "$sparkle/Versions/B/Autoupdate" "$sparkle/Versions/B/Updater.app"; do
-  [[ -e "$item" ]] && codesign --force --timestamp=none --options runtime --preserve-metadata=entitlements --sign "$identity" "$item"
+  [[ -e "$item" ]] && codesign --force "${stamp[@]}" --options runtime --preserve-metadata=entitlements --sign "$identity" "$item"
 done
-codesign --force --timestamp=none --options runtime --sign "$identity" "$sparkle"
-codesign --force --timestamp=none --sign "$identity" --identifier "$helper_label" "$app/Contents/Library/LaunchServices/$helper_label"
-codesign --force --timestamp=none --sign "$identity" "$app"
+codesign --force "${stamp[@]}" --options runtime --sign "$identity" "$sparkle"
+codesign --force "${flags[@]}" --sign "$identity" --identifier "$helper_label" "$app/Contents/Library/LaunchServices/$helper_label"
+codesign --force "${flags[@]}" --sign "$identity" "$app"
 codesign --verify --deep --strict "$app"
 print -r -- "$app"

@@ -1158,3 +1158,7 @@
 "规则集没有被使用" = "Unused rule set";
 "没有规则（包括逻辑规则和 sub-rules）或其他设置引用“%@”，删除它不会改变任何连接的去向。" = "No rule (logic rules and sub-rules included) or setting uses “%@”; deleting it changes where no connection goes.";
 "删除这个规则集" = "Delete this rule set";
+"体检" = "Check";
+"没有发现问题" = "No problems found";
+"体检只报告从配置本身就能确定的问题，比如永远不会命中的规则、引用不存在的出口。" = "The check reports only what is certain from the config itself, such as rules that never match or references to missing exits.";
+"路由" = "Route";

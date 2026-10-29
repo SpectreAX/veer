@@ -317,6 +317,7 @@ AI 服务商不在引导里配置。
 - **Sparkle 2：** 用 SPM 依赖。`SUFeedURL` 是 `https://github.com/SpectreAX/veer-releases/releases/latest/download/appcast.xml`；`SUPublicEDKey` 写在 Info.plist 里。每天检查一次，有更新时先问用户再安装。
 - **备份（应做）：** “文件 → 备份…”导出一个 zip，包含 `profiles/`、`routing/`、`threads/`、设置（不含 API Key），订阅链接可选（默认不含）。恢复前显示将覆盖哪些内容，确认后再执行。
 - **诊断包（应做）：** “关于 → 导出诊断包”生成一个 zip，包含最近的日志、匿名化后的生效配置、版本、系统版本、内核版本，不含任何密钥和订阅链接。导出前先预览内容。
+- **发布脚本：** `scripts/make-dmg.sh` 生成 `dist/Veer-<版本>.dmg`（设置 `VEER_NOTARY_PROFILE` 时公证并装订）；`scripts/release.sh` 用 `sign_update --account com.yamax.veer` 签名、写 `dist/appcast.xml`，加 `--publish` 才上传到 `SpectreAX/veer-releases` 的 `v<版本>` release。appcast 只放最新一版。用 Developer ID 签名时，`build-app.sh` 自动加上 hardened runtime 和时间戳。
 
 ## 12. 测试
 - **单元测试：**

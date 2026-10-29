@@ -90,6 +90,20 @@ enum SnapshotRunner {
                 store.connections = sampleConnections()
                 return store
             }, view: AnyView(MainView())),
+            Scene(name: "09g-route-map", size: CGSize(width: 260, height: 460), store: { running(page: .connections) },
+                  view: AnyView(RouteMap(row: sampleConnections()[0]))),
+            Scene(name: "09h-requests", store: {
+                let store = running(page: .requests)
+                store.requests = sampleConnections().enumerated().map { ClosedRequest(row: $1, closedAt: .now.addingTimeInterval(-Double($0) * 7)) }
+                return store
+            }, view: AnyView(MainView())),
+            Scene(name: "09i-dns", store: { running(page: .dns) }, view: AnyView(MainView())),
+            Scene(name: "04b-overview-suggestions", store: {
+                let store = running()
+                store.suggestions = [Suggestion(kind: .failing(host: "chatgpt.com", count: 4)),
+                                     Suggestion(kind: .slowNode(group: "节点选择", node: "🇺🇸 美国 洛杉矶 01"))]
+                return store
+            }, view: AnyView(MainView())),
             Scene(name: "09f-logs", store: {
                 let store = running(page: .logs)
                 store.logs = sampleLogs()
@@ -118,6 +132,10 @@ enum SnapshotRunner {
                 }
                 return store
             }, view: AnyView(MainView())),
+            Scene(name: "21-profile-check", size: CGSize(width: 560, height: 520), store: { sample() },
+                  view: AnyView(SampleProfileSheet(tab: .check))),
+            Scene(name: "22-settings-shortcuts", size: CGSize(width: 560, height: 320), store: { sample() }, view: AnyView(HotKeySettings())),
+            Scene(name: "23-settings-about", size: CGSize(width: 560, height: 320), store: { sample() }, view: AnyView(AboutSettings())),
             Scene(name: "20-profile-template", size: CGSize(width: 560, height: 520), store: {
                 let store = sample()
                 if let id = store.profiles.first?.id { store.setTemplate(RuleTemplate.standard, for: id) }

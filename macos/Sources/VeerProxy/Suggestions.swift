@@ -14,6 +14,8 @@ public struct Suggestion: Identifiable, Sendable, Equatable {
 
     public let kind: Kind
 
+    public init(kind: Kind) { self.kind = kind }
+
     public var id: String {
         switch kind {
         case .failing(let host, _): "failing:\(host)"

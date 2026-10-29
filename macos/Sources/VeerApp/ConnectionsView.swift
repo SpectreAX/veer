@@ -49,7 +49,14 @@ struct ConnectionsView: View {
             VStack(spacing: 0) {
                 filterBar
                 Divider()
-                table
+                HStack(spacing: 0) {
+                    table
+                    // One selected connection: its route, rule to node.
+                    if selection.count == 1, let row = store.connections.first(where: { selection.contains($0.id) }) {
+                        Divider()
+                        RouteMap(row: row).frame(width: 240)
+                    }
+                }
             }
         }
     }
@@ -219,5 +226,54 @@ struct AddRuleSheet: View {
         case "DOMAIN-KEYWORD": String(localized: "包含关键词")
         default: String(localized: "IP 地址")
         }
+    }
+}
+
+/// How one connection was routed, top to bottom: the host, the rule that matched it, each
+/// group it passed through and the node it left by.
+struct RouteMap: View {
+    let row: ConnectionRow
+
+    private struct Step: Identifiable {
+        let id: Int
+        let symbol: String
+        let label: String
+        let value: String
+    }
+
+    private var steps: [Step] {
+        var steps = [Step(id: 0, symbol: "globe", label: String(localized: "主机"),
+                          value: row.process.map { "\(row.host)\n\($0)" } ?? row.host),
+                     Step(id: 1, symbol: "line.3.horizontal.decrease", label: String(localized: "规则"), value: row.rule)]
+        for (index, hop) in row.chain.enumerated() {
+            let last = index == row.chain.count - 1
+            steps.append(Step(id: index + 2, symbol: last ? "point.topleft.down.to.point.bottomright.curvepath" : "square.stack.3d.up",
+                              label: last ? String(localized: "出口") : String(localized: "策略组"), value: hop))
+        }
+        return steps
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("路由").font(.headline).padding(.bottom, Spacing.md)
+                ForEach(steps) { step in
+                    if step.id > 0 {
+                        Image(systemName: "arrow.down").font(.caption).foregroundStyle(.tertiary)
+                            .frame(width: 28).padding(.vertical, Spacing.xxs)
+                    }
+                    HStack(alignment: .top, spacing: Spacing.sm) {
+                        Image(systemName: step.symbol).foregroundStyle(Color.veerAccent).frame(width: 28)
+                        VStack(alignment: .leading, spacing: Spacing.xxs) {
+                            Text(step.label).font(.caption).foregroundStyle(.secondary)
+                            Text(step.value).font(.callout).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+            }
+            .padding(Spacing.lg)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .accessibilityElement(children: .combine)
     }
 }

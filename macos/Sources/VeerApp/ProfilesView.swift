@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
+import VeerCore
 import VeerProxy
 
 /// Profiles: which one runs, updating subscriptions, importing and removing.
@@ -148,7 +149,7 @@ struct ProfileDetailSheet: View {
     @State private var nodes: [String] = []
     @State private var layer = RoutingLayer()
 
-    enum Tab: Hashable { case nodes, routing }
+    enum Tab: Hashable { case nodes, routing, check }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.lg) {
@@ -158,12 +159,14 @@ struct ProfileDetailSheet: View {
                 SegmentedControl(label: String(localized: "显示"), selection: $tab, options: [
                     .init(value: .nodes, title: String(localized: "节点")),
                     .init(value: .routing, title: String(localized: "我的分流")),
+                    .init(value: .check, title: String(localized: "体检")),
                 ])
                 .fixedSize()
             }
             switch tab {
             case .nodes: nodeList
             case .routing: routingList
+            case .check: ConfigCheckList(profile: profile, done: reload)
             }
             HStack {
                 Spacer()
@@ -363,5 +366,82 @@ struct ImportSheet: View {
         }
         .padding(Spacing.xl)
         .frame(width: 560)
+    }
+}
+
+/// The health check of a profile as it runs: problems certain from the config itself, worst
+/// first. Safe fixes go into "my routing"; the rest can go to the Agent.
+private struct ConfigCheckList: View {
+    @Environment(ProxyStore.self) private var store
+    @Environment(AgentStore.self) private var agent
+    @Environment(\.dismiss) private var dismiss
+    let profile: Profile
+    let done: () -> Void
+    @State private var findings: [HealthFinding]?
+    @State private var fixing: String?
+    @State private var error: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            if let error { StatusBadge(kind: .failure, text: error).fixedSize(horizontal: false, vertical: true) }
+            if let findings {
+                if findings.isEmpty {
+                    StateView(symbol: "checkmark.seal", title: String(localized: "没有发现问题"),
+                              message: String(localized: "体检只报告从配置本身就能确定的问题，比如永远不会命中的规则、引用不存在的出口。"))
+                } else {
+                    List(findings) { row($0) }.listStyle(.bordered)
+                }
+            } else {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .task { findings = await store.healthFindings(of: profile.id) }
+    }
+
+    private func row(_ finding: HealthFinding) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.xs) {
+            HStack(spacing: Spacing.sm) {
+                StatusBadge(kind: Self.kind(finding.severity), text: finding.title, compact: true)
+                Spacer()
+                if fixing == finding.id { ProgressView().controlSize(.small) }
+                if !finding.fix.isEmpty, let title = finding.fixTitle {
+                    Button(title) { fix(finding) }.secondaryAction().disabled(fixing != nil)
+                } else if let instruction = finding.aiInstruction {
+                    Button(String(localized: "问 AI")) {
+                        dismiss()
+                        store.page = .agent
+                        agent.ask(instruction)
+                    }
+                    .secondaryAction()
+                }
+            }
+            Text(verbatim: finding.subject).font(Typography.codeSmall).foregroundStyle(.secondary).lineLimit(2).textSelection(.enabled)
+            Text(finding.reason).font(.callout).fixedSize(horizontal: false, vertical: true)
+            if let hint = finding.hint { Text(hint).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+        }
+        .padding(.vertical, Spacing.xs)
+    }
+
+    private func fix(_ finding: HealthFinding) {
+        fixing = finding.id
+        error = nil
+        Task {
+            defer { fixing = nil }
+            do {
+                try await store.applyFix(finding, in: profile.id)
+                findings = await store.healthFindings(of: profile.id)
+                done()
+            } catch {
+                self.error = store.message(for: error)
+            }
+        }
+    }
+
+    static func kind(_ severity: HealthFinding.Severity) -> StatusKind {
+        switch severity {
+        case .error: .failure
+        case .warning: .warning
+        case .notice: .info
+        }
     }
 }
