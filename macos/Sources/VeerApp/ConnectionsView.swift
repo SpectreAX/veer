@@ -150,6 +150,8 @@ struct AddRuleSheet: View {
     @State private var matchType = "DOMAIN-SUFFIX"
     @State private var value = ""
     @State private var target = ""
+    @State private var targets: [String] = []
+    @State private var adding = false
     @State private var error: String?
 
     private var types: [String] { row.isAddress ? ["IP-CIDR"] : ["DOMAIN-SUFFIX", "DOMAIN", "DOMAIN-KEYWORD"] }
@@ -167,18 +169,20 @@ struct AddRuleSheet: View {
                 }
                 TextField("匹配内容", text: $value)
                 Picker("出口", selection: $target) {
-                    ForEach(store.ruleTargets(), id: \.self) { Text($0).tag($0) }
+                    ForEach(targets, id: \.self) { Text($0).tag($0) }
                 }
+                .disabled(targets.isEmpty)
             }
             .formStyle(.grouped)
             if let error { StatusBadge(kind: .failure, text: error).fixedSize(horizontal: false, vertical: true) }
             HStack {
                 Spacer()
+                if adding { ProgressView().controlSize(.small) }
                 Button("取消") { dismiss() }.keyboardShortcut(.cancelAction).neutralControl()
                 Button("添加") { add() }
                     .keyboardShortcut(.defaultAction)
                     .primaryAction(.regular)
-                    .disabled(value.trimmingCharacters(in: .whitespaces).isEmpty || target.isEmpty)
+                    .disabled(value.trimmingCharacters(in: .whitespaces).isEmpty || target.isEmpty || adding)
             }
         }
         .padding(Spacing.xl)
@@ -186,17 +190,25 @@ struct AddRuleSheet: View {
         .onAppear {
             matchType = types[0]
             value = row.address.map { $0.isV4 ? "\($0)/32" : "\($0)/128" } ?? row.host
-            target = row.policy.isEmpty ? (store.ruleTargets().first ?? "") : row.policy
+        }
+        .task {
+            targets = await store.ruleTargets()
+            target = targets.contains(row.policy) ? row.policy : (targets.first ?? "")
         }
     }
 
     private func add() {
-        do {
-            try store.addRule(matchType: matchType == "IP-CIDR" && value.contains(":") ? "IP-CIDR6" : matchType,
-                              value: value.trimmingCharacters(in: .whitespaces), target: target)
-            dismiss()
-        } catch {
-            self.error = store.message(for: error)
+        adding = true
+        error = nil
+        Task {
+            defer { adding = false }
+            do {
+                try await store.addRule(matchType: matchType == "IP-CIDR" && value.contains(":") ? "IP-CIDR6" : matchType,
+                                        value: value.trimmingCharacters(in: .whitespaces), target: target)
+                dismiss()
+            } catch {
+                self.error = store.message(for: error)
+            }
         }
     }
 

@@ -210,9 +210,16 @@ public struct MihomoController: Sendable {
 
     /// Bytes sent and received since the core started; two reads a second apart give the rate.
     public func trafficTotals() async throws -> (upload: Int64, download: Int64) {
-        struct Totals: Decodable { let uploadTotal: Int64; let downloadTotal: Int64 }
+        let totals = try await trafficSnapshot()
+        return (totals.upload, totals.download)
+    }
+
+    /// The totals and how many connections are open, from one read.
+    public func trafficSnapshot() async throws -> (upload: Int64, download: Int64, connections: Int) {
+        struct ID: Decodable { let id: String }
+        struct Totals: Decodable { let uploadTotal: Int64; let downloadTotal: Int64; let connections: [ID]? }
         let totals: Totals = try await decode(request("GET", "/connections"))
-        return (totals.uploadTotal, totals.downloadTotal)
+        return (totals.uploadTotal, totals.downloadTotal, totals.connections?.count ?? 0)
     }
 
     // MARK: Writing

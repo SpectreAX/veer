@@ -68,32 +68,65 @@ struct ExitInfo: Equatable {
     /// Neither service answered.
     static let unknown = ExitInfo(ip: "")
 
-    /// Through the proxy on `port`: ip.sb first, ipinfo.io when it fails.
+    /// Through the proxy on `port`. Several services are asked at once and the first answer
+    /// wins: any one of them can be blocked, slow, or rate-limited on a given node.
     static func lookUp(throughPort port: Int) async -> ExitInfo? {
+        if let found = await race(port: port) { return found }
+        // The first try can come right after a node switch, before the node answers.
+        try? await Task.sleep(for: .seconds(2))
+        return await race(port: port)
+    }
+
+    private static func race(port: Int) async -> ExitInfo? {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.connectionProxyDictionary = [
             kCFNetworkProxiesHTTPEnable: true, kCFNetworkProxiesHTTPProxy: "127.0.0.1", kCFNetworkProxiesHTTPPort: port,
             kCFNetworkProxiesHTTPSEnable: true, kCFNetworkProxiesHTTPSProxy: "127.0.0.1", kCFNetworkProxiesHTTPSPort: port,
         ] as [AnyHashable: Any]
-        configuration.timeoutIntervalForRequest = 8
+        configuration.timeoutIntervalForRequest = 6
         let session = URLSession(configuration: configuration)
-        defer { session.finishTasksAndInvalidate() }
-        func json(_ url: String) async -> [String: Any]? {
-            guard let url = URL(string: url), let (data, response) = try? await session.data(from: url),
-                  (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
-            return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        defer { session.invalidateAndCancel() }
+        return await withTaskGroup(of: ExitInfo?.self) { group in
+            for service in services {
+                group.addTask {
+                    guard let url = URL(string: service.url), let (data, response) = try? await session.data(from: url),
+                          (response as? HTTPURLResponse)?.statusCode == 200,
+                          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+                    return service.read(json)
+                }
+            }
+            for await answer in group {
+                if let answer, !answer.ip.isEmpty {
+                    group.cancelAll()
+                    return answer
+                }
+            }
+            return nil
         }
-        if let answer = await json("https://api.ip.sb/geoip"), let ip = answer["ip"] as? String {
-            return ExitInfo(ip: ip, country: answer["country"] as? String, countryCode: answer["country_code"] as? String,
-                            organization: (answer["organization"] as? String) ?? (answer["isp"] as? String))
-        }
-        if let answer = await json("https://ipinfo.io/json"), let ip = answer["ip"] as? String {
-            let code = answer["country"] as? String
-            return ExitInfo(ip: ip, country: code.flatMap { Locale.current.localizedString(forRegionCode: $0) }, countryCode: code,
-                            organization: answer["org"] as? String)
-        }
-        return nil
     }
+
+    /// Public services that report the caller's address, and how to read each one's answer.
+    static let services: [(url: String, read: @Sendable ([String: Any]) -> ExitInfo?)] = [
+        ("https://api.ip.sb/geoip", { json in
+            (json["ip"] as? String).map { ExitInfo(ip: $0, country: json["country"] as? String, countryCode: json["country_code"] as? String,
+                                                  organization: (json["organization"] as? String) ?? (json["isp"] as? String)) }
+        }),
+        ("https://ipwho.is/", { json in
+            guard json["success"] as? Bool != false, let ip = json["ip"] as? String else { return nil }
+            return ExitInfo(ip: ip, country: json["country"] as? String, countryCode: json["country_code"] as? String,
+                            organization: (json["connection"] as? [String: Any])?["isp"] as? String)
+        }),
+        ("https://ipapi.co/json/", { json in
+            (json["ip"] as? String).map { ExitInfo(ip: $0, country: json["country_name"] as? String, countryCode: json["country_code"] as? String,
+                                                  organization: json["org"] as? String) }
+        }),
+        ("https://ipinfo.io/json", { json in
+            guard let ip = json["ip"] as? String else { return nil }
+            let code = json["country"] as? String
+            return ExitInfo(ip: ip, country: code.flatMap { Locale.current.localizedString(forRegionCode: $0) }, countryCode: code,
+                            organization: json["org"] as? String)
+        }),
+    ]
 
     /// The flag emoji for the country code.
     var flag: String {

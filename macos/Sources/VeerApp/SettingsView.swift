@@ -73,6 +73,7 @@ struct ProxySettings: View {
                 Toggle(String(localized: "IPv6"), isOn: $store.settings.ipv6)
                 Toggle(String(localized: "按进程匹配"), isOn: $store.settings.processMatching)
                 Toggle(String(localized: "禁用 QUIC"), isOn: $store.settings.disableQUIC)
+                Toggle(String(localized: "切换配置、节点或分流后断开旧连接"), isOn: $store.reconnectAfterChanges)
                 Picker(String(localized: "日志级别"), selection: $store.settings.logLevel) {
                     ForEach(["error", "warning", "info", "debug"], id: \.self) { Text(verbatim: $0).tag($0) }
                 }

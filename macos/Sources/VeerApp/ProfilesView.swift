@@ -79,9 +79,16 @@ private struct ProfileRow: View {
 
     var body: some View {
         HStack(spacing: Spacing.md) {
-            Image(systemName: active ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(active ? Color.veerAccent : Color.secondary)
-                .font(.title3)
+            Button { store.activate(profile.id) } label: {
+                Image(systemName: active ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(active ? Color.veerAccent : Color.secondary)
+                    .font(.title3)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .disabled(active)
+            .help(active ? String(localized: "正在使用这个配置") : String(localized: "使用这个配置"))
+            .accessibilityLabel(active ? String(localized: "正在使用这个配置") : String(localized: "使用这个配置"))
             VStack(alignment: .leading, spacing: Spacing.xxs) {
                 HStack(spacing: Spacing.xs) {
                     Text(profile.name).font(.headline).lineLimit(1).truncationMode(.middle)
@@ -267,7 +274,11 @@ enum ConfigExport {
         panel.message = String(localized: "导出的配置包含“我的分流”的修改，不含控制器地址和密钥。")
         let overrides = NSButton(checkboxWithTitle: String(localized: "包含 Veer 的覆写（端口、DNS、TUN）"), target: nil, action: nil)
         overrides.state = .off
-        panel.accessoryView = overrides
+        // Inside a padded container: a bare checkbox sits on the panel's separator line.
+        let accessory = NSView(frame: NSRect(x: 0, y: 0, width: overrides.fittingSize.width + 40, height: overrides.fittingSize.height + 24))
+        overrides.frame.origin = NSPoint(x: 20, y: 12)
+        accessory.addSubview(overrides)
+        panel.accessoryView = accessory
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             let text = try store.exportText(of: profile.id, withOverrides: overrides.state == .on)

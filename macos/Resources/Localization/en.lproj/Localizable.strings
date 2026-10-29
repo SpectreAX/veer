@@ -953,3 +953,38 @@
 "恢复默认" = "Restore Defaults";
 "上游服务器" = "Upstream servers";
 "每行一个，支持 DoH（https://）、DoT（tls://）和普通地址。也用来解析代理服务器自己的域名。" = "One per line: DoH (https://), DoT (tls://) or plain addresses. Also used to resolve the proxy servers' own domains.";
+
+/* Dashboard */
+"状态" = "Status";
+"运行时间" = "Run time";
+"网络" = "Network";
+"正在检测出口…" = "Detecting the exit…";
+"上传" = "Upload";
+"下载" = "Download";
+"峰值 %@" = "Peak %@";
+"本次共 %@" = "%@ this run";
+"出站模式" = "Outbound mode";
+"端口 %@" = "Port %@";
+"即将推出" = "Coming soon";
+"仅本机可用" = "This Mac only";
+"更新订阅" = "Update subscription";
+"剩 %lld 天" = "%lld days left";
+"服务状态" = "Service status";
+"重新检测" = "Check again";
+"打开连接页" = "Open Connections";
+"个活动连接" = "active connections";
+"打开代理页" = "Open Proxies";
+"切换节点" = "Switch node";
+"正在使用这个配置" = "This profile is in use";
+"使用这个配置" = "Use this profile";
+
+/* Proxies */
+"全部展开" = "Expand All";
+"全部收起" = "Collapse All";
+"展开全部策略组" = "Expand every group";
+"收起全部策略组" = "Collapse every group";
+"展开" = "Expand";
+"proxies.collapse" = "Collapse";
+"展开“%@”" = "Expand “%@”";
+"收起“%@”" = "Collapse “%@”";
+"切换配置、节点或分流后断开旧连接" = "Close old connections after switching profiles, nodes or routing";

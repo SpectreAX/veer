@@ -20,6 +20,17 @@ struct ProxiesView: View {
     var body: some View {
         content
             .searchable(text: $query, placement: .toolbar, prompt: Text("搜索节点或策略组"))
+            .toolbar {
+                ToolbarItem {
+                    let allCollapsed = !store.groups.isEmpty && store.groups.allSatisfy { store.collapsedGroups.contains($0.name) }
+                    Button { store.setAllCollapsed(!allCollapsed) } label: {
+                        allCollapsed ? Label("全部展开", systemImage: "rectangle.expand.vertical")
+                                     : Label("全部收起", systemImage: "rectangle.compress.vertical")
+                    }
+                    .help(allCollapsed ? String(localized: "展开全部策略组") : String(localized: "收起全部策略组"))
+                    .disabled(store.groups.isEmpty)
+                }
+            }
     }
 
     @ViewBuilder private var content: some View {
@@ -51,14 +62,26 @@ private struct GroupSection: View {
     let group: ProxyStore.Group
     private let columns = [GridItem(.adaptive(minimum: 180), spacing: Spacing.sm)]
 
+    private var collapsed: Bool { store.collapsedGroups.contains(group.name) }
+
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.md) {
             HStack(spacing: Spacing.sm) {
-                Text(group.name).font(.headline).lineLimit(1).truncationMode(.middle)
-                Tag(text: Self.typeLabel(group.type))
-                if let now = group.now {
-                    Text(verbatim: "→ \(now)").font(.callout).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                Button { store.toggleCollapsed(group.name) } label: {
+                    HStack(spacing: Spacing.sm) {
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(collapsed ? 0 : 90))
+                        Text(group.name).font(.headline).lineLimit(1).truncationMode(.middle)
+                        Tag(text: Self.typeLabel(group.type))
+                    }
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .help(collapsed ? String(localized: "展开") : String(localized: "proxies.collapse", defaultValue: "收起"))
+                .accessibilityLabel(collapsed ? String(localized: "展开“\(group.name)”") : String(localized: "收起“\(group.name)”"))
+                quickSwitch
                 Spacer()
                 if store.testingGroups.contains(group.name) {
                     ProgressView().controlSize(.small)
@@ -75,6 +98,7 @@ private struct GroupSection: View {
                     .disabled(store.testingGroups.contains(group.name))
                     .help("测试这个策略组里每个成员的延迟")
             }
+            if !collapsed {
             LazyVGrid(columns: columns, alignment: .leading, spacing: Spacing.sm) {
                 ForEach(group.members) { member in
                     NodeTile(member: member, selected: member.name == group.now, selectable: group.isSelectable) {
@@ -85,8 +109,34 @@ private struct GroupSection: View {
                     }
                 }
             }
+            }
         }
         .panel()
+        .animation(Motion.standard, value: collapsed)
+    }
+
+    /// The node in use, and for a select group a menu of every member with its delay: switching
+    /// without opening the group.
+    @ViewBuilder private var quickSwitch: some View {
+        if let now = group.now {
+            if group.isSelectable {
+                Menu {
+                    ForEach(group.members) { member in
+                        Button { store.select(member.name, in: group.name) } label: {
+                            if member.name == now { Label(member.name, systemImage: "checkmark") } else { Text(member.name) }
+                            Text(Format.delay(member.delay))
+                        }
+                    }
+                } label: {
+                    Text(verbatim: "→ \(now)").lineLimit(1).truncationMode(.middle)
+                }
+                .menuStyle(.borderlessButton).fixedSize().neutralControl()
+                .font(.callout)
+                .help("切换节点")
+            } else {
+                Text(verbatim: "→ \(now)").font(.callout).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+            }
+        }
     }
 
     /// Opens the Agent page with `text` in the composer, in a conversation about this profile.

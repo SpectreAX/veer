@@ -92,6 +92,8 @@ final class ProxyStore {
         }
     }
     @ObservationIgnored private var settingsReload: Task<Void, Never>?
+    /// Effective configs by profile, so views and the Agent do not rebuild them on every draw.
+    @ObservationIgnored private var effectiveCache: [UUID: EffectiveConfig] = [:]
     /// Where traffic leaves the proxy: shown on the overview while the core runs.
     var exit: ExitInfo?
     var showExitIP: Bool { didSet { defaults.set(showExitIP, forKey: "showExitIP"); if !showExitIP { exit = nil } } }
@@ -99,6 +101,12 @@ final class ProxyStore {
     /// Start the core, the system proxy and the mode as they were when Veer last quit.
     var restoreLastState: Bool { didSet { defaults.set(restoreLastState, forKey: "restoreLastState") } }
     var showRateInMenuBar: Bool { didSet { defaults.set(showRateInMenuBar, forKey: "showRateInMenuBar") } }
+    /// Close open connections after a profile switch, a routing change or a node switch, so they
+    /// reconnect the new way instead of staying on the old route.
+    var reconnectAfterChanges: Bool { didSet { defaults.set(reconnectAfterChanges, forKey: "reconnectAfterChanges") } }
+    @ObservationIgnored private var systemProxyBusy = false
+    /// Groups folded on the Proxies page, by name; remembered across launches.
+    var collapsedGroups: Set<String> { didSet { defaults.set(Array(collapsedGroups), forKey: "collapsedGroups") } }
     /// The active profile with its "my routing" layer applied, as the core last loaded it.
     var effective: EffectiveConfig?
 
@@ -129,6 +137,15 @@ final class ProxyStore {
     /// The previous poll's byte counts, for per-connection speeds.
     @ObservationIgnored private var lastConnectionBytes: [String: (upload: Int64, download: Int64)] = [:]
 
+    /// This run of the core: when it started, bytes so far, the fastest second, open connections.
+    var runningSince: Date?
+    var uploadTotal: Int64 = 0
+    var downloadTotal: Int64 = 0
+    var uploadPeak: Int64 = 0
+    var downloadPeak: Int64 = 0
+    var connectionCount = 0
+    var serviceDelays: [String: Int] = [:]
+
     /// Live connections, newest first, while the connections page is open.
     var connections: [ConnectionRow] = []
     var connectionsPaused = false
@@ -152,6 +169,8 @@ final class ProxyStore {
         restoreLastState = defaults.object(forKey: "restoreLastState") as? Bool ?? true
         showRateInMenuBar = defaults.bool(forKey: "showRateInMenuBar")
         showExitIP = defaults.object(forKey: "showExitIP") as? Bool ?? true
+        reconnectAfterChanges = defaults.object(forKey: "reconnectAfterChanges") as? Bool ?? true
+        collapsedGroups = Set(defaults.stringArray(forKey: "collapsedGroups") ?? [])
         state = stateStore.load()
         profiles = profileStore.loadAll()
         activeProfileID = defaults.string(forKey: "activeProfile").flatMap(UUID.init(uuidString:)).flatMap { id in profiles.contains { $0.id == id } ? id : nil }
@@ -231,8 +250,12 @@ final class ProxyStore {
                 try paths.prepare()
                 guard let port = Ports.free() else { throw EditorError(String(localized: "找不到可用的本机端口来控制内核。")) }
                 let secret = RuntimeConfig.makeSecret()
-                let yaml = try RuntimeConfig.build(profile: try effectiveText(of: profile.id), settings: settings, controllerPort: port, secret: secret)
-                try Data(yaml.utf8).write(to: paths.runtimeConfig, options: .atomic)
+                let text = try await effectiveTextInBackground(of: profile.id)
+                let path = paths.runtimeConfig, built = settings
+                try await Task.detached(priority: .userInitiated) {
+                    let yaml = try RuntimeConfig.build(profile: text, settings: built, controllerPort: port, secret: secret)
+                    try Data(yaml.utf8).write(to: path, options: .atomic)
+                }.value
                 let core = CoreProcess(binary: binary, home: paths.core)
                 try core.start(config: paths.runtimeConfig) { status, log in
                     Task { @MainActor in self.coreExited(status: status, log: log) }
@@ -264,6 +287,7 @@ final class ProxyStore {
                 startTraffic()
                 startLogs()
                 checkExit()
+                testEverythingOnce()
                 if state.systemProxy { setSystemProxy(true) }
             } catch {
                 core?.stop()
@@ -348,7 +372,10 @@ final class ProxyStore {
     func select(_ member: String, in group: String) {
         guard let controller else { return }
         Task {
-            do { try await controller.select(member, in: group) } catch { notice = message(for: error) }
+            do {
+                try await controller.select(member, in: group)
+                await closeConnections(through: group)
+            } catch { notice = message(for: error) }
             await refresh()
             checkExit(after: .milliseconds(500))
         }
@@ -379,23 +406,38 @@ final class ProxyStore {
     }
 
     /// The user turning the system proxy on or off; remembered for the next launch.
+    /// `networksetup` runs once per service and setting, which takes long enough to stall the
+    /// switch; it runs in the background while the switch already shows the new state.
     func setSystemProxy(_ on: Bool) {
         notice = nil
-        if on {
-            guard isRunning else { return }
+        guard !on || isRunning, !systemProxyBusy else { return }
+        systemProxyBusy = true
+        systemProxyOn = on
+        state.systemProxy = on
+        let proxy = systemProxy, port = proxyPort, snapshot = state.snapshot
+        Task {
+            defer { systemProxyBusy = false }
             do {
-                // Record what each service had first, so turning off puts it back.
-                if state.snapshot == nil { state.snapshot = try systemProxy.snapshot() }
-                state.proxyPort = proxyPort
-                try systemProxy.enable(host: "127.0.0.1", port: proxyPort)
-                systemProxyOn = true
-                state.systemProxy = true
+                if on {
+                    // Record what each service had first, so turning off puts it back.
+                    let recorded = try await Task.detached { () -> ProxySnapshot in
+                        let recorded = try snapshot ?? proxy.snapshot()
+                        try proxy.enable(host: "127.0.0.1", port: port)
+                        return recorded
+                    }.value
+                    state.snapshot = recorded
+                    state.proxyPort = port
+                } else {
+                    try await Task.detached {
+                        if let snapshot { try proxy.restore(snapshot, host: "127.0.0.1", port: port) } else { try proxy.disable(host: "127.0.0.1", port: port) }
+                    }.value
+                    state.snapshot = nil
+                }
             } catch {
+                systemProxyOn = !on
+                state.systemProxy = !on
                 notice = message(for: error)
             }
-        } else {
-            restoreSystemProxy()
-            state.systemProxy = false
         }
     }
 
@@ -417,32 +459,133 @@ final class ProxyStore {
     private func startTraffic() {
         trafficTask?.cancel()
         lastTotals = nil
+        runningSince = .now
+        uploadTotal = 0
+        downloadTotal = 0
+        uploadPeak = 0
+        downloadPeak = 0
         trafficTask = Task {
             while !Task.isCancelled, let controller {
-                if let totals = try? await controller.trafficTotals() {
+                if let totals = try? await controller.trafficSnapshot() {
                     if let last = lastTotals {
                         uploadRate = max(0, totals.upload - last.upload)
                         downloadRate = max(0, totals.download - last.download)
+                        uploadPeak = max(uploadPeak, uploadRate)
+                        downloadPeak = max(downloadPeak, downloadRate)
                     }
-                    lastTotals = totals
+                    lastTotals = (totals.upload, totals.download)
+                    uploadTotal = totals.upload
+                    downloadTotal = totals.download
+                    connectionCount = totals.connections
                 }
                 try? await Task.sleep(for: .seconds(1))
             }
         }
     }
 
+    // MARK: Dashboard
+
+    /// Public sites the dashboard checks through the proxy, with their latency in ms (nil while
+    /// checking, 0 when unreachable).
+    static let services: [(name: String, symbol: String, url: String)] = [
+        ("Google", "magnifyingglass", "https://www.google.com/generate_204"),
+        ("GitHub", "chevron.left.forwardslash.chevron.right", "https://github.com/"),
+        ("YouTube", "play.rectangle", "https://www.youtube.com/"),
+        ("ChatGPT", "sparkles", "https://chatgpt.com/"),
+    ]
+
+    /// Times one request to each service through Veer's port.
+    func checkServices() {
+        guard isRunning else { serviceDelays = [:]; return }
+        let port = proxyPort
+        serviceDelays = [:]
+        Task {
+            await withTaskGroup(of: (String, Int).self) { group in
+                for service in Self.services {
+                    group.addTask { (service.name, await Self.latency(of: service.url, port: port)) }
+                }
+                for await (name, delay) in group { serviceDelays[name] = delay }
+            }
+        }
+    }
+
+    nonisolated static func latency(of url: String, port: Int) async -> Int {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.connectionProxyDictionary = [
+            kCFNetworkProxiesHTTPEnable: true, kCFNetworkProxiesHTTPProxy: "127.0.0.1", kCFNetworkProxiesHTTPPort: port,
+            kCFNetworkProxiesHTTPSEnable: true, kCFNetworkProxiesHTTPSProxy: "127.0.0.1", kCFNetworkProxiesHTTPSPort: port,
+        ] as [AnyHashable: Any]
+        configuration.timeoutIntervalForRequest = 8
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        guard let url = URL(string: url) else { return 0 }
+        var request = URLRequest(url: url)
+        request.httpMethod = "HEAD"
+        let start = Date()
+        guard (try? await session.data(for: request)) != nil else { return 0 }
+        return max(1, Int(Date().timeIntervalSince(start) * 1000))
+    }
+
+    /// This Mac's address on the local network (the first active IPv4 interface).
+    nonisolated static var localAddress: String? {
+        var pointer: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&pointer) == 0, let first = pointer else { return nil }
+        defer { freeifaddrs(pointer) }
+        for entry in sequence(first: first, next: { $0.pointee.ifa_next }) {
+            let flags = Int32(entry.pointee.ifa_flags)
+            guard let address = entry.pointee.ifa_addr, address.pointee.sa_family == UInt8(AF_INET),
+                  flags & IFF_UP != 0, flags & IFF_LOOPBACK == 0 else { continue }
+            let name = String(cString: entry.pointee.ifa_name)
+            guard name.hasPrefix("en") else { continue }
+            var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+            if getnameinfo(address, socklen_t(address.pointee.sa_len), &host, socklen_t(host.count), nil, 0, NI_NUMERICHOST) == 0 {
+                return String(decoding: host.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
+            }
+        }
+        return nil
+    }
+
     /// Loads the active profile into the running core without restarting it.
-    private func reloadRunningCore() async {
+    /// Loads the active profile into the running core without restarting it. With
+    /// `closingConnections` (a new profile or new rules), open connections are closed: the core
+    /// keeps routing them the old way until they reconnect.
+    private func reloadRunningCore(closingConnections: Bool = false) async {
         guard isRunning, let controller, let access = controllerAccess, let profile = activeProfile else { return }
         do {
             var running = settings
             running.mixedPort = proxyPort
-            let yaml = try RuntimeConfig.build(profile: try effectiveText(of: profile.id), settings: running, controllerPort: access.port, secret: access.secret)
-            try Data(yaml.utf8).write(to: paths.runtimeConfig, options: .atomic)
+            let text = try await effectiveTextInBackground(of: profile.id)
+            let path = paths.runtimeConfig, port = access.port, secret = access.secret, built = running
+            let yaml = try await Task.detached(priority: .userInitiated) {
+                let yaml = try RuntimeConfig.build(profile: text, settings: built, controllerPort: port, secret: secret)
+                try Data(yaml.utf8).write(to: path, options: .atomic)
+                return yaml
+            }.value
             try await controller.apply(yaml, mode: .config)
+            if closingConnections && reconnectAfterChanges { try? await controller.closeAllConnections() }
             await refresh()
         } catch {
             notice = message(for: error)
+        }
+    }
+
+    func toggleCollapsed(_ group: String) {
+        if collapsedGroups.contains(group) { collapsedGroups.remove(group) } else { collapsedGroups.insert(group) }
+    }
+
+    func setAllCollapsed(_ collapsed: Bool) {
+        collapsedGroups = collapsed ? Set(groups.map(\.name)) : []
+    }
+
+    /// One delay test of every node after the core starts, so the Proxies page and "fastest"
+    /// choices have numbers at once. GLOBAL lists every node and group.
+    private func testEverythingOnce() {
+        guard let controller else { return }
+        testingGroups.insert("GLOBAL")
+        Task {
+            _ = try? await controller.testDelay(group: "GLOBAL")
+            testingGroups.remove("GLOBAL")
+            await refresh()
         }
     }
 
@@ -488,6 +631,13 @@ final class ProxyStore {
         }
     }
 
+    /// After a node switch: connections that went through `group` keep their old node until they
+    /// reconnect, so they are closed.
+    func closeConnections(through group: String) async {
+        guard reconnectAfterChanges, let controller, let list = try? await controller.connections() else { return }
+        for connection in list where connection.chains.contains(group) { try? await controller.closeConnection(connection.id) }
+    }
+
     func closeConnection(_ id: String) {
         guard let controller else { return }
         Task {
@@ -523,21 +673,27 @@ final class ProxyStore {
     func clearLogs() { logs = [] }
 
     /// Group and node names a manual rule can send traffic to: groups first, then built-ins.
-    func ruleTargets() -> [String] {
-        guard let id = activeProfileID, let text = try? effectiveText(of: id), let document = try? ConfigDocument.parse(text) else { return [] }
-        return document.targets.filter { $0.kind == .group }.map(\.name) + ["DIRECT", "REJECT"]
+    /// Parsed off the main thread; call once, not while drawing.
+    func ruleTargets() async -> [String] {
+        guard let id = activeProfileID, let text = try? await effectiveTextInBackground(of: id) else { return [] }
+        let groups = await Task.detached { (try? ConfigDocument.parse(text))?.targets.filter { $0.kind == .group }.map(\.name) ?? [] }.value
+        return groups + ["DIRECT", "REJECT"]
     }
 
     /// Adds `matchType,value,target` to the active profile's "my routing", at the top of the rules.
-    func addRule(matchType: String, value: String, target: String) throws {
+    /// The config is parsed off the main thread; the core reloads and reconnects at once.
+    func addRule(matchType: String, value: String, target: String) async throws {
         guard let id = activeProfileID else { return }
-        let text = try effectiveText(of: id)
-        let document = try ConfigDocument.parse(text)
-        guard let exit = document.target(named: target) else { throw EditorError(String(localized: "找不到出口“\(target)”。")) }
-        let plan = EditPlan(operations: [.route(matchType: matchType, match: value, targetId: exit.id)])
-        let result = try PlanApplier.apply(plan, to: document)
-        let edit = RoutingLayer.Edit(source: .manual, prompt: String(localized: "\(value) 走 \(target)"), plan: plan,
-                                     accepted: Set(result.items.map(\.id)), items: result.items, base: text)
+        let text = try await effectiveTextInBackground(of: id)
+        let prompt = String(localized: "\(value) 走 \(target)"), missing = String(localized: "找不到出口“\(target)”。")
+        let edit = try await Task.detached(priority: .userInitiated) { () -> RoutingLayer.Edit in
+            let document = try ConfigDocument.parse(text)
+            guard let exit = document.target(named: target) else { throw EditorError(missing) }
+            let plan = EditPlan(operations: [.route(matchType: matchType, match: value, targetId: exit.id)])
+            let result = try PlanApplier.apply(plan, to: document)
+            return RoutingLayer.Edit(source: .manual, prompt: prompt, plan: plan, accepted: Set(result.items.map(\.id)),
+                                     items: result.items, base: text)
+        }.value
         addEdit(edit, to: id)
     }
 
@@ -565,6 +721,7 @@ final class ProxyStore {
         guard group.isSelectable else { throw EditorError(String(localized: "“\(name)”按延迟自动选择，不能手动切换节点。")) }
         let previous = group.now
         try await controller.select(node, in: name)
+        await closeConnections(through: name)
         await refresh()
         checkExit(after: .milliseconds(500))
         return previous
@@ -616,17 +773,56 @@ final class ProxyStore {
                 if seen.count >= 3 { break }
             }
         }
-        guard !lines.isEmpty else { return nil }
-        return "运行中内核的真实连接（最近）：\n" + lines.joined(separator: "\n")  // for the AI
+        // Connections that already closed still show in the log: "x.com:443 match RuleSet(X) using Group[Node]".
+        var logged: [String] = []
+        for domain in domains.prefix(8) {
+            let host = domain.lowercased()
+            let hits = logs.reversed().filter { entry in
+                let text = entry.message.lowercased()
+                return text.contains(" match ") && (text.contains("--> \(host):") || text.contains(".\(host):"))
+            }
+            for entry in hits.prefix(2) {
+                if let range = entry.message.range(of: "-->") { logged.append("· " + entry.message[range.upperBound...].trimmingCharacters(in: .whitespaces)) }
+            }
+        }
+        guard !lines.isEmpty || !logged.isEmpty else { return nil }
+        var summary: [String] = []
+        if !lines.isEmpty { summary.append("运行中内核的真实连接（最近）：\n" + lines.joined(separator: "\n")) }  // for the AI
+        if !logged.isEmpty { summary.append("内核日志里的路由记录（最近，格式：主机:端口 match 规则 using 策略组[节点]）：\n" + logged.joined(separator: "\n")) }  // for the AI
+        return summary.joined(separator: "\n\n")
     }
 
     // MARK: My routing
 
     /// The profile with its layer applied; kept in `effective` for the active one.
     func effectiveText(of id: UUID) throws -> String {
+        if let cached = effectiveCache[id] { return cached.text }
         let result = try routingStore.load(id).apply(to: try profileStore.text(of: id))
-        if id == activeProfileID { effective = result }
+        remember(result, for: id)
         return result.text
+    }
+
+    /// The same, built off the main thread: parsing and replaying a large subscription takes long
+    /// enough to stall the window.
+    func effectiveTextInBackground(of id: UUID) async throws -> String {
+        if let cached = effectiveCache[id] { return cached.text }
+        let routingStore = routingStore, profileStore = profileStore
+        let result = try await Task.detached(priority: .userInitiated) {
+            try routingStore.load(id).apply(to: try profileStore.text(of: id))
+        }.value
+        remember(result, for: id)
+        return result.text
+    }
+
+    private func remember(_ result: EffectiveConfig, for id: UUID) {
+        effectiveCache[id] = result
+        if id == activeProfileID { effective = result }
+    }
+
+    /// The profile's text or layer changed: its effective config has to be built again.
+    private func forgetEffective(_ id: UUID) {
+        effectiveCache[id] = nil
+        if id == activeProfileID { effective = nil }
     }
 
     func layer(of id: UUID) -> RoutingLayer { routingStore.load(id) }
@@ -667,8 +863,12 @@ final class ProxyStore {
     @discardableResult private func saveLayer(_ layer: RoutingLayer, for id: UUID) -> Bool {
         do {
             try routingStore.save(layer, for: id)
+            forgetEffective(id)
             if id == activeProfileID {
-                if isRunning { Task { await reloadRunningCore() } } else { _ = try? effectiveText(of: id) }
+                Task {
+                    _ = try? await effectiveTextInBackground(of: id)
+                    if isRunning { await reloadRunningCore(closingConnections: true) }
+                }
             }
             return true
         } catch {
@@ -689,8 +889,15 @@ final class ProxyStore {
     func activate(_ id: UUID) {
         guard id != activeProfileID else { return }
         activeProfileID = id
-        effective = nil
-        if isRunning { Task { await reloadRunningCore() } } else if case .failed = phase { start() }
+        effective = effectiveCache[id]
+        if isRunning {
+            Task {
+                await reloadRunningCore(closingConnections: true)
+                // New nodes: measure them, and the exit may have moved.
+                testEverythingOnce()
+                checkExit()
+            }
+        } else if case .failed = phase { start() }
     }
 
     func delete(_ id: UUID) {
@@ -700,6 +907,7 @@ final class ProxyStore {
         }
         profileStore.delete(id)
         routingStore.delete(id)
+        forgetEffective(id)
         profiles = profileStore.loadAll()
         if profiles.isEmpty { onboarding = .addProfile }
     }
@@ -775,8 +983,9 @@ final class ProxyStore {
                 profile.updatedAt = .now
                 profile.usage = response.usage ?? profile.usage
                 try profileStore.save(profile, text: result.text)
+                forgetEffective(id)
                 profiles = profileStore.loadAll()
-                if id == activeProfileID { await reloadRunningCore() }
+                if id == activeProfileID { await reloadRunningCore(closingConnections: true) }
             } catch {
                 notice = String(localized: "“\(profile.name)”更新失败：\(message(for: error))")
             }
