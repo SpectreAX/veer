@@ -5,10 +5,12 @@ import VeerProxy
 struct SettingsView: View {
     var body: some View {
         TabView {
-            GeneralSettings().tabItem { Label("通用", systemImage: "gearshape") }
-            ProxySettings().tabItem { Label("代理", systemImage: "network") }
+            GeneralSettings().tabItem { Label(String(localized: "通用"), systemImage: "gearshape") }
+            ProxySettings().tabItem { Label(String(localized: "代理"), systemImage: "network") }
+            AISettingsPane().tabItem { Label("AI", systemImage: "sparkles") }
+            PrivacySettingsPane().tabItem { Label(String(localized: "隐私"), systemImage: "hand.raised") }
         }
-        .frame(width: 520)
+        .frame(width: 560)
     }
 }
 
@@ -21,7 +23,7 @@ struct GeneralSettings: View {
         @Bindable var store = store
         Form {
             Section {
-                Picker("语言", selection: $language) {
+                Picker(String(localized: "语言"), selection: $language) {
                     ForEach(AppLanguage.allCases) { Text($0.title).tag($0) }
                 }
                 .onChange(of: language) { _, value in
@@ -32,17 +34,17 @@ struct GeneralSettings: View {
                     HStack {
                         StatusBadge(kind: .info, text: String(localized: "重新打开 Veer 后生效。"), compact: true)
                         Spacer()
-                        Button("立即重新打开") { AppLanguage.relaunch() }.neutralControl()
+                        Button(String(localized: "立即重新打开")) { AppLanguage.relaunch() }.neutralControl()
                     }
                 }
             }
             Section {
-                Toggle("打开 Veer 时恢复上次的代理状态", isOn: $store.restoreLastState)
-                Toggle("在菜单栏显示实时速率", isOn: $store.showRateInMenuBar)
+                Toggle(String(localized: "打开 Veer 时恢复上次的代理状态"), isOn: $store.restoreLastState)
+                Toggle(String(localized: "在菜单栏显示实时速率"), isOn: $store.showRateInMenuBar)
             } header: {
-                Text("启动与菜单栏")
+                Text(String(localized: "启动与菜单栏"))
             } footer: {
-                Text("上次退出时内核在运行，就重新启动它，并恢复模式和系统代理。")
+                Text(String(localized: "上次退出时内核在运行，就重新启动它，并恢复模式和系统代理。"))
                     .font(.caption).foregroundStyle(.secondary)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -60,16 +62,16 @@ struct ProxySettings: View {
         @Bindable var store = store
         Form {
             Section {
-                TextField("代理端口", text: $portText, prompt: Text(verbatim: "7890"))
+                TextField(String(localized: "代理端口"), text: $portText, prompt: Text(verbatim: "7890"))
                     .onChange(of: portText) { _, _ in applyPort() }
                 if let problem = portProblem {
                     StatusBadge(kind: .warning, text: problem, compact: true)
                 }
-                Toggle("允许局域网设备连接", isOn: $store.settings.allowLAN)
+                Toggle(String(localized: "允许局域网设备连接"), isOn: $store.settings.allowLAN)
             } header: {
-                Text("内核")
+                Text(String(localized: "内核"))
             } footer: {
-                Text("HTTP 和 SOCKS 共用这个端口。修改后，重新启动内核才会生效。允许局域网连接后，同一网络里的设备可以把这台 Mac 当作代理。")
+                Text(String(localized: "HTTP 和 SOCKS 共用这个端口。修改后，重新启动内核才会生效。允许局域网连接后，同一网络里的设备可以把这台 Mac 当作代理。"))
                     .font(.caption).foregroundStyle(.secondary)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -101,7 +103,7 @@ enum AppLanguage: String, CaseIterable, Identifiable {
         switch self {
         case .system: String(localized: "跟随系统")
         // Each language names itself.
-        case .simplifiedChinese: "简体中文"
+        case .simplifiedChinese: String(localized: "简体中文")
         case .english: "English"
         }
     }

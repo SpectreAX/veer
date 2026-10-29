@@ -14,8 +14,11 @@ enum SnapshotRunner {
                 let name = appearance == "dark" ? NSAppearance.Name.darkAqua : .aqua
                 for scene in scenes() {
                     let store = scene.store()
+                    let agent = AgentStore(proxy: store, keyStore: FileKeyStore(url: store.paths.secrets),
+                                           defaults: UserDefaults(suiteName: "veer-snapshot-agent-\(UUID().uuidString)")!, persist: false)
+                    scene.agent?(agent)
                     // The app's window never gets smaller than this; content sized views would shrink it.
-                    let view = scene.view.environment(store).tint(.veerAccent).frame(width: scene.size.width, height: scene.size.height)
+                    let view = scene.view.environment(store).environment(agent).tint(.veerAccent).frame(width: scene.size.width, height: scene.size.height)
                     let window = NSWindow(contentRect: CGRect(origin: .zero, size: scene.size), styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
                     window.appearance = NSAppearance(named: name)
                     window.contentViewController = NSHostingController(rootView: view)
@@ -36,6 +39,8 @@ enum SnapshotRunner {
         var size = CGSize(width: 1080, height: 720)
         let store: () -> ProxyStore
         let view: AnyView
+        /// Fills the Agent page's state, for its scenes.
+        var agent: ((AgentStore) -> Void)? = nil
     }
 
     static func scenes() -> [Scene] {
@@ -67,7 +72,18 @@ enum SnapshotRunner {
                 store.page = .proxies
                 return store
             }, view: AnyView(MainView())),
-            Scene(name: "09-agent-later", store: { running(page: .agent) }, view: AnyView(MainView())),
+            Scene(name: "09-agent-setup", store: { running(page: .agent) }, view: AnyView(MainView())),
+            Scene(name: "09b-agent-welcome", store: { running(page: .agent) }, view: AnyView(MainView()), agent: { agent in
+                agent.settings.provider = .ollama
+            }),
+            Scene(name: "09c-agent-proposal", store: { running(page: .agent) }, view: AnyView(MainView()), agent: { agent in
+                agent.settings.provider = .ollama
+                sampleThread(agent, status: .pending)
+            }),
+            Scene(name: "09d-agent-applied", store: { running(page: .agent) }, view: AnyView(MainView()), agent: { agent in
+                agent.settings.provider = .ollama
+                sampleThread(agent, status: .written)
+            }),
             Scene(name: "10-import", size: CGSize(width: 560, height: 360), store: {
                 let store = sample()
                 store.importText = "https://sub.example.invalid/api/v1/client/subscribe?token=demo"
@@ -81,6 +97,27 @@ enum SnapshotRunner {
             Scene(name: "13-settings-general", size: CGSize(width: 520, height: 360), store: { sample() }, view: AnyView(GeneralSettings())),
             Scene(name: "14-settings-proxy", size: CGSize(width: 520, height: 300), store: { sample() }, view: AnyView(ProxySettings())),
         ]
+    }
+
+    /// A conversation about the sample profile with one proposal: Netflix to the Japan node.
+    static func sampleThread(_ agent: AgentStore, status: Turn.ProposalStatus) {
+        guard let profile = agent.proxy.activeProfile, let text = try? agent.proxy.effectiveText(of: profile.id),
+              let document = try? ConfigDocument.parse(text), let target = document.target(named: "🇯🇵 日本 大阪 02") else { return }
+        let plan = EditPlan(operations: [.route(matchType: "DOMAIN-SUFFIX", match: "netflix.com", targetId: target.id),
+                                         .route(matchType: "DOMAIN-SUFFIX", match: "nflxvideo.net", targetId: target.id)])
+        guard let result = try? PlanApplier.apply(plan, to: document) else { return }
+        var session = Session(title: "Netflix 走日本", source: .pasted, text: text)
+        session.profileID = profile.id
+        session.exitsConfirmed = true
+        let steps = EditorEngine.stepTitles.enumerated().map { Turn.Step(id: $0.offset, title: $0.element, state: .done) }
+        var turn = Turn(prompt: "Netflix 走日本", mode: .ai(model: "qwen3:14b"), steps: steps, outcome: .proposal(.init(
+            plan: plan, items: result.items, accepted: Set(result.items.map(\.id)), baseDraft: text, candidate: result.candidate,
+            validation: ValidationResult(status: .passed, message: String(localized: "Mihomo 校验通过")), status: status)))
+        turn.understanding = "把 Netflix 的流量交给日本节点"
+        turn.duration = 3.2
+        session.turns = [turn]
+        agent.sessions = [session]
+        agent.selectedID = session.id
     }
 
     /// The node sheet for the sample's first profile.

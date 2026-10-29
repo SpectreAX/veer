@@ -104,6 +104,10 @@ public struct MihomoController: Sendable {
     }
 
     /// The core's open connections (`GET /connections`); closed ones are gone from it.
+    public func closeConnection(_ id: String) async throws {
+        try await expectNoContent(request("DELETE", "/connections/\(id)"))
+    }
+
     public func connections() async throws -> [Connection] {
         struct Connections: Decodable { let connections: [Connection]? }
         let list: Connections = try await decode(request("GET", "/connections"))

@@ -270,14 +270,16 @@ public extension View {
 
     /// A panel that floats above the window, such as onboarding: Liquid Glass on macOS 26, the
     /// regular material before it. Not for ordinary content, which stays on solid `panel()`.
-    @ViewBuilder func floatingPanel(padding: CGFloat = Spacing.xl) -> some View {
-        let shape = RoundedRectangle(cornerRadius: Radius.large * 1.5, style: .continuous)
+    func floatingPanel(padding: CGFloat = Spacing.xl) -> some View {
+        self.padding(padding).glassSurface(in: RoundedRectangle(cornerRadius: Radius.large * 1.5, style: .continuous))
+    }
+
+    /// Liquid Glass in `shape` on macOS 26; the regular material with a hairline edge before it.
+    @ViewBuilder func glassSurface<S: InsettableShape>(in shape: S) -> some View {
         if #available(macOS 26, *) {
-            self.padding(padding).glassEffect(.regular, in: shape)
+            glassEffect(.regular, in: shape)
         } else {
-            self.padding(padding)
-                .background(.regularMaterial, in: shape)
-                .overlay(shape.strokeBorder(Color.separatorLine.opacity(0.6)))
+            background(.regularMaterial, in: shape).overlay(shape.strokeBorder(Color.separatorLine.opacity(0.6)))
         }
     }
 

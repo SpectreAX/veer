@@ -28,10 +28,14 @@ struct LocalizationTests {
         var keys: [String: String] = [:]
         for directory in sources {
             let folder = root.appendingPathComponent(directory)
-            for file in try FileManager.default.contentsOfDirectory(atPath: folder.path) where file.hasSuffix(".swift") && !skipped.contains(file) {
-                let text = try String(contentsOf: folder.appendingPathComponent(file), encoding: .utf8)
+            let files = FileManager.default.enumerator(atPath: folder.path)?.compactMap { $0 as? String } ?? []
+            for path in files where path.hasSuffix(".swift") {
+                let file = (path as NSString).lastPathComponent
+                guard !skipped.contains(file) else { continue }
+                let text = try String(contentsOf: folder.appendingPathComponent(path), encoding: .utf8)
                 for (number, line) in text.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
-                    if line.trimmingCharacters(in: .whitespaces).hasPrefix("//") { continue }
+                    // Comments, and text sent to the AI, which stays in Chinese.
+                    if line.trimmingCharacters(in: .whitespaces).hasPrefix("//") || line.contains("// for the AI") { continue }
                     for match in line.matches(of: literal) {
                         let body = String(line[match.range].dropFirst().dropLast())
                         guard body.unicodeScalars.contains(where: { (0x4E00...0x9FFF).contains($0.value) }) else { continue }

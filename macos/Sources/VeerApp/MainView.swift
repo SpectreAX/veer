@@ -83,7 +83,7 @@ struct MainView: View {
                 case .profiles: ProfilesView()
                 case .connections: ComingLaterView(page: .connections, message: String(localized: "实时查看和关闭连接，以及为某个域名添加规则。"))
                 case .logs: ComingLaterView(page: .logs, message: String(localized: "内核的实时日志，可以筛选、搜索和暂停。"))
-                case .agent: ComingLaterView(page: .agent, message: String(localized: "用一句话改分流、解释路由、切换节点。"))
+                case .agent: AgentView()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

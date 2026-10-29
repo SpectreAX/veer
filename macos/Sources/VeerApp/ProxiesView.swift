@@ -69,7 +69,7 @@ private struct GroupSection: View {
             }
             LazyVGrid(columns: columns, alignment: .leading, spacing: Spacing.sm) {
                 ForEach(group.members) { member in
-                    MemberTile(member: member, selected: member.name == group.now, selectable: group.isSelectable) {
+                    NodeTile(member: member, selected: member.name == group.now, selectable: group.isSelectable) {
                         store.select(member.name, in: group.name)
                     }
                 }
@@ -92,7 +92,7 @@ private struct GroupSection: View {
 
 /// One member: its name, delay in words and color, and a check when it is the one in use. In a
 /// select group it is a button; in an automatic group it is plain content, since clicks do nothing.
-private struct MemberTile: View {
+private struct NodeTile: View {
     let member: ProxyStore.Group.Member
     let selected: Bool
     let selectable: Bool

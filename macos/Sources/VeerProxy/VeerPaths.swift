@@ -20,6 +20,8 @@ public struct VeerPaths: Sendable {
     public var secrets: URL { root.appendingPathComponent("secrets.json") }
     /// One "my routing" layer per profile.
     public var routing: URL { root.appendingPathComponent("routing", isDirectory: true) }
+    /// Agent conversations, one JSON file each.
+    public var threads: URL { root.appendingPathComponent("threads", isDirectory: true) }
     /// What was running when Veer last quit, and the proxy settings it replaced.
     public var state: URL { root.appendingPathComponent("state.json") }
 

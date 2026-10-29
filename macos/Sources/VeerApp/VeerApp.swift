@@ -5,11 +5,13 @@ import SwiftUI
 struct VeerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @State private var store = AppDelegate.store
+    @State private var agent = AppDelegate.agent
 
     var body: some Scene {
         Window("Veer", id: "main") {
             MainView()
                 .environment(store)
+                .environment(agent)
                 .tint(.veerAccent)
                 .frame(minWidth: 860, minHeight: 560)
         }
@@ -23,13 +25,14 @@ struct VeerApp: App {
         }
 
         Settings {
-            SettingsView().environment(store).tint(.veerAccent)
+            SettingsView().environment(store).environment(agent).tint(.veerAccent)
         }
     }
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     static let store = ProxyStore()
+    static let agent = AgentStore(proxy: store)
     /// Opens the main window; set by the menu bar label, which can reach `openWindow`.
     static var openMain: (() -> Void)?
 
@@ -44,6 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        Self.agent.flush()
         Self.store.shutdown()
     }
 

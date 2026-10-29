@@ -41,6 +41,8 @@ public struct Session: Codable, Identifiable, Sendable, Equatable {
     public var subscriptionUsage: SubscriptionUsage?
     /// Node clean-up the import used, applied again when the content is updated.
     public var importOptions: ImportOptions?
+    /// Veer: the profile this conversation edits, by id; nil in the editor.
+    public var profileID: UUID?
 
     public init(title: String, source: Source, text: String, now: Date = .now) {
         id = UUID()
@@ -136,6 +138,8 @@ public struct Turn: Codable, Identifiable, Sendable, Equatable {
         case failure(message: String, opensSettings: Bool, canUseLocal: Bool)
         case cancelled
         case note(String)
+        /// Veer: actions on the running core and their results.
+        case runtime(RuntimeRun)
     }
 
     public let id: UUID

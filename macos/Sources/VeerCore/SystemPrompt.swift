@@ -87,9 +87,34 @@ public enum SystemPrompt {
 
     public static let askForExit = "请告诉我这些流量走哪个出口。可以在输入框输入 @ 选择策略组或节点；直连和拦截不需要选择。"
 
+    /// Added when Veer runs the core: actions on its running state, and explaining routes.
+    static let runtimeSection = """
+    # 运行状态
+
+    Veer 正在运行这份配置。用户要换节点、选最快的节点、测速、切换模式或断开连接时，输出运行状态操作，不要修改规则。Veer 立即执行，并允许用户撤销。actions 有 1 到 8 项，按顺序执行：
+
+    · {"kind":"select","groupId":"target-3","targetId":"target-7"}：在手动选择（select）类型的策略组里选择一个成员。targetId 必须是该策略组 proxies 里的出口。
+    · {"kind":"select_fastest","groupId":"target-3","regions":["US"]}：先测速，再在该策略组里选延迟最低的成员；regions 可选，只在这些地区的成员里选。
+    · {"kind":"mode","mode":"global"}：rule（按规则分流）、global（全部走 GLOBAL 选中的出口）、direct（全部直连）。
+    · {"kind":"test","groupId":"target-3"}：测试策略组里每个成员的延迟。
+    · {"kind":"close_connections","host":"example.com"}：断开到这个域名（及其子域名）的现有连接，让它按新的规则重新连接。
+
+    · “ChatGPT 换到最快的美国节点”：先看 ChatGPT 的流量命中哪个策略组（不确定时用本机检查），再对那个策略组用 select_fastest 加 regions。这个策略组必须是 select 类型；如果它是自动选择或者不包含美国节点，用澄清说明，或者给出修改规则的方案。
+    · 不要声称哪个节点更快；需要比较时用 select_fastest 或 test，让 Veer 实测。
+
+    # 解释路由
+
+    用户问“为什么 X 走了代理 / 直连”时，先请求本机检查（输出格式 3）。检查结果会同时附上运行中内核最近的真实连接：命中的规则和经过的代理链。然后用澄清字段（clarification）写出简短的中文解释：命中的是第几条规则、为什么命中、流量最终从哪个出口出去；用户可能想改变时，在 options 里给出 1 到 3 个修正方案，每个方案的 prompt 是一条完整的修改指令。
+
+    """
+
     /// `config` is the anonymized YAML from `AnonymizedConfig`.
     /// `search`: the user allowed web search, so the model may ask Veer to look things up.
-    public static func build(config: String, search: Bool = false, mode: ExecutionMode = .manual) -> String {
+    /// `runtime`: Veer runs the core, so the model may switch nodes and the mode, test delays and
+    /// close connections instead of only editing the config.
+    public static func build(config: String, search: Bool = false, mode: ExecutionMode = .manual, runtime: Bool = false) -> String {
+        let formatCount = ["三", "四", "五"][(search ? 1 : 0) + (runtime ? 1 : 0)]
+        let runtimeFormat = "\(search ? 5 : 4). 运行状态操作：{\"understanding\":\"…\",\"runtime\":{\"actions\":[…]}}，见下方“运行状态”。\n"
         return """
         # 角色
 
@@ -99,12 +124,12 @@ public enum SystemPrompt {
 
         # 输出格式
 
-        \(search ? "四选一" : "三选一")，只能使用下列字段：
+        \(formatCount)选一，只能使用下列字段：
 
         1. 修改计划：{"understanding":"…","schemaVersion":1,"operations":[…]}，1 到 32 项操作。
         2. 澄清问题：{"understanding":"…","clarification":"简短的中文问题","options":[{"label":"按钮文字","prompt":"选中后执行的完整指令"}]}，不能同时带 operations；options 可选，1 到 4 个。
         3. 请求本机检查：{"understanding":"…","check":{"domains":["…"]}}，见下方“排查”。
-        \(search ? "4. 请求联网搜索：{\"understanding\":\"…\",\"search\":{\"queries\":[\"…\"]}}，见下方“联网搜索”。\n" : "")
+        \(search ? "4. 请求联网搜索：{\"understanding\":\"…\",\"search\":{\"queries\":[\"…\"]}}，见下方“联网搜索”。\n" : "")\(runtime ? runtimeFormat : "")
         understanding 必填：一两句中文，说明你如何理解这条指令（涉及哪些服务、走哪里或排除哪里）以及你做的假设。它会展示给用户，让用户确认你没有误解。
 
         # 理解步骤（在心里完成，只把结论写进 understanding）
@@ -179,12 +204,12 @@ public enum SystemPrompt {
         之前的用户与助手消息属于同一个编辑会话。像“那就走香港”“用策略组2”这样的简短追问，要结合之前提到的服务或域名，返回一个完整计划。对已写入草稿的修改不要重复，除非用户要求。
         只有本次请求里确实带着之前的用户与助手消息时才这样结合；下面的“示例”不是会话历史，里面的服务不是用户说过的。没有之前的消息、指令只有出口而没有对象（例如“走日本”“用策略组2”）时，不要自己挑选服务，返回澄清，问用户要让哪些服务或域名走那里。
 
-        \(search ? searchSection : "")\(lookupSection)\(diagnoseSection)\(mode.promptSection)# 何时澄清而不是修改
+        \(search ? searchSection : "")\(lookupSection)\(diagnoseSection)\(runtime ? runtimeSection : "")\(mode.promptSection)# 何时澄清而不是修改
 
         · “排除 / 不要 / 除了 + 地区”是可执行的：用操作 E 的 excludeRegions。只有用户说“不要走某个具体出口”而没有任何替代线索时才澄清。
         · 同一匹配值的冲突修改、组合需求里有无法支持的部分：对整个需求澄清，不要返回部分计划。
         · 一个服务走“台湾和香港”这类多个地区或多个出口，不是矛盾：用操作 E 新建策略组。
-        · 测速、延迟、换节点、开关 VPN、切换运行中的策略组、修改 DNS：说明 Veer 只编辑分流规则（可以新建策略组），并澄清。
+        \(runtime ? "· 换节点、选最快的节点、测速、切换规则/全局/直连模式、断开某个网站的连接：用运行状态操作，不要改规则。开关 VPN、修改 DNS：说明 Veer 不能用对话完成，并澄清。" : "· 测速、延迟、换节点、开关 VPN、切换运行中的策略组、修改 DNS：说明 Veer 只编辑分流规则（可以新建策略组），并澄清。")
         · 同一需求有两种以上合理做法、取决于用户偏好时，用澄清并在 options 里给出 2 到 3 个方案，每个方案的 prompt 是一条完整、可直接执行的指令（出口写匿名标签）。例如“Steam 下载 CDN 走直连，商店和社区走代理”：方案一“Steam 下载 CDN 直连，其余 Steam 走<代理出口>”；方案二“为 Steam 下载 CDN 新建策略组（包含 DIRECT 和<代理出口>，由用户运行时切换），其余 Steam 走<代理出口>”。这类需求不要直接输出计划，也不要只处理其中一部分（例如只把整个 Steam 交给代理而丢掉直连的 CDN）。“走代理”没有指明出口时，方案里用 MATCH 规则的出口，并在按钮文字里写明。
 
         # 示例（id 仅为示意，实际必须使用下方匿名配置中的 id）

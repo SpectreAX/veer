@@ -404,10 +404,87 @@ final class ProxyStore {
         }
     }
 
+    // MARK: Agent actions on the running core
+
+    private func runningController() throws -> MihomoController {
+        guard isRunning, let controller else { throw EditorError(String(localized: "内核没有运行，先启动内核。")) }
+        return controller
+    }
+
+    /// The group as the core reports it now.
+    func liveGroup(_ name: String) async throws -> Group {
+        _ = try runningController()
+        await refresh()
+        guard let group = groups.first(where: { $0.name == name }) else {
+            throw EditorError(String(localized: "运行中的内核里没有策略组“\(name)”。"))
+        }
+        return group
+    }
+
+    /// Selects `node` in a select group; returns the node it replaced.
+    @discardableResult func choose(_ node: String, in name: String) async throws -> String? {
+        let controller = try runningController()
+        let group = try await liveGroup(name)
+        guard group.isSelectable else { throw EditorError(String(localized: "“\(name)”按延迟自动选择，不能手动切换节点。")) }
+        let previous = group.now
+        try await controller.select(node, in: name)
+        await refresh()
+        return previous
+    }
+
+    /// Tests every member's delay; 0 means it timed out.
+    func testNow(_ name: String) async throws -> [String: Int] {
+        let controller = try runningController()
+        let result = try await controller.testDelay(group: name)
+        await refresh()
+        return result
+    }
+
+    /// Switches the mode; returns the one it replaced.
+    @discardableResult func switchMode(_ mode: Mode) async throws -> Mode {
+        let controller = try runningController()
+        let previous = self.mode
+        try await controller.setMode(mode.rawValue)
+        self.mode = mode
+        state.mode = mode.rawValue
+        return previous
+    }
+
+    /// Closes connections to `host` and its subdomains; returns how many.
+    func closeConnections(host: String) async throws -> Int {
+        let controller = try runningController()
+        let matching = try await controller.connections().filter { connection in
+            guard let name = connection.metadata.host?.lowercased(), !name.isEmpty else { return false }
+            return name == host || name.hasSuffix("." + host)
+        }
+        for connection in matching { try? await controller.closeConnection(connection.id) }
+        return matching.count
+    }
+
+    /// How the core routed its current connections to `domains`, in words, for the AI to explain
+    /// a route with facts. Nil when the core is not running or nothing matched.
+    func connectionSummary(for domains: [String]) async -> String? {
+        guard isRunning, let controller, let connections = try? await controller.connections() else { return nil }
+        var lines: [String] = []
+        for domain in domains.prefix(8) {
+            let host = domain.lowercased()
+            let matching = connections.filter { ($0.metadata.host?.lowercased()).map { $0 == host || $0.hasSuffix("." + host) } ?? false }
+            var seen = Set<String>()
+            for connection in matching {
+                let rule = connection.rulePayload.isEmpty ? connection.rule : "\(connection.rule),\(connection.rulePayload)"
+                let line = "\(connection.metadata.host ?? host)：命中 \(rule)，代理链 \(connection.chains.reversed().joined(separator: " → "))"  // for the AI
+                if seen.insert(line).inserted { lines.append("· " + line) }
+                if seen.count >= 3 { break }
+            }
+        }
+        guard !lines.isEmpty else { return nil }
+        return "运行中内核的真实连接（最近）：\n" + lines.joined(separator: "\n")  // for the AI
+    }
+
     // MARK: My routing
 
     /// The profile with its layer applied; kept in `effective` for the active one.
-    private func effectiveText(of id: UUID) throws -> String {
+    func effectiveText(of id: UUID) throws -> String {
         let result = try routingStore.load(id).apply(to: try profileStore.text(of: id))
         if id == activeProfileID { effective = result }
         return result.text
@@ -428,6 +505,13 @@ final class ProxyStore {
         saveLayer(layer, for: id)
     }
 
+    /// Adds an applied Agent change; false (with a notice) when it could not be saved.
+    @discardableResult func addEdit(_ edit: RoutingLayer.Edit, to id: UUID) -> Bool {
+        var layer = routingStore.load(id)
+        layer.edits.append(edit)
+        return saveLayer(layer, for: id)
+    }
+
     func setEdit(_ editID: UUID, enabled: Bool, in id: UUID) {
         var layer = routingStore.load(id)
         guard let index = layer.edits.firstIndex(where: { $0.id == editID }) else { return }
@@ -441,14 +525,16 @@ final class ProxyStore {
         saveLayer(layer, for: id)
     }
 
-    private func saveLayer(_ layer: RoutingLayer, for id: UUID) {
+    @discardableResult private func saveLayer(_ layer: RoutingLayer, for id: UUID) -> Bool {
         do {
             try routingStore.save(layer, for: id)
             if id == activeProfileID {
                 if isRunning { Task { await reloadRunningCore() } } else { _ = try? effectiveText(of: id) }
             }
+            return true
         } catch {
             notice = message(for: error)
+            return false
         }
     }
 

@@ -10,6 +10,8 @@ public struct EditorEngine: Sendable {
         case noChange(String)
         case clarification(String, options: [ClarifyOption])
         case outOfScope(String)
+        /// Veer: actions on the running core, with real group and node names.
+        case runtime([RuntimeStep])
     }
 
     public enum Progress: Sendable {
@@ -50,6 +52,11 @@ public struct EditorEngine: Sendable {
         public var search: SearchConfig?
         /// What the conversation may do without asking; shapes the prompt (plan, full).
         public var mode: ExecutionMode = .manual
+        /// Veer runs the core: the model may switch nodes and the mode instead of only editing.
+        public var runtime = false
+        /// Veer: how the running core routed recent connections to these domains, in words with
+        /// real names; added to a check's results so "why did X go through the proxy" has facts.
+        public var liveConnections: (@Sendable ([String]) async -> String?)?
 
         public init(prompt: String, draft: ConfigDocument, regions: [String: Region], useAI: Bool, settings: AISettings, apiKey: String?,
                     history: [(role: String, content: String)] = [], shareRuleLiterals: Bool = false) {
@@ -114,7 +121,7 @@ public struct EditorEngine: Sendable {
 
         let anonymized = AnonymizedConfig.make(document: request.draft, regions: request.regions, shareRuleLiterals: request.shareRuleLiterals,
                                                 instruction: request.prompt)
-        let system = AIClient.systemPrompt(config: anonymized.yaml, search: request.search != nil, mode: request.mode)
+        let system = SystemPrompt.build(config: anonymized.yaml, search: request.search != nil, mode: request.mode, runtime: request.runtime)
         // Lookup results travel with the instruction (and are anonymized with it).
         let prompt = anonymized.context.anonymize(request.prompt + (hints.map { "\n\n" + $0.message } ?? ""))
         let model = request.settings.modelLabel
@@ -163,8 +170,11 @@ public struct EditorEngine: Sendable {
                     let records = await checker.check(domains, draft: request.draft)
                     try Task.checkCancellation()
                     let geodata = await checker.geo?.status().has(.geosite) ?? false
-                    let message = DomainChecker.message(for: records, anonymizedRules: anonymized.rules, geodata: geodata,
+                    var message = DomainChecker.message(for: records, anonymizedRules: anonymized.rules, geodata: geodata,
                                                         lastRound: checkRounds >= DomainChecker.maxRounds)
+                    if let live = await request.liveConnections?(domains) {
+                        message += "\n\n" + anonymized.context.anonymize(live)
+                    }
                     await progress(.checked(records, sent: message))
                     followUps += [("assistant", String(answer.content.prefix(8_000))), ("user", message)]
                     continue
@@ -206,6 +216,9 @@ public struct EditorEngine: Sendable {
             throw EditorError("AI 请求了联网搜索，但本轮不能再搜索。请换一种说法或开启联网搜索。")
         case .check:
             throw EditorError("AI 请求了本机检查，但本轮不能再检查。请换一种说法再试。")
+        case let .runtime(actions):
+            guard request.runtime else { throw EditorError("这里不能切换节点或模式，只能修改分流规则。") }
+            return .runtime(try actions.map { try $0.resolved(in: request.draft) })
         }
     }
 

@@ -229,6 +229,7 @@ struct AIEvalTests {
             case .noChange(let text): return "无需修改：\(text.prefix(60))"
             case let .clarification(question, options): return "追问：\(question.prefix(60)) [\(options.map(\.label).joined(separator: "|"))]"
             case .outOfScope(let text): return "超出范围：\(text.prefix(60))"
+            case .runtime(let steps): return "运行状态：" + steps.map(\.summary).joined(separator: "；")
             }
         }
 

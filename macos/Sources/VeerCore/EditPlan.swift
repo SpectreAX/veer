@@ -93,6 +93,8 @@ public enum AssistantReply: Sendable, Equatable {
     case search([String])
     /// The model wants Veer to test domains against the draft's rules before it answers.
     case check([String])
+    /// Veer: change the running core (node, mode, delay test, connections), not the config.
+    case runtime([RuntimeAction])
 }
 
 extension EditPlan {
@@ -133,6 +135,13 @@ extension EditPlan {
                 throw EditorError("AI 的检查请求格式无效：check 只能包含 domains（字符串数组），且不能和计划或问题同时出现。")
             }
             return (.check(Array(domains.prefix(DomainChecker.maxDomains * 2))), understanding)
+        }
+        if let runtime = root["runtime"] {
+            guard Set(root.keys).isSubset(of: ["runtime", "understanding"]), let request = runtime as? [String: Any],
+                  Set(request.keys).isSubset(of: ["actions"]), let actions = request["actions"] as? [Any], (1...8).contains(actions.count) else {
+                throw EditorError("AI 的运行状态操作格式无效：runtime 只能包含 actions（1 到 8 项），且不能和计划或问题同时出现。")
+            }
+            return (.runtime(try actions.map(RuntimeAction.decode)), understanding)
         }
         if let clarification = root["clarification"] {
             guard Set(root.keys).isSubset(of: ["clarification", "understanding", "options"]), let question = clarification as? String,
