@@ -246,7 +246,7 @@ public struct GeoSiteDatabase: Sendable {
 
 /// An IPv4 or IPv6 address as a 128-bit number (IPv4 mapped into ::ffff:0:0/96).
 public struct IPAddr: Sendable, Hashable, Comparable, CustomStringConvertible {
-    public let value: UInt128
+    public let value: IPBits
     public let isV4: Bool
 
     public init?(_ text: String) {
@@ -266,7 +266,7 @@ public struct IPAddr: Sendable, Hashable, Comparable, CustomStringConvertible {
     }
 
     public init(v4: UInt32) {
-        value = (UInt128(0xffff) << 32) | UInt128(v4)
+        value = (IPBits(0xffff) << 32) | IPBits(v4)
         isV4 = true
     }
 
@@ -276,7 +276,7 @@ public struct IPAddr: Sendable, Hashable, Comparable, CustomStringConvertible {
             return
         }
         // ::ffff:a.b.c.d is an IPv4 address.
-        self.init(raw: bytes.prefix(16).reduce(UInt128(0)) { $0 << 8 | UInt128($1) })
+        self.init(raw: bytes.prefix(16).reduce(IPBits(0)) { $0 << 8 | IPBits($1) })
     }
 
     /// The address's bit `index` counted from the top of its own width (32 or 128 bits).
@@ -287,12 +287,12 @@ public struct IPAddr: Sendable, Hashable, Comparable, CustomStringConvertible {
 
     public var description: String {
         if isV4 {
-            let v4 = UInt32(truncatingIfNeeded: value)
+            let v4 = value.low32
             return "\(v4 >> 24).\(v4 >> 16 & 0xff).\(v4 >> 8 & 0xff).\(v4 & 0xff)"
         }
         var address = in6_addr()
         withUnsafeMutableBytes(of: &address) { buffer in
-            for index in 0..<16 { buffer[index] = UInt8(truncatingIfNeeded: value >> (8 * (15 - index))) }
+            for index in 0..<16 { buffer[index] = UInt8(truncatingIfNeeded: (value >> (8 * (15 - index))).low32) }
         }
         var text = [CChar](repeating: 0, count: Int(INET6_ADDRSTRLEN))
         inet_ntop(AF_INET6, &address, &text, socklen_t(text.count))
@@ -303,12 +303,12 @@ public struct IPAddr: Sendable, Hashable, Comparable, CustomStringConvertible {
     public func network(prefix: Int) -> String {
         let width = isV4 ? 32 : 128
         let hostBits = width - max(0, min(prefix, width))
-        let mask: UInt128 = hostBits >= 128 ? 0 : ~UInt128(0) << hostBits
-        let base = isV4 ? IPAddr(v4: UInt32(truncatingIfNeeded: value & mask)) : IPAddr(raw: value & mask)
+        let mask: IPBits = hostBits >= 128 ? 0 : ~IPBits(0) << hostBits
+        let base = isV4 ? IPAddr(v4: (value & mask).low32) : IPAddr(raw: value & mask)
         return "\(base)/\(prefix)"
     }
 
-    init(raw: UInt128) {
+    init(raw: IPBits) {
         value = raw
         isV4 = raw >> 32 == 0xffff
     }
@@ -317,12 +317,12 @@ public struct IPAddr: Sendable, Hashable, Comparable, CustomStringConvertible {
 
     /// 198.18.0.0/15: the range Mihomo and similar proxies hand out as fake IPs. An answer here
     /// came from a proxy on this machine, not from the site's real DNS.
-    public var isFakeIP: Bool { isV4 && UInt32(truncatingIfNeeded: value) >> 17 == 0xC612 >> 1 }
+    public var isFakeIP: Bool { isV4 && value.low32 >> 17 == 0xC612 >> 1 }
 
     /// Private, loopback, link-local and similar ranges that never leave the local network.
     public var isPrivate: Bool {
         if isV4 {
-            let v4 = UInt32(truncatingIfNeeded: value)
+            let v4 = value.low32
             let ranges: [(UInt32, Int)] = [(0x0A00_0000, 8), (0xAC10_0000, 12), (0xC0A8_0000, 16), (0x7F00_0000, 8),
                                            (0xA9FE_0000, 16), (0x6440_0000, 10), (0x0000_0000, 8)]
             return ranges.contains { base, prefix in v4 >> (32 - prefix) == base >> (32 - prefix) }
@@ -334,12 +334,12 @@ public struct IPAddr: Sendable, Hashable, Comparable, CustomStringConvertible {
 public struct GeoIPDatabase: Sendable {
     let categories: [String]
     /// Per category: sorted, merged [start, end] ranges.
-    let ranges: [[(UInt128, UInt128)]]
+    let ranges: [[(IPBits, IPBits)]]
     public var categoryCount: Int { categories.count }
 
     public init(data: Data) throws {
         var categories: [String] = []
-        var ranges: [[(UInt128, UInt128)]] = []
+        var ranges: [[(IPBits, IPBits)]] = []
         try data.withUnsafeBytes { raw in
             var list = ProtoReader(raw)
             while !list.atEnd {
@@ -347,7 +347,7 @@ public struct GeoIPDatabase: Sendable {
                 guard field == 1, wire == 2 else { try list.skip(wireType: wire); continue }
                 let entryRange = try list.lengthDelimited()
                 var entry = ProtoReader(raw, from: entryRange.lowerBound, to: entryRange.upperBound)
-                var name = "", cidrs: [(UInt128, UInt128)] = []
+                var name = "", cidrs: [(IPBits, IPBits)] = []
                 while !entry.atEnd {
                     let (field, wire) = try entry.tag()
                     if field == 1, wire == 2 {
@@ -366,7 +366,7 @@ public struct GeoIPDatabase: Sendable {
                         let address = IPAddr(bytes: ip)
                         let width = ip.count == 4 ? 32 : 128
                         let hostBits = width - min(prefix, width)
-                        let span: UInt128 = hostBits >= 128 ? ~UInt128(0) : (UInt128(1) << hostBits) - 1
+                        let span: IPBits = hostBits >= 128 ? ~IPBits(0) : (IPBits(1) << hostBits) - 1
                         let start = address.value & ~span
                         cidrs.append((start, start | span))
                     } else {
@@ -374,9 +374,9 @@ public struct GeoIPDatabase: Sendable {
                     }
                 }
                 cidrs.sort { $0.0 < $1.0 }
-                var merged: [(UInt128, UInt128)] = []
+                var merged: [(IPBits, IPBits)] = []
                 for range in cidrs {
-                    if let last = merged.last, range.0 <= last.1 &+ 1, last.1 != ~UInt128(0) {
+                    if let last = merged.last, range.0 <= last.1 &+ 1, last.1 != ~IPBits(0) {
                         merged[merged.count - 1].1 = max(last.1, range.1)
                     } else {
                         merged.append(range)
@@ -797,5 +797,59 @@ extension GeoDataStore {
     public func ruleSets(for domain: String, available: Set<String>? = nil) throws -> [GeoSiteHit]? {
         guard let database = try geosite() else { return nil }
         return database.hits(for: domain, available: available)
+    }
+}
+
+/// An unsigned 128-bit number for IP addresses. `UInt128` would do, but it needs macOS 15 and
+/// Veer runs on macOS 14.
+public struct IPBits: Sendable, Hashable, Comparable, ExpressibleByIntegerLiteral {
+    let high: UInt64
+    let low: UInt64
+
+    init(high: UInt64, low: UInt64) {
+        self.high = high
+        self.low = low
+    }
+
+    public init(integerLiteral value: UInt64) { self.init(high: 0, low: value) }
+    init(_ value: UInt32) { self.init(high: 0, low: UInt64(value)) }
+    init(_ value: UInt8) { self.init(high: 0, low: UInt64(value)) }
+
+    /// The lowest 32 bits.
+    var low32: UInt32 { UInt32(truncatingIfNeeded: low) }
+
+    public static func < (lhs: IPBits, rhs: IPBits) -> Bool { (lhs.high, lhs.low) < (rhs.high, rhs.low) }
+    static prefix func ~ (value: IPBits) -> IPBits { IPBits(high: ~value.high, low: ~value.low) }
+    static func & (lhs: IPBits, rhs: IPBits) -> IPBits { IPBits(high: lhs.high & rhs.high, low: lhs.low & rhs.low) }
+    static func | (lhs: IPBits, rhs: IPBits) -> IPBits { IPBits(high: lhs.high | rhs.high, low: lhs.low | rhs.low) }
+
+    static func << (value: IPBits, shift: Int) -> IPBits {
+        switch shift {
+        case 0: value
+        case 1..<64: IPBits(high: value.high << shift | value.low >> (64 - shift), low: value.low << shift)
+        case 64..<128: IPBits(high: value.low << (shift - 64), low: 0)
+        default: 0
+        }
+    }
+
+    static func >> (value: IPBits, shift: Int) -> IPBits {
+        switch shift {
+        case 0: value
+        case 1..<64: IPBits(high: value.high >> shift, low: value.low >> shift | value.high << (64 - shift))
+        case 64..<128: IPBits(high: 0, low: value.high >> (shift - 64))
+        default: 0
+        }
+    }
+
+    /// Wrapping addition.
+    static func &+ (lhs: IPBits, rhs: IPBits) -> IPBits {
+        let (low, carry) = lhs.low.addingReportingOverflow(rhs.low)
+        return IPBits(high: lhs.high &+ rhs.high &+ (carry ? 1 : 0), low: low)
+    }
+
+    /// Wrapping subtraction.
+    static func - (lhs: IPBits, rhs: IPBits) -> IPBits {
+        let (low, borrow) = lhs.low.subtractingReportingOverflow(rhs.low)
+        return IPBits(high: lhs.high &- rhs.high &- (borrow ? 1 : 0), low: low)
     }
 }

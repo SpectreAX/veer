@@ -227,16 +227,21 @@ public struct ExitLabel: View {
     }
 }
 
-/// Primary glass action. Uses native Liquid Glass; the system falls back to an opaque
-/// treatment when Reduce Transparency is on.
+/// Primary glass action. Uses native Liquid Glass on macOS 26, where the system falls back to an
+/// opaque treatment when Reduce Transparency is on; older systems get the bordered prominent style.
 public struct PrimaryActionStyle: ViewModifier {
     public init() {}
 
     public func body(content: Content) -> some View {
-        content
-            .buttonStyle(.glassProminent)
-            .tint(.veerAccent)
-            .controlSize(.large)
+        Group {
+            if #available(macOS 26, *) {
+                content.buttonStyle(.glassProminent)
+            } else {
+                content.buttonStyle(.borderedProminent)
+            }
+        }
+        .tint(.veerAccent)
+        .controlSize(.large)
     }
 }
 

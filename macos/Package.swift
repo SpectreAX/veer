@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "Veer",
-    platforms: [.macOS(.v26)],
+    platforms: [.macOS(.v14)],
     products: [.executable(name: "Veer", targets: ["VeerApp"])],
     dependencies: [.package(url: "https://github.com/jpsim/Yams.git", exact: "6.2.2")],
     targets: [

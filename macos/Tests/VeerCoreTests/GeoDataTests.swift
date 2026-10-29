@@ -123,6 +123,22 @@ struct GeoDataTests {
         #expect(IPAddr("example.com") == nil && IPAddr("1.2.3") == nil)
         #expect(IPAddr("192.168.1.1")!.isPrivate && IPAddr("fe80::1")!.isPrivate && !IPAddr("8.8.8.8")!.isPrivate)
         #expect(IPAddr("198.18.15.42")!.isFakeIP && IPAddr("198.19.255.1")!.isFakeIP && !IPAddr("198.20.0.1")!.isFakeIP && !IPAddr("198.17.0.1")!.isFakeIP)
+        // Prefixes on both sides of the 64-bit halves.
+        #expect(IPAddr("2001:db8:aaaa:bbbb:cccc::1")?.network(prefix: 64) == "2001:db8:aaaa:bbbb::/64")
+        #expect(IPAddr("2001:db8:aaaa:bbbb:cccc::1")?.network(prefix: 72) == "2001:db8:aaaa:bbbb:cc00::/72")
+        #expect(IPAddr("2001:db8::1")?.network(prefix: 0) == "::/0")
+        #expect(IPAddr("2001:db8::1")?.network(prefix: 128) == "2001:db8::1/128")
+    }
+
+    @Test func bitsCarryAndShiftAcrossHalves() {
+        let lowAllOnes = IPBits(high: 0, low: .max)
+        #expect(lowAllOnes &+ 1 == IPBits(high: 1, low: 0))
+        #expect(IPBits(high: 1, low: 0) - 1 == lowAllOnes)
+        #expect((1 as IPBits) << 64 == IPBits(high: 1, low: 0))
+        #expect(((1 as IPBits) << 127) >> 127 == 1)
+        #expect(IPBits(high: 0x8000_0000_0000_0000, low: 0) >> 63 == IPBits(high: 1, low: 0))
+        #expect(~IPBits(0) &+ 1 == 0)
+        #expect(IPBits(high: 1, low: 0) > IPBits(high: 0, low: .max))
     }
 
     @Test func maxMindDatabaseReturnsTheASNAndNetwork() throws {
