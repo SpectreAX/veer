@@ -41,6 +41,7 @@ enum Page: String, CaseIterable, Identifiable, Hashable {
 
 struct MainView: View {
     @Environment(ProxyStore.self) private var store
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         @Bindable var store = store
@@ -94,24 +95,36 @@ struct MainView: View {
         .navigationSubtitle(store.activeProfile?.name ?? "")
     }
 
-    /// The profile in use, at the foot of the sidebar; a click opens the profiles page.
-    @ViewBuilder private var profileFooter: some View {
-        if let profile = store.activeProfile {
-            Button { store.page = .profiles } label: {
-                HStack(spacing: Spacing.sm) {
-                    Image(systemName: profile.isSubscription ? "antenna.radiowaves.left.and.right" : "doc")
-                        .foregroundStyle(.secondary)
-                    Text(profile.name).lineLimit(1).truncationMode(.middle)
-                    Spacer(minLength: 0)
+    /// The profile in use, at the foot of the sidebar (a click opens the profiles page), and the
+    /// way into Settings.
+    private var profileFooter: some View {
+        HStack(spacing: Spacing.sm) {
+            if let profile = store.activeProfile {
+                Button { store.page = .profiles } label: {
+                    HStack(spacing: Spacing.sm) {
+                        Image(systemName: profile.isSubscription ? "antenna.radiowaves.left.and.right" : "doc")
+                            .foregroundStyle(.secondary)
+                        Text(profile.name).lineLimit(1).truncationMode(.middle)
+                        Spacer(minLength: 0)
+                    }
+                    .contentShape(Rectangle())
                 }
-                .font(.callout)
-                .padding(.horizontal, Spacing.lg)
-                .padding(.vertical, Spacing.md)
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                .help(String(localized: "当前配置：\(profile.name)"))
+            } else {
+                Spacer(minLength: 0)
             }
-            .buttonStyle(.plain)
-            .help(String(localized: "当前配置：\(profile.name)"))
+            // A plain button rather than SettingsLink, which leaves VoiceOver with only "button".
+            Button { openSettings() } label: {
+                Label(String(localized: "设置"), systemImage: "gearshape").labelStyle(.iconOnly).imageScale(.large)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .help(String(localized: "设置（⌘,）"))
         }
+        .font(.callout)
+        .padding(.horizontal, Spacing.lg)
+        .padding(.vertical, Spacing.md)
     }
 
     /// Hidden until there is a profile: without one they do nothing.

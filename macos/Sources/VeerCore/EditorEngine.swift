@@ -195,7 +195,7 @@ public struct EditorEngine: Sendable {
                         ClarifyOption(label: anonymized.context.restore($0.label), prompt: $0.prompt.map(anonymized.context.restore))
                     })
                 }
-                return try await handle(reply, request: request, progress: progress)
+                return try await handle(reply, request: request, progress: progress, restore: anonymized.context.restore)
             } catch let error as EditorError where attempt < Self.repairAttempts {
                 // Send the problem back once instead of showing the user an unusable answer.
                 attempt += 1
@@ -206,7 +206,9 @@ public struct EditorEngine: Sendable {
         }
     }
 
-    func handle(_ reply: AssistantReply, request: Request, progress: @Sendable (Progress) async -> Void) async throws -> Output {
+    /// `restore` turns the model's exit labels back into real names (runtime actions name groups by label).
+    func handle(_ reply: AssistantReply, request: Request, progress: @Sendable (Progress) async -> Void,
+                restore: (String) -> String = { $0 }) async throws -> Output {
         switch reply {
         case let .clarification(question, options):
             // Exit buttons only help when the question is about where traffic should go.
@@ -223,7 +225,7 @@ public struct EditorEngine: Sendable {
             throw EditorError(String(localized: "AI 请求了本机检查，但本轮不能再检查。请换一种说法再试。"))
         case let .runtime(actions):
             guard request.runtime else { throw EditorError(String(localized: "这里不能切换节点或模式，只能修改分流规则。")) }
-            return .runtime(try actions.map { try $0.resolved(in: request.draft) })
+            return .runtime(try actions.map { try $0.resolved(in: request.draft, restore: restore) })
         }
     }
 

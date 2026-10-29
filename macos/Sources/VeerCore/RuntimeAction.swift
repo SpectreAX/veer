@@ -1,14 +1,16 @@
 import Foundation
 
 /// Something the model asks Veer to do to the running core instead of changing the config:
-/// switch a node, the mode, test delays, close connections. Groups and nodes are named by the
-/// anonymized config's target ids, as plan operations are.
+/// switch a node, the mode, test delays, close connections. Groups and nodes are named by their
+/// anonymized labels ("策略组7"), the way the rules the model reads name them: target ids are
+/// 0-based while labels count from 1, and a model reading `RULE-SET,OpenAI,策略组7` once sent
+/// target-7, the next group. Ids still work.
 public enum RuntimeAction: Sendable, Equatable {
-    case select(groupId: String, targetId: String)
+    case select(group: String, target: String)
     /// Test the group's members, then select the one with the lowest delay, among `regions` when given.
-    case selectFastest(groupId: String, regions: [Region])
+    case selectFastest(group: String, regions: [Region])
     case mode(String)
-    case test(groupId: String)
+    case test(group: String)
     case closeConnections(host: String)
 
     public static let modes = ["rule", "global", "direct"]
@@ -24,25 +26,27 @@ public enum RuntimeAction: Sendable, Equatable {
             guard let value = op[key] as? String, !value.isEmpty else { throw EditorError(String(localized: "AI 的运行状态操作缺少 \(key)。")) }
             return value
         }
+        // "group"/"target" hold labels; "groupId"/"targetId" are accepted for ids.
+        func group() throws -> String { try string(op["group"] != nil ? "group" : "groupId") }
         switch kind {
         case "select":
-            try fields(["kind", "groupId", "targetId"])
-            return .select(groupId: try string("groupId"), targetId: try string("targetId"))
+            try fields(["kind", "group", "target", "groupId", "targetId"])
+            return .select(group: try group(), target: try string(op["target"] != nil ? "target" : "targetId"))
         case "select_fastest":
-            try fields(["kind", "groupId", "regions"])
+            try fields(["kind", "group", "groupId", "regions"])
             let regions = try (op["regions"] as? [String] ?? []).map { code -> Region in
                 guard let region = Region(rawValue: code.uppercased()), region != .unknown else { throw EditorError(String(localized: "不支持的地区代码：\(code.prefix(10))")) }
                 return region
             }
-            return .selectFastest(groupId: try string("groupId"), regions: regions)
+            return .selectFastest(group: try group(), regions: regions)
         case "mode":
             try fields(["kind", "mode"])
             let mode = try string("mode").lowercased()
             guard modes.contains(mode) else { throw EditorError(String(localized: "mode 只能是 rule、global 或 direct。")) }
             return .mode(mode)
         case "test":
-            try fields(["kind", "groupId"])
-            return .test(groupId: try string("groupId"))
+            try fields(["kind", "group", "groupId"])
+            return .test(group: try group())
         case "close_connections":
             try fields(["kind", "host"])
             let host = try string("host").lowercased()
@@ -55,27 +59,30 @@ public enum RuntimeAction: Sendable, Equatable {
         }
     }
 
-    /// With group and node names in place of ids; nil when an id does not name a group (or a
-    /// member of that group).
-    func resolved(in draft: ConfigDocument) throws -> RuntimeStep {
-        func group(_ id: String) throws -> String {
-            guard let target = draft.target(id: id), target.kind == .group else { throw EditorError(String(localized: "运行状态操作里的 \(id.prefix(30)) 不是策略组。")) }
-            return target.name
+    /// With real group and node names; `restore` turns labels (and ids) back into names.
+    func resolved(in draft: ConfigDocument, restore: (String) -> String = { $0 }) throws -> RuntimeStep {
+        func target(_ raw: String) -> Target? {
+            let value = raw.trimmingCharacters(in: .whitespaces)
+            return draft.target(id: value) ?? draft.target(named: restore(value)) ?? draft.target(named: value)
+        }
+        func group(_ raw: String) throws -> String {
+            guard let found = target(raw), found.kind == .group else { throw EditorError(String(localized: "运行状态操作里的 \(raw.prefix(30)) 不是策略组。")) }
+            return found.name
         }
         switch self {
-        case let .select(groupId, targetId):
-            let name = try group(groupId)
-            guard let member = draft.target(id: targetId)?.name else { throw EditorError(String(localized: "运行状态操作里的 \(targetId.prefix(30)) 不存在。")) }
+        case let .select(groupRaw, targetRaw):
+            let name = try group(groupRaw)
+            guard let member = target(targetRaw)?.name else { throw EditorError(String(localized: "运行状态操作里的 \(targetRaw.prefix(30)) 不存在。")) }
             if let members = draft.groupMembers[name], !members.contains(member) {
                 throw EditorError(String(localized: "“\(member)”不是“\(name)”的成员，不能选择它。请只选择该策略组 proxies 里的出口。"))
             }
             return .select(group: name, node: member)
-        case let .selectFastest(groupId, regions):
-            return .selectFastest(group: try group(groupId), regions: regions)
+        case let .selectFastest(groupRaw, regions):
+            return .selectFastest(group: try group(groupRaw), regions: regions)
         case let .mode(mode):
             return .mode(mode)
-        case let .test(groupId):
-            return .test(group: try group(groupId))
+        case let .test(groupRaw):
+            return .test(group: try group(groupRaw))
         case let .closeConnections(host):
             return .closeConnections(host: host)
         }

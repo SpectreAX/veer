@@ -876,3 +876,5 @@
 "搜索服务返回了无法读取的结果。" = "The search service returned unreadable results.";
 "智谱搜索出错：%@" = "Zhipu search error: %@";
 "settings.ai.connection" = "Connection";
+"设置（⌘,）" = "Settings (⌘,)";
+"设置" = "Settings";

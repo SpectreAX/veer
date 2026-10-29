@@ -18,12 +18,12 @@ struct RuntimeActionTests {
     @Test func aRuntimeReplyDecodes() throws {
         let reply = try EditPlan.decodeReplyWithUnderstanding("""
         {"understanding":"ChatGPT 走的 AI 策略组换到最快的美国节点","runtime":{"actions":[
-          {"kind":"select_fastest","groupId":"target-0","regions":["us"]},
+          {"kind":"select_fastest","group":"策略组1","regions":["us"]},
           {"kind":"mode","mode":"Rule"},
           {"kind":"close_connections","host":"Chatgpt.com"}]}}
         """)
         #expect(reply.understanding?.contains("ChatGPT") == true)
-        #expect(reply.reply == .runtime([.selectFastest(groupId: "target-0", regions: [.us]),
+        #expect(reply.reply == .runtime([.selectFastest(group: "策略组1", regions: [.us]),
                                           .mode("rule"), .closeConnections(host: "chatgpt.com")]))
     }
 
@@ -31,10 +31,10 @@ struct RuntimeActionTests {
         let bad = [
             #"{"runtime":{"actions":[]}}"#,
             #"{"runtime":{"actions":[{"kind":"mode","mode":"tun"}]}}"#,
-            #"{"runtime":{"actions":[{"kind":"select","groupId":"target-0"}]}}"#,
+            #"{"runtime":{"actions":[{"kind":"select","group":"策略组1"}]}}"#,
             #"{"runtime":{"actions":[{"kind":"reboot"}]}}"#,
             #"{"runtime":{"actions":[{"kind":"close_connections","host":"a b"}]}}"#,
-            #"{"runtime":{"actions":[{"kind":"test","groupId":"target-0"}]},"clarification":"?"}"#,
+            #"{"runtime":{"actions":[{"kind":"test","group":"策略组1"}]},"clarification":"?"}"#,
         ]
         for text in bad { #expect(throws: EditorError.self, "\(text)") { try EditPlan.decodeReply(text) } }
     }
@@ -43,11 +43,12 @@ struct RuntimeActionTests {
         let draft = try ConfigDocument.parse(Self.config)
         let ai = try #require(draft.target(named: "AI")), japan = try #require(draft.target(named: "日本"))
         let us = try #require(draft.target(named: "🇺🇸 洛杉矶 01")), node = try #require(draft.target(named: "🇯🇵 东京 01"))
-        #expect(try RuntimeAction.select(groupId: ai.id, targetId: us.id).resolved(in: draft) == .select(group: "AI", node: "🇺🇸 洛杉矶 01"))
-        #expect(try RuntimeAction.test(groupId: japan.id).resolved(in: draft) == .test(group: "日本"))
+        // Ids still resolve.
+        #expect(try RuntimeAction.select(group: ai.id, target: us.id).resolved(in: draft) == .select(group: "AI", node: "🇺🇸 洛杉矶 01"))
+        #expect(try RuntimeAction.test(group: japan.id).resolved(in: draft) == .test(group: "日本"))
         // Not a member of 日本, and a node is not a group.
-        #expect(throws: EditorError.self) { try RuntimeAction.select(groupId: japan.id, targetId: us.id).resolved(in: draft) }
-        #expect(throws: EditorError.self) { try RuntimeAction.test(groupId: node.id).resolved(in: draft) }
+        #expect(throws: EditorError.self) { try RuntimeAction.select(group: japan.id, target: us.id).resolved(in: draft) }
+        #expect(throws: EditorError.self) { try RuntimeAction.test(group: node.id).resolved(in: draft) }
     }
 
     @Test func theRuntimeSectionIsOnlyInVeersPrompt() {
@@ -63,7 +64,7 @@ struct RuntimeActionTests {
         let draft = try ConfigDocument.parse(Self.config)
         let ai = try #require(draft.target(named: "AI"))
         let transport = UnderstandingAndRepairTests.Scripted([
-            #"{"understanding":"AI 策略组换到延迟最低的节点","runtime":{"actions":[{"kind":"select_fastest","groupId":"\#(ai.id)"}]}}"#,
+            #"{"understanding":"AI 策略组换到延迟最低的节点","runtime":{"actions":[{"kind":"select_fastest","group":"\#(ai.id)"}]}}"#,
         ])
         let engine = EditorEngine(ai: AIClient(transport: transport), validator: UnderstandingAndRepairTests.Pass(),
                                   verifier: UnderstandingAndRepairTests.Verified())
@@ -79,6 +80,34 @@ struct RuntimeActionTests {
         request.useAI = false
         guard case .outOfScope(let message) = try await engine.run(request, progress: { _ in }) else { Issue.record("expected out of scope"); return }
         #expect(message == LocalIntentParser.runtimeNeedsAIMessage)
+    }
+
+    /// The model read `RULE-SET,OpenAI,策略组7` and sent target-7, the id of 策略组8. Labels are
+    /// what the rules show, so the group is named by label and restored to its real name.
+    @Test func groupsAreNamedByTheLabelsTheRulesShow() async throws {
+        let config = """
+        proxies:
+          - {name: 🇺🇸 洛杉矶 01, type: ss, server: us1.example.invalid, port: 1, cipher: aes-128-gcm, password: p}
+        proxy-groups:
+          - {name: 🤖 AI, type: select, proxies: [🇺🇸 洛杉矶 01]}
+          - {name: 🪙 Crypto, type: select, proxies: [🇺🇸 洛杉矶 01]}
+        rules:
+          - DOMAIN-SUFFIX,openai.com,🤖 AI
+          - MATCH,🪙 Crypto
+        """
+        let draft = try ConfigDocument.parse(config)
+        let transport = UnderstandingAndRepairTests.Scripted([
+            #"{"understanding":"ChatGPT 走策略组1，换到最快的美国节点","runtime":{"actions":[{"kind":"select_fastest","group":"策略组1","regions":["US"]}]}}"#,
+        ])
+        let engine = EditorEngine(ai: AIClient(transport: transport), validator: UnderstandingAndRepairTests.Pass(),
+                                  verifier: UnderstandingAndRepairTests.Verified())
+        var request = EditorEngine.Request(prompt: "ChatGPT 换到最快的美国节点", draft: draft, regions: [:], useAI: true, settings: AISettings(), apiKey: "k")
+        request.runtime = true
+        guard case .runtime(let steps) = try await engine.run(request, progress: { _ in }) else { Issue.record("expected runtime"); return }
+        #expect(steps == [.selectFastest(group: "🤖 AI", regions: [.us])])
+        // The prompt asks for labels.
+        let system = (transport.requests.first?["messages"] as? [[String: String]])?.first?["content"] ?? ""
+        #expect(system.contains("\"group\":\"策略组7\"") && system.contains("不要写 target-N"))
     }
 
     @Test func repliesFollowTheInterfaceLanguage() {
