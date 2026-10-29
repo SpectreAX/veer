@@ -1,0 +1,186 @@
+/* Veer's interface in English. Keys are the Simplified Chinese source text; `%@` stands for a
+   string and `%lld` for a whole number. Keep every key the code uses here: LocalizationTests
+   checks it. */
+
+/* Status and formatting */
+"超时" = "Timeout";
+"已停止" = "Stopped";
+"正在启动" = "Starting";
+"运行中" = "Running";
+"启动失败" = "Failed to start";
+
+/* Sidebar and pages */
+"代理" = "Proxy";
+"page.proxies" = "Proxies";
+"使用的配置" = "Profile";
+"概览" = "Overview";
+"配置" = "Profiles";
+"连接" = "Connections";
+"日志" = "Logs";
+"实时查看和关闭连接，以及为某个域名添加规则。" = "See connections live, close them, and add a rule for a domain.";
+"内核的实时日志，可以筛选、搜索和暂停。" = "The core's live log, with filtering, search and pause.";
+"用一句话改分流、解释路由、切换节点。" = "Change routing, explain where traffic goes, and switch nodes, in one sentence.";
+"当前配置：%@" = "Current profile: %@";
+"“%@”页即将推出" = "%@ is coming soon";
+
+/* Toolbar */
+"模式" = "Mode";
+"规则：按配置分流；全局：全部走所选出口；直连：都不走代理" = "Rule: route by the profile. Global: send everything through the chosen exit. Direct: use no proxy.";
+"停止" = "Stop";
+"停止内核（⌘R）" = "Stop the core (⌘R)";
+"启动" = "Start";
+"先导入一个配置" = "Import a profile first";
+"启动内核（⌘R）" = "Start the core (⌘R)";
+
+/* Modes */
+"规则" = "Rule";
+"全局" = "Global";
+"直连" = "Direct";
+
+/* Menu bar */
+"Veer 运行中" = "Veer is running";
+"Veer 已停止" = "Veer is stopped";
+"系统代理" = "System Proxy";
+"打开 Veer" = "Open Veer";
+"退出 Veer" = "Quit Veer";
+"还没有配置" = "No profiles yet";
+
+/* Onboarding */
+"第 %lld 步，共 %lld 步" = "Step %lld of %lld";
+"欢迎使用 Veer" = "Welcome to Veer";
+"先添加你的订阅。粘贴订阅链接，或者选择一个 Mihomo / Clash 配置文件。订阅链接只保存在这台 Mac 上。" = "Start by adding your subscription. Paste its link, or choose a Mihomo / Clash config file. The link stays on this Mac.";
+"选择分流方式" = "Choose how to route";
+"分流决定哪些网站走代理、哪些直连。之后随时可以在 Agent 里用一句话调整。" = "Routing decides which sites go through the proxy and which connect directly. You can change it any time with one sentence in Agent.";
+"保留订阅自带的规则" = "Keep the subscription's rules";
+"大多数订阅已经配好了常用分流，推荐直接使用。" = "Most subscriptions already route common services well. Recommended.";
+"使用内置模板" = "Use a built-in template";
+"用 Veer 内置的规则模板替换订阅自带的规则。即将推出。" = "Replace the subscription's rules with one of Veer's templates. Coming soon.";
+"继续" = "Continue";
+"开启代理" = "Turn On Proxy";
+"开启后，Veer 启动内核并设置系统代理，浏览器和大多数 App 会按分流规则上网。" = "Veer starts the core and sets the system proxy, so browsers and most apps go online by your routing rules.";
+"可以随时在菜单栏关闭。" = "You can turn it off from the menu bar at any time.";
+"返回" = "Back";
+"完成" = "Done";
+
+/* Overview */
+"导入订阅链接、配置文件或节点分享链接后，Veer 会启动内核并按配置分流。" = "Import a subscription link, a config file or node share links, and Veer starts the core and routes by that profile.";
+"导入配置…" = "Import Profile…";
+"上传速率" = "Upload speed";
+"下载速率" = "Download speed";
+"未选择" = "None";
+"代理端口" = "Proxy port";
+"让浏览器和大多数 App 经过 Veer。关闭或退出 Veer 时，恢复原来的代理设置。" = "Sends browsers and most apps through Veer. Turning it off or quitting Veer puts your previous proxy settings back.";
+"内核运行后才能开启。" = "Available once the core is running.";
+"打开设置…" = "Open Settings…";
+"重试" = "Try Again";
+"当前出口" = "Current exits";
+
+/* Profiles */
+"支持订阅链接、Mihomo / Clash 配置文件、Base64 订阅内容和节点分享链接。" = "Subscription links, Mihomo / Clash config files, Base64 subscriptions and node share links all work.";
+"导入配置" = "Import Profile";
+"导入配置（⌘O）" = "Import a profile (⌘O)";
+"删除配置？" = "Delete this profile?";
+"删除" = "Delete";
+"取消" = "Cancel";
+"这是正在使用的配置，删除后内核会停止。" = "This profile is in use. Deleting it stops the core.";
+"配置文件、订阅链接和“我的分流”会从本机删除。" = "The config file, its subscription link and its My Routing changes are removed from this Mac.";
+"“我的分流”里有 %lld 项修改未能用到更新后的订阅上，打开“节点与分流”查看原因。" = "%lld My Routing changes could not be applied to the updated subscription. Open Nodes & Routing to see why.";
+"取消勾选节点后，这些策略组没有节点了，暂时改为直连：%@" = "These groups have no nodes left after unchecking and connect directly for now: %@";
+"有规则直接使用这些节点，所以它们没有被去掉：%@" = "Rules send traffic straight to these nodes, so they were kept: %@";
+"订阅" = "Subscription";
+"本地" = "Local";
+"使用中" = "In use";
+"更新" = "Update";
+"使用" = "Use";
+"节点与分流…" = "Nodes & Routing…";
+"导出配置…" = "Export Profile…";
+"删除…" = "Delete…";
+"更多操作" = "More actions";
+"%lld 个节点" = "%lld nodes";
+"更新于 %@" = "updated %@";
+"已用 %@ / %@" = "%1$@ of %2$@ used";
+"显示" = "Show";
+"节点" = "Nodes";
+"我的分流" = "My Routing";
+"搜索节点" = "Search nodes";
+"已取消勾选 %lld 个" = "%lld unchecked";
+"取消勾选的节点不会出现在任何策略组里。订阅更新后，按节点名称保留勾选状态。" = "Unchecked nodes are left out of every group. After a subscription update, choices are kept by node name.";
+"这个配置里没有节点" = "This profile has no nodes";
+"还没有修改" = "No changes yet";
+"在 Agent 里说一句话（比如“Netflix 走日本”），应用后的修改会记在这里，订阅更新后自动重新应用。" = "Tell Agent what you want (say, “Send Netflix through Japan”). Applied changes are listed here and reapplied after each subscription update.";
+"启用" = "Enabled";
+"删除这项修改" = "Delete this change";
+"Agent" = "Agent";
+"手动" = "Manual";
+"配置体检" = "Health check";
+"模板" = "Template";
+"导出的配置包含“我的分流”的修改，不含控制器地址和密钥。" = "The exported profile includes your My Routing changes, without the controller address or secret.";
+"包含 Veer 的覆写（端口、DNS、TUN）" = "Include Veer's overrides (port, DNS, TUN)";
+"导出失败：%@" = "Couldn't export: %@";
+"订阅链接或配置内容" = "Subscription link or config";
+"选择文件…" = "Choose File…";
+"从剪贴板粘贴" = "Paste from Clipboard";
+"导入" = "Import";
+"粘贴订阅链接、Mihomo / Clash 配置、Base64 订阅内容或节点分享链接。订阅链接只保存在这台 Mac 上（仅你可读），用于之后更新。" = "Paste a subscription link, a Mihomo / Clash config, a Base64 subscription or node share links. Subscription links stay on this Mac, readable only by you, for later updates.";
+"用剪贴板内容导入…" = "Import from Clipboard…";
+
+/* Proxies */
+"搜索节点或策略组" = "Search nodes or groups";
+"内核正在启动…" = "The core is starting…";
+"内核没有运行" = "The core isn't running";
+"先导入一个配置。" = "Import a profile first.";
+"启动后可以在这里切换节点和测试延迟。" = "Once it runs, switch nodes and test delays here.";
+"这个配置没有策略组" = "This profile has no groups";
+"所有流量按规则直接发往节点或直连。" = "Rules send all traffic straight to nodes or direct.";
+"没有匹配“%@”的节点或策略组" = "No nodes or groups match “%@”";
+"测速" = "Test";
+"测试这个策略组里每个成员的延迟" = "Test the delay of every member of this group";
+"手动选择" = "Select";
+"自动选择" = "Auto";
+"故障转移" = "Fallback";
+"负载均衡" = "Load balance";
+"链式" = "Relay";
+"%@，延迟 %@" = "%1$@, delay %2$@";
+"%@（这个策略组按延迟自动选择）" = "%@ (this group picks by delay)";
+"%@，延迟 %@，正在使用" = "%1$@, delay %2$@, in use";
+
+/* Core */
+"应用包里缺少 Mihomo 内核，请重新安装 Veer。" = "The Mihomo core is missing from the app. Please reinstall Veer.";
+"端口 %@ 已被其他程序占用。退出占用它的代理软件，或在设置中换一个端口。" = "Port %@ is used by another app. Quit the proxy app using it, or choose another port in Settings.";
+"找不到可用的本机端口来控制内核。" = "No free local port to control the core.";
+"内核在 60 秒内没有就绪，可能正在下载 GeoIP 数据或网络不通。" = "The core wasn't ready within 60 seconds. It may still be downloading GeoIP data, or the network is down.";
+"内核退出了：%@" = "The core quit: %@";
+"内核意外退出（状态 %lld）。" = "The core quit unexpectedly (status %lld).";
+"“%@”测速失败：%@" = "Couldn't test “%1$@”: %2$@";
+"粘贴的配置" = "Pasted profile";
+"“%@”更新失败：%@" = "Couldn't update “%1$@”: %2$@";
+"配置文件不是有效的 Mihomo 配置：顶层应该是键值对。" = "This isn't a valid Mihomo config: the top level should be key-value pairs.";
+"没有可用的网络服务，无法设置系统代理。" = "There's no network service to set the system proxy on.";
+"无法设置系统代理：%@" = "Couldn't set the system proxy: %@";
+"找不到这个配置的文件，可能已被删除。" = "This profile's file is missing; it may have been deleted.";
+
+/* Settings */
+"通用" = "General";
+"语言" = "Language";
+"重新打开 Veer 后生效。" = "Takes effect after Veer reopens.";
+"立即重新打开" = "Reopen Now";
+"打开 Veer 时恢复上次的代理状态" = "Restore the last proxy state when Veer opens";
+"在菜单栏显示实时速率" = "Show live speeds in the menu bar";
+"启动与菜单栏" = "Launch & Menu Bar";
+"上次退出时内核在运行，就重新启动它，并恢复模式和系统代理。" = "If the core was running when Veer last quit, start it again with the same mode and system proxy.";
+"允许局域网设备连接" = "Allow connections from the local network";
+"内核" = "Core";
+"HTTP 和 SOCKS 共用这个端口。修改后，重新启动内核才会生效。允许局域网连接后，同一网络里的设备可以把这台 Mac 当作代理。" = "HTTP and SOCKS share this port. A change applies the next time the core starts. With local network connections allowed, devices on the same network can use this Mac as a proxy.";
+"端口只能是数字。" = "The port must be a number.";
+"请使用 1024 到 65535 之间的端口。" = "Use a port from 1024 to 65535.";
+"跟随系统" = "System";
+"简体中文" = "简体中文";
+
+/* Design system */
+"未指定地区" = "No region";
+"地址已验证" = "Address verified";
+"地址未验证（网络不可达）" = "Address not verified (network unreachable)";
+"地址不存在" = "Address not found";
+"复用已有规则集" = "Reuses an existing rule set";
+"策略组" = "Group";
+"内置" = "Built-in";

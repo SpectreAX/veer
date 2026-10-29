@@ -18,9 +18,13 @@ public struct VeerPaths: Sendable {
     public var runtimeConfig: URL { core.appendingPathComponent("runtime.yaml") }
     /// Subscription links (they carry access tokens), readable only by the user.
     public var secrets: URL { root.appendingPathComponent("secrets.json") }
+    /// One "my routing" layer per profile.
+    public var routing: URL { root.appendingPathComponent("routing", isDirectory: true) }
+    /// What was running when Veer last quit, and the proxy settings it replaced.
+    public var state: URL { root.appendingPathComponent("state.json") }
 
     public func prepare() throws {
-        for directory in [root, profiles, core] {
+        for directory in [root, profiles, core, routing] {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         }
     }

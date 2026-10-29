@@ -33,7 +33,7 @@ Sources/
 | `state.json` | 上次的运行状态（是否运行、模式、系统代理、TUN）、系统代理快照 |
 | `secrets.json`（0600） | 订阅链接和 API Key（开发版） |
 
-- **用证书签名的版本：** 订阅链接和 API Key 存进钥匙串，服务名 `app.veer.secrets`。第一次启动时，如果发现 `secrets.json`，就把内容迁移进钥匙串，然后删除这个文件。
+- **用证书签名的版本：** 订阅链接和 API Key 存进钥匙串，服务名 `com.yamax.veer.secrets`。第一次启动时，如果发现 `secrets.json`，就把内容迁移进钥匙串，然后删除这个文件。
 - **判断依据：** 签名里有 Team ID（`SecCodeCopySigningInformation`）就用钥匙串。测试阶段用的 Apple Development 证书和发布用的 Developer ID 都有 Team ID，签名身份稳定，重新编译后不会每次都弹出授权；只有 ad-hoc 签名的版本继续用文件。
 
 ## 2. “我的分流”层
@@ -86,7 +86,7 @@ Sources/
 - **切换配置、修改分流或覆写时：** 只要端口和 TUN 没变，就用 `PUT /configs` 重新载入，不重启进程；端口或 TUN 变了才重启。
 
 ### 4.1 后台服务（TUN）
-- **注册：** 用 `SMAppService.daemon(plistName: "app.veer.helper.plist")`。可执行文件在 `Contents/Library/LaunchServices/VeerHelper`，plist 在 `Contents/Library/LaunchDaemons/`。
+- **注册：** 用 `SMAppService.daemon(plistName: "com.yamax.veer.helper.plist")`。可执行文件在 `Contents/Library/LaunchServices/VeerHelper`，plist 在 `Contents/Library/LaunchDaemons/`。
 - **状态和界面：**
 
 | 状态 | 界面 |
@@ -97,7 +97,7 @@ Sources/
 | `notFound` 或注册失败 | 显示原因，提示重新安装 Veer |
 
 - **安全：**
-  - **调用方校验：** 用代码签名要求校验调用方：同一个 Team ID，并且 bundle id 是 `app.veer.Veer`。macOS 13 起用 `NSXPCConnection.setCodeSigningRequirement`。
+  - **调用方校验：** 用代码签名要求校验调用方：同一个 Team ID，并且 bundle id 是 `com.yamax.veer`。macOS 13 起用 `NSXPCConnection.setCodeSigningRequirement`。
   - **能运行的程序：** 只运行 Veer 应用包内、通过同一签名校验的 `mihomo`，不接受任意路径。
   - **配置文件：** 以数据形式通过 XPC 传给后台服务，写进 `/Library/Application Support/Veer/core/`（属主 root，权限 0700）。控制器地址仍然是 127.0.0.1、随机端口、随机密钥。
 - **生命周期：**
@@ -110,13 +110,13 @@ Sources/
 
 - **后台服务不变：** 和 4.1 是同一个 `VeerHelper`，XPC 接口、以 root 运行内核、断开后清理都不变，只是安装方式不同。
 - **安装：** 点击后弹出一次系统的管理员密码框（`do shell script … with administrator privileges`）。脚本内容固定写在应用里，路径都加引号，不拼接任何用户输入。脚本做以下几件事：
-  1. 复制 `VeerHelper` 到 `/Library/PrivilegedHelperTools/app.veer.helper`（root:wheel，0755）；
-  2. 复制 `mihomo` 到 `/Library/PrivilegedHelperTools/app.veer.mihomo`（root:wheel，0755）。手动安装的后台服务只运行这份 root 拥有的副本，普通用户改不了它，所以不必再校验应用包里的 `mihomo`；
-  3. 写入 `/Library/LaunchDaemons/app.veer.helper.plist`（root:wheel，0644），`MachServices` 是 `app.veer.helper`；
+  1. 复制 `VeerHelper` 到 `/Library/PrivilegedHelperTools/com.yamax.veer.helper`（root:wheel，0755）；
+  2. 复制 `mihomo` 到 `/Library/PrivilegedHelperTools/com.yamax.veer.mihomo`（root:wheel，0755）。手动安装的后台服务只运行这份 root 拥有的副本，普通用户改不了它，所以不必再校验应用包里的 `mihomo`；
+  3. 写入 `/Library/LaunchDaemons/com.yamax.veer.helper.plist`（root:wheel，0644），`MachServices` 是 `com.yamax.veer.helper`；
   4. 写入调用方校验要求 `/Library/Application Support/Veer/helper-requirement`（root:wheel，0644）；
   5. 执行 `launchctl bootstrap system` 加载服务。
 - **调用方校验：** 后台服务从第 4 项的文件读取代码签名要求，用 `NSXPCConnection.setCodeSigningRequirement` 校验调用方：
-  - Apple Development 签名：要求同一个 Team ID，并且 bundle id 是 `app.veer.Veer`。重新编译后仍然有效。
+  - Apple Development 签名：要求同一个 Team ID，并且 bundle id 是 `com.yamax.veer`。重新编译后仍然有效。
   - ad-hoc 签名：锁定安装时 Veer 的 cdhash。每次重新编译都会失效，Veer 发现连接被拒绝时，提示“后台服务需要重新安装”。
 - **版本：** 后台服务通过 XPC 报告自己的版本和内核版本。和 Veer 不一致时，TUN 页提示“重新安装后台服务”（同样要输入一次密码）。
 - **卸载：** TUN 页提供“卸载后台服务”：输入一次密码，执行 `launchctl bootout`，然后删除上面的文件。
@@ -291,10 +291,12 @@ AI 服务商不在引导里配置。
 - **全局快捷键：** 用 Carbon 的 `RegisterEventHotKey` 实现，不引入第三方库。录制时如果和系统快捷键冲突，提示用户。
 
 ## 9. 国际化
-- **文案存放：** 用 `.strings` 文件，放在 `Resources/zh-Hans.lproj` 和 `Resources/en.lproj`。用 `.strings` 而不用 String Catalog，是因为本机只有 Command Line Tools，没有能编译 `.xcstrings` 的 `xcstringstool`。
-- **键：** 用中文原文。英文文件提供翻译。`Package.swift` 设置 `defaultLocalization: "zh-Hans"`。
-- **测试：** 有一个测试检查两份 `.strings` 的键完全一致；还有一个脚本扫描代码里 `String(localized:)` 和 `Text("…")` 用到的中文字面量，找出没有收录的键。
-- **语言切换：** 设置里切换语言时写入应用自己的 `AppleLanguages`，提示“重启 Veer 后生效”，并提供“立即重启”按钮。
+- **文案存放：** 用 `.strings` 文件，放在 `Resources/Localization/zh-Hans.lproj` 和 `Resources/Localization/en.lproj`，打包时复制进应用包的 `Contents/Resources/`，运行时从主 bundle 读取。用 `.strings` 而不用 String Catalog，是因为本机只有 Command Line Tools，没有能编译 `.xcstrings` 的 `xcstringstool`。
+- **键：** 用中文原文；插值写成格式说明符（字符串 `%@`，整数 `%lld`），端口这类不该加千位分隔符的数字先转成字符串。同一句中文在不同位置要不同译文时，用 `String(localized: "page.proxies", defaultValue: "代理")` 这样的独立键。
+- **中文表：** `zh-Hans.lproj/Localizable.strings` 是空的，只为让系统把简体中文列为 Veer 支持的语言；查不到键时显示的就是中文原文。
+- **测试：** `LocalizationTests` 扫描 `VeerApp`、`VeerProxy`、`VeerUI` 里的中文字面量（插值视为占位符），检查每一句在英文表里都有翻译，并检查译文的占位符数量和原文一致。
+- **`VeerCore` 的提示：** 它的报错和说明（导入失败的原因等）暂时只有中文，第 2 步移植 Agent 时一并翻译。
+- **语言切换：** 设置里切换语言时写入应用自己的 `AppleLanguages`，提示“重新打开 Veer 后生效”，并提供“立即重新打开”按钮（等当前进程退出、端口释放后再打开）。
 - **不翻译的内容：** 规则内容、策略组名、节点名、日志原文。
 
 ## 10. 视觉

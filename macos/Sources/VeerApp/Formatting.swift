@@ -10,18 +10,19 @@ enum Format {
     static func delay(_ delay: Int?) -> String {
         switch delay {
         case nil: "—"
-        case 0: "超时"
+        case 0: String(localized: "超时")
         case let value?: "\(value) ms"
         }
     }
 
-    /// Delay meaning in words, paired with color wherever a delay is shown.
+    /// Delay meaning in words, paired with color wherever a delay is shown: good under 200 ms,
+    /// fair up to 500 ms.
     static func delayKind(_ delay: Int?) -> StatusKind {
         switch delay {
         case nil: .neutral
         case 0: .failure
-        case let value? where value < 300: .success
-        case let value? where value < 800: .warning
+        case let value? where value < 200: .success
+        case let value? where value <= 500: .warning
         default: .failure
         }
     }
@@ -43,10 +44,10 @@ extension ProxyStore.Phase {
 
     var title: String {
         switch self {
-        case .stopped: "已停止"
-        case .starting: "正在启动"
-        case .running: "运行中"
-        case .failed: "启动失败"
+        case .stopped: String(localized: "已停止")
+        case .starting: String(localized: "正在启动")
+        case .running: String(localized: "运行中")
+        case .failed: String(localized: "启动失败")
         }
     }
 }

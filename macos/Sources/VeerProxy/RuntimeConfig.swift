@@ -34,7 +34,7 @@ public enum RuntimeConfig {
 
     public static func build(profile: String, settings: RuntimeSettings, controllerPort: Int, secret: String) throws -> String {
         guard let root = try Yams.compose(yaml: profile), case .mapping(var mapping) = root else {
-            throw EditorError("配置文件不是有效的 Mihomo 配置：顶层应该是键值对。")
+            throw EditorError(String(localized: "配置文件不是有效的 Mihomo 配置：顶层应该是键值对。"))
         }
         for key in removed { mapping[Node(key)] = nil }
         func set(_ key: String, _ value: Node) { mapping[Node(key)] = value }
@@ -56,6 +56,16 @@ public enum RuntimeConfig {
         if mapping[Node("geox-url")] == nil {
             set("geox-url", Node(geodataMirrors.map { (Node($0.key), Node($0.url)) }))
         }
+        return try Yams.serialize(node: .mapping(mapping), allowUnicode: true)
+    }
+
+    /// The config to export with Veer's overrides written in: what `build` makes, without the
+    /// controller and secret, which only mean something to one run of the core.
+    public static func export(profile: String, settings: RuntimeSettings) throws -> String {
+        let built = try build(profile: profile, settings: settings, controllerPort: 0, secret: "")
+        guard let root = try Yams.compose(yaml: built), case .mapping(var mapping) = root else { return built }
+        mapping[Node("external-controller")] = nil
+        mapping[Node("secret")] = nil
         return try Yams.serialize(node: .mapping(mapping), allowUnicode: true)
     }
 

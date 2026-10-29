@@ -78,6 +78,10 @@ struct VeerCommands: Commands {
             Button("导入配置…") { store.openImport() }.keyboardShortcut("o")
             Button("用剪贴板内容导入…") { store.openImport(prefill: NSPasteboard.general.string(forType: .string) ?? "") }
                 .keyboardShortcut("v", modifiers: [.command, .shift])
+            Divider()
+            Button("导出配置…") { if let profile = store.activeProfile { ConfigExport.run(profile, store: store) } }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
+                .disabled(store.activeProfile == nil)
         }
         CommandGroup(after: .sidebar) {
             ForEach(Array(Page.allCases.enumerated()), id: \.element) { index, page in
@@ -86,7 +90,7 @@ struct VeerCommands: Commands {
             Divider()
         }
         CommandMenu("代理") {
-            Button(store.isRunning ? "停止" : "启动") { store.isRunning ? store.stop() : store.start() }
+            Button(store.isRunning ? String(localized: "停止") : String(localized: "启动")) { store.isRunning ? store.stop() : store.start() }
                 .keyboardShortcut("r")
                 .disabled(store.activeProfile == nil || store.phase == .starting)
             Toggle("系统代理", isOn: Binding(get: { store.systemProxyOn }, set: { store.setSystemProxy($0) }))

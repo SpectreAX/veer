@@ -14,7 +14,8 @@ enum SnapshotRunner {
                 let name = appearance == "dark" ? NSAppearance.Name.darkAqua : .aqua
                 for scene in scenes() {
                     let store = scene.store()
-                    let view = scene.view.environment(store).tint(.veerAccent)
+                    // The app's window never gets smaller than this; content sized views would shrink it.
+                    let view = scene.view.environment(store).tint(.veerAccent).frame(width: scene.size.width, height: scene.size.height)
                     let window = NSWindow(contentRect: CGRect(origin: .zero, size: scene.size), styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
                     window.appearance = NSAppearance(named: name)
                     window.contentViewController = NSHostingController(rootView: view)
@@ -39,47 +40,89 @@ enum SnapshotRunner {
 
     static func scenes() -> [Scene] {
         [
-            Scene(name: "01-empty", store: { sample(profiles: false) }, view: AnyView(MainView())),
-            Scene(name: "02-overview-running", store: { running() }, view: AnyView(MainView())),
-            Scene(name: "03-proxies", store: { running(page: .proxies) }, view: AnyView(MainView())),
-            Scene(name: "04-profiles", store: { running(page: .profiles) }, view: AnyView(MainView())),
-            Scene(name: "05-failed", store: {
+            Scene(name: "01-onboarding-add", store: { sample(profiles: false) }, view: AnyView(MainView())),
+            Scene(name: "02-onboarding-routing", store: {
                 let store = sample()
-                store.phase = .failed("端口 7890 已被其他程序占用。退出占用它的代理软件，或在设置中换一个端口。", log: [
+                store.onboarding = .routing
+                return store
+            }, view: AnyView(MainView())),
+            Scene(name: "03-onboarding-start", store: {
+                let store = running()
+                store.onboarding = .start
+                return store
+            }, view: AnyView(MainView())),
+            Scene(name: "04-overview-running", store: { running() }, view: AnyView(MainView())),
+            Scene(name: "05-proxies", store: { running(page: .proxies) }, view: AnyView(MainView())),
+            Scene(name: "06-profiles", store: { running(page: .profiles) }, view: AnyView(MainView())),
+            Scene(name: "07-failed", store: {
+                let store = sample()
+                store.phase = .failed(String(localized: "端口 \(String(7890)) 已被其他程序占用。退出占用它的代理软件，或在设置中换一个端口。"), log: [
                     "time=\"2026-10-29T10:00:00+08:00\" level=info msg=\"Start initial configuration in progress\"",
                     "time=\"2026-10-29T10:00:00+08:00\" level=error msg=\"Start Mixed(http+socks) server error: listen tcp 127.0.0.1:7890: bind: address already in use\"",
                 ])
                 return store
             }, view: AnyView(MainView())),
-            Scene(name: "06-proxies-stopped", store: {
+            Scene(name: "08-proxies-stopped", store: {
                 let store = sample()
                 store.page = .proxies
                 return store
             }, view: AnyView(MainView())),
-            Scene(name: "07-import", size: CGSize(width: 560, height: 360), store: {
+            Scene(name: "09-agent-later", store: { running(page: .agent) }, view: AnyView(MainView())),
+            Scene(name: "10-import", size: CGSize(width: 560, height: 360), store: {
                 let store = sample()
                 store.importText = "https://sub.example.invalid/api/v1/client/subscribe?token=demo"
-                store.importError = "无法下载订阅：网络错误或超时。"
+                store.importError = String(localized: "找不到这个配置的文件，可能已被删除。")
                 return store
             }, view: AnyView(ImportSheet())),
-            Scene(name: "08-settings", size: CGSize(width: 480, height: 360), store: { sample() }, view: AnyView(SettingsView())),
+            Scene(name: "11-profile-nodes", size: CGSize(width: 560, height: 520), store: { sample() },
+                  view: AnyView(SampleProfileSheet(tab: .nodes))),
+            Scene(name: "12-profile-routing", size: CGSize(width: 560, height: 520), store: { sample() },
+                  view: AnyView(SampleProfileSheet(tab: .routing))),
+            Scene(name: "13-settings-general", size: CGSize(width: 520, height: 360), store: { sample() }, view: AnyView(GeneralSettings())),
+            Scene(name: "14-settings-proxy", size: CGSize(width: 520, height: 300), store: { sample() }, view: AnyView(ProxySettings())),
         ]
     }
+
+    /// The node sheet for the sample's first profile.
+    struct SampleProfileSheet: View {
+        @Environment(ProxyStore.self) private var store
+        let tab: ProfileDetailSheet.Tab
+
+        var body: some View {
+            if let profile = store.profiles.first { ProfileDetailSheet(profile: profile, tab: tab) }
+        }
+    }
+
+    static let sampleConfig = """
+    proxies:
+      - {name: 🇯🇵 日本 东京 IPLC 01 | 0.5x 高速稳定线路, type: ss, server: jp1.example.invalid, port: 1, cipher: aes-128-gcm, password: p}
+      - {name: 🇯🇵 日本 大阪 02, type: ss, server: jp2.example.invalid, port: 1, cipher: aes-128-gcm, password: p}
+      - {name: 🇭🇰 香港 01, type: ss, server: hk1.example.invalid, port: 1, cipher: aes-128-gcm, password: p}
+      - {name: 🇺🇸 美国 洛杉矶 01, type: ss, server: us1.example.invalid, port: 1, cipher: aes-128-gcm, password: p}
+      - {name: 🇸🇬 新加坡 01, type: ss, server: sg1.example.invalid, port: 1, cipher: aes-128-gcm, password: p}
+    proxy-groups:
+      - {name: 节点选择, type: select, proxies: [🇯🇵 日本 东京 IPLC 01 | 0.5x 高速稳定线路, 🇯🇵 日本 大阪 02, 🇭🇰 香港 01, 🇺🇸 美国 洛杉矶 01, 🇸🇬 新加坡 01]}
+    rules:
+      - MATCH,节点选择
+    """
 
     static func sample(profiles: Bool = true) -> ProxyStore {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("veer-snapshot-\(UUID().uuidString)")
         let defaults = UserDefaults(suiteName: "veer-snapshot-\(UUID().uuidString)")!
-        let store = ProxyStore(paths: VeerPaths(root: root), systemProxy: SystemProxy(runner: { _ in "" }), binary: nil, defaults: defaults)
+        let paths = VeerPaths(root: root)
         if profiles {
             let hour: TimeInterval = 3600
-            store.profiles = [
-                Profile(name: "我的机场 · 高速专线（这是一个很长的订阅名称，用来检查截断）", isSubscription: true, updatedAt: .now.addingTimeInterval(-2 * hour), nodeCount: 48,
-                        usage: SubscriptionUsage(upload: 3 << 30, download: 57 << 30, total: 200 << 30, expire: nil)),
-                Profile(name: "家里的路由器", isSubscription: false, updatedAt: .now.addingTimeInterval(-30 * 24 * hour), nodeCount: 3),
-            ]
-            store.activeProfileID = store.profiles[0].id
+            let store = ProfileStore(paths: paths, secrets: FileKeyStore(url: paths.secrets))
+            try? store.save(Profile(name: "我的机场 · 高速专线（这是一个很长的订阅名称，用来检查截断）", isSubscription: true,
+                                    updatedAt: .now.addingTimeInterval(-2 * hour), nodeCount: 5,
+                                    usage: SubscriptionUsage(upload: 3 << 30, download: 57 << 30, total: 200 << 30, expire: nil)), text: sampleConfig)
+            try? store.save(Profile(name: "家里的路由器", isSubscription: false, updatedAt: .now.addingTimeInterval(-30 * 24 * hour), nodeCount: 3),
+                            text: sampleConfig)
+            if let first = store.loadAll().first {
+                try? RoutingStore(paths: paths).save(RoutingLayer(excludedNodes: ["🇸🇬 新加坡 01"]), for: first.id)
+            }
         }
-        return store
+        return ProxyStore(paths: paths, systemProxy: SystemProxy(runner: { _ in "" }), binary: nil, defaults: defaults)
     }
 
     static func running(page: Page = .overview) -> ProxyStore {

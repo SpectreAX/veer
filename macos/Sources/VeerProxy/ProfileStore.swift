@@ -43,7 +43,7 @@ public final class ProfileStore: @unchecked Sendable {
 
     public func text(of id: UUID) throws -> String {
         do { return try String(contentsOf: file(id), encoding: .utf8) } catch {
-            throw EditorError("找不到这个配置的文件，可能已被删除。")
+            throw EditorError(String(localized: "找不到这个配置的文件，可能已被删除。"))
         }
     }
 

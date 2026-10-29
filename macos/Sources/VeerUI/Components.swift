@@ -221,7 +221,7 @@ public struct ExitLabel: View {
     public var body: some View {
         HStack(spacing: Spacing.sm) {
             Text(name).lineLimit(1).truncationMode(.middle).help(name)
-            if let region { Text(region == .unknown ? "未指定地区" : region.displayName).font(.caption).foregroundStyle(.secondary) }
+            if let region { Text(region == .unknown ? String(localized: "未指定地区") : region.displayName).font(.caption).foregroundStyle(.secondary) }
             if let kind { Tag(text: kind.label) }
         }
     }

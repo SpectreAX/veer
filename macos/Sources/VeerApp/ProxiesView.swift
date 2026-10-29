@@ -19,18 +19,20 @@ struct ProxiesView: View {
 
     var body: some View {
         content
-            .searchable(text: $query, placement: .toolbar, prompt: "搜索节点或策略组")
+            .searchable(text: $query, placement: .toolbar, prompt: Text("搜索节点或策略组"))
     }
 
     @ViewBuilder private var content: some View {
         if !store.isRunning {
-            StateView(symbol: "point.3.connected.trianglepath.dotted", title: store.phase == .starting ? "内核正在启动…" : "内核没有运行",
-                      message: store.activeProfile == nil ? "先导入一个配置。" : "启动后可以在这里切换节点和测试延迟。",
-                      actionTitle: store.activeProfile == nil || store.phase == .starting ? nil : "启动") { store.start() }
+            StateView(symbol: "point.3.connected.trianglepath.dotted",
+                      title: store.phase == .starting ? String(localized: "内核正在启动…") : String(localized: "内核没有运行"),
+                      message: store.activeProfile == nil ? String(localized: "先导入一个配置。") : String(localized: "启动后可以在这里切换节点和测试延迟。"),
+                      actionTitle: store.activeProfile == nil || store.phase == .starting ? nil : String(localized: "启动")) { store.start() }
         } else if store.groups.isEmpty {
-            StateView(symbol: "square.stack.3d.up.slash", title: "这个配置没有策略组", message: "所有流量按规则直接发往节点或直连。")
+            StateView(symbol: "square.stack.3d.up.slash", title: String(localized: "这个配置没有策略组"),
+                      message: String(localized: "所有流量按规则直接发往节点或直连。"))
         } else if shownGroups.isEmpty {
-            StateView(symbol: "magnifyingglass", title: "没有匹配“\(query)”的节点或策略组")
+            StateView(symbol: "magnifyingglass", title: String(localized: "没有匹配“\(query)”的节点或策略组"))
         } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: Spacing.lg) {
@@ -54,7 +56,7 @@ private struct GroupSection: View {
                 Text(group.name).font(.headline).lineLimit(1).truncationMode(.middle)
                 Tag(text: Self.typeLabel(group.type))
                 if let now = group.now {
-                    Text("→ \(now)").font(.callout).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                    Text(verbatim: "→ \(now)").font(.callout).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                 }
                 Spacer()
                 if store.testingGroups.contains(group.name) {
@@ -78,11 +80,11 @@ private struct GroupSection: View {
 
     static func typeLabel(_ type: String) -> String {
         switch type {
-        case "Selector": "手动选择"
-        case "URLTest": "自动选择"
-        case "Fallback": "故障转移"
-        case "LoadBalance": "负载均衡"
-        case "Relay": "链式"
+        case "Selector": String(localized: "手动选择")
+        case "URLTest": String(localized: "自动选择")
+        case "Fallback": String(localized: "故障转移")
+        case "LoadBalance": String(localized: "负载均衡")
+        case "Relay": String(localized: "链式")
         default: type
         }
     }
@@ -103,13 +105,14 @@ private struct MemberTile: View {
                 .buttonStyle(.plain)
                 .onHover { hovering = $0 }
                 .help(member.name)
-                .accessibilityLabel("\(member.name)，延迟 \(Format.delay(member.delay))")
+                .accessibilityLabel(String(localized: "\(member.name)，延迟 \(Format.delay(member.delay))"))
                 .accessibilityAddTraits(selected ? .isSelected : [])
         } else {
             tile
-                .help("\(member.name)（这个策略组按延迟自动选择）")
+                .help(String(localized: "\(member.name)（这个策略组按延迟自动选择）"))
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(member.name)，延迟 \(Format.delay(member.delay))\(selected ? "，正在使用" : "")")
+                .accessibilityLabel(selected ? String(localized: "\(member.name)，延迟 \(Format.delay(member.delay))，正在使用")
+                                    : String(localized: "\(member.name)，延迟 \(Format.delay(member.delay))"))
         }
     }
 

@@ -165,3 +165,92 @@ struct CoreProcessTests {
         #expect(!core.isRunning && !Ports.inUse(mixed))
     }
 }
+
+struct ProxySnapshotTests {
+    /// Wi-Fi had the user's own proxy and bypass list; Ethernet had none.
+    final class FakeServices: @unchecked Sendable {
+        var calls: [[String]] = []
+        var services = ["Wi-Fi", "Ethernet"]
+        var answers: [String: String] = [
+            "-getwebproxy Wi-Fi": "Enabled: Yes\nServer: proxy.corp.example\nPort: 3128\nAuthenticated Proxy Enabled: 0",
+            "-getsecurewebproxy Wi-Fi": "Enabled: No\nServer: proxy.corp.example\nPort: 3128\nAuthenticated Proxy Enabled: 0",
+            "-getsocksfirewallproxy Wi-Fi": "Enabled: No\nServer: \nPort: 0\nAuthenticated Proxy Enabled: 0",
+            "-getproxybypassdomains Wi-Fi": "*.corp.example\nlocalhost\n",
+            "-getwebproxy Ethernet": "Enabled: No\nServer: \nPort: 0\nAuthenticated Proxy Enabled: 0",
+            "-getsecurewebproxy Ethernet": "Enabled: No\nServer: \nPort: 0\nAuthenticated Proxy Enabled: 0",
+            "-getsocksfirewallproxy Ethernet": "Enabled: No\nServer: \nPort: 0\nAuthenticated Proxy Enabled: 0",
+            "-getproxybypassdomains Ethernet": "There aren't any bypass domains set on Ethernet.\n",
+        ]
+        let lock = NSLock()
+        var runner: SystemProxy.Runner {
+            { arguments in
+                self.lock.withLock {
+                    self.calls.append(arguments)
+                    if arguments.first == "-listallnetworkservices" { return "An asterisk (*) denotes that a network service is disabled.\n" + self.services.joined(separator: "\n") }
+                    return self.answers[arguments.prefix(2).joined(separator: " ")] ?? ""
+                }
+            }
+        }
+    }
+
+    @Test func aSnapshotRecordsEachProxyAndBypassList() throws {
+        let fake = FakeServices()
+        let snapshot = try SystemProxy(runner: fake.runner).snapshot()
+        #expect(snapshot.services.map(\.name) == ["Wi-Fi", "Ethernet"])
+        let wifi = snapshot.services[0]
+        #expect(wifi.web == .init(enabled: true, server: "proxy.corp.example", port: 3128))
+        #expect(wifi.secure.enabled == false && wifi.socks.server.isEmpty)
+        #expect(wifi.bypass == ["*.corp.example", "localhost"] && snapshot.services[1].bypass.isEmpty)
+    }
+
+    @Test func restoringPutsTheUsersProxyBack() throws {
+        let fake = FakeServices()
+        let proxy = SystemProxy(runner: fake.runner)
+        let snapshot = try proxy.snapshot()
+        fake.calls = []
+        try proxy.restore(snapshot, host: "127.0.0.1", port: 7890)
+        #expect(fake.calls.contains(["-setwebproxy", "Wi-Fi", "proxy.corp.example", "3128"]))
+        #expect(fake.calls.contains(["-setsecurewebproxystate", "Wi-Fi", "off"]))
+        #expect(fake.calls.contains(["-setproxybypassdomains", "Wi-Fi", "*.corp.example", "localhost"]))
+        #expect(fake.calls.contains(["-setwebproxystate", "Ethernet", "off"]))
+        #expect(fake.calls.contains(["-setproxybypassdomains", "Ethernet", "Empty"]))
+    }
+
+    @Test func aRecordedVeerProxyComesBackOffAndUnknownServicesOnlyLoseVeers() throws {
+        let fake = FakeServices()
+        fake.answers["-getwebproxy Wi-Fi"] = "Enabled: Yes\nServer: 127.0.0.1\nPort: 7890"
+        let proxy = SystemProxy(runner: fake.runner)
+        let snapshot = try proxy.snapshot(services: ["Wi-Fi"])
+        fake.answers["-getwebproxy Ethernet"] = "Enabled: Yes\nServer: 127.0.0.1\nPort: 7890"
+        fake.calls = []
+        try proxy.restore(snapshot, host: "127.0.0.1", port: 7890)
+        #expect(!fake.calls.contains { $0.first == "-setwebproxy" })
+        #expect(fake.calls.contains(["-setwebproxystate", "Wi-Fi", "off"]))
+        #expect(fake.calls.contains(["-setsocksfirewallproxystate", "Ethernet", "off"]))
+        #expect(!fake.calls.contains { $0.first == "-setproxybypassdomains" && $0[1] == "Ethernet" })
+    }
+
+    @Test func mergingKeepsTheFirstRecordOfAService() throws {
+        let fake = FakeServices()
+        var snapshot = try SystemProxy(runner: fake.runner).snapshot(services: ["Wi-Fi"])
+        let later = try SystemProxy(runner: fake.runner).snapshot()
+        snapshot.services[0].bypass = ["kept"]
+        snapshot.merge(later)
+        #expect(snapshot.services.map(\.name) == ["Wi-Fi", "Ethernet"] && snapshot.services[0].bypass == ["kept"])
+    }
+
+    @Test func stateRoundTrips() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("veer-state-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = StateStore(paths: VeerPaths(root: root))
+        #expect(store.load() == ProxyState())
+        var state = ProxyState()
+        state.running = true
+        state.mode = "global"
+        state.systemProxy = true
+        state.proxyPort = 7890
+        state.snapshot = try SystemProxy(runner: FakeServices().runner).snapshot()
+        store.save(state)
+        #expect(StateStore(paths: VeerPaths(root: root)).load() == state)
+    }
+}

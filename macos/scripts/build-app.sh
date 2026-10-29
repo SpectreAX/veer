@@ -21,6 +21,8 @@ cp "$bin_dir/Veer" "$app/Contents/MacOS/Veer"
 cp Resources/Info.plist "$app/Contents/Info.plist"
 # Drawn by scripts/make-icon.swift; regenerate it there rather than editing the .icns.
 cp Resources/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
+# Interface strings: Simplified Chinese is the source text, English translates it.
+cp -R Resources/Localization/*.lproj "$app/Contents/Resources/"
 cp "$core" "$app/Contents/Resources/bin/mihomo"
 cp third_party/mihomo/LICENSE "$app/Contents/Resources/licenses/mihomo-LICENSE"
 cp .build/checkouts/Yams/LICENSE "$app/Contents/Resources/licenses/Yams-LICENSE"

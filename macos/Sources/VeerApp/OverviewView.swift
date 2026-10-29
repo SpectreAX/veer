@@ -7,9 +7,9 @@ struct OverviewView: View {
 
     var body: some View {
         if store.profiles.isEmpty {
-            StateView(symbol: "tray.and.arrow.down", title: "还没有配置",
-                      message: "导入订阅链接、配置文件或节点分享链接后，Veer 会启动内核并按配置分流。",
-                      actionTitle: "导入配置…") { store.openImport() }
+            StateView(symbol: "tray.and.arrow.down", title: String(localized: "还没有配置"),
+                      message: String(localized: "导入订阅链接、配置文件或节点分享链接后，Veer 会启动内核并按配置分流。"),
+                      actionTitle: String(localized: "导入配置…")) { store.openImport() }
         } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: Spacing.lg) {
@@ -42,8 +42,8 @@ struct OverviewView: View {
             Divider()
             Grid(alignment: .leading, horizontalSpacing: Spacing.lg, verticalSpacing: Spacing.sm) {
                 GridRow {
-                    Text("配置").foregroundStyle(.secondary)
-                    Text(store.activeProfile?.name ?? "未选择").lineLimit(1).truncationMode(.middle)
+                    Text("使用的配置").foregroundStyle(.secondary)
+                    Text(store.activeProfile?.name ?? String(localized: "未选择")).lineLimit(1).truncationMode(.middle)
                 }
                 GridRow {
                     Text("模式").foregroundStyle(.secondary)
@@ -51,14 +51,14 @@ struct OverviewView: View {
                 }
                 GridRow {
                     Text("代理端口").foregroundStyle(.secondary)
-                    Text("127.0.0.1:\(String(store.proxyPort))").font(Typography.code).textSelection(.enabled)
+                    Text(verbatim: "127.0.0.1:\(store.proxyPort)").font(Typography.code).textSelection(.enabled)
                 }
             }
             Divider()
             HStack(spacing: Spacing.md) {
                 VStack(alignment: .leading, spacing: Spacing.xxs) {
                     Text("系统代理")
-                    Text(store.isRunning ? "让浏览器和大多数 App 经过 Veer。关闭或退出 Veer 时会自动恢复。" : "内核运行后才能开启。")
+                    Text(store.isRunning ? String(localized: "让浏览器和大多数 App 经过 Veer。关闭或退出 Veer 时，恢复原来的代理设置。") : String(localized: "内核运行后才能开启。"))
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()

@@ -143,10 +143,10 @@ public enum StatusKind {
 public extension RuleSetVerification {
     var label: String {
         switch self {
-        case .verified: "地址已验证"
-        case .unverified: "地址未验证（网络不可达）"
-        case .missing: "地址不存在"
-        case .reused: "复用已有规则集"
+        case .verified: String(localized: "地址已验证")
+        case .unverified: String(localized: "地址未验证（网络不可达）")
+        case .missing: String(localized: "地址不存在")
+        case .reused: String(localized: "复用已有规则集")
         }
     }
 }
@@ -154,9 +154,9 @@ public extension RuleSetVerification {
 public extension Target.Kind {
     var label: String {
         switch self {
-        case .group: "策略组"
-        case .node: "节点"
-        case .builtin: "内置"
+        case .group: String(localized: "策略组")
+        case .node: String(localized: "节点")
+        case .builtin: String(localized: "内置")
         }
     }
 }
