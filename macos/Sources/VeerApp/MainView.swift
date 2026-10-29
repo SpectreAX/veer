@@ -134,20 +134,12 @@ struct MainView: View {
     }
 
     /// Hidden until there is a profile: without one they do nothing.
+    /// Start and stop only; the mode lives on the overview's card, the menu bar and the 代理 menu.
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
-        if !store.profiles.isEmpty { modeAndStart }
-    }
-
-    @ToolbarContentBuilder private var modeAndStart: some ToolbarContent {
-        ToolbarItem(placement: .principal) {
-            SegmentedControl(label: String(localized: "模式"), selection: Binding(get: { store.mode }, set: { store.setMode($0) }),
-                             options: ProxyStore.Mode.allCases.map { .init(value: $0, title: $0.title) })
-                .fixedSize()
-                .disabled(!store.isRunning)
-            .help("规则：按配置分流；全局：全部走所选出口；直连：都不走代理")
-        }
-        ToolbarItem(placement: .primaryAction) {
-            StartStopButton()
+        if !store.profiles.isEmpty {
+            ToolbarItem(placement: .primaryAction) {
+                StartStopButton()
+            }
         }
     }
 }

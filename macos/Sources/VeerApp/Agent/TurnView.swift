@@ -281,7 +281,9 @@ struct ProposalView: View {
                     Text(String(localized: "校验未通过，不能应用")).font(.callout).foregroundStyle(Color.statusFailure)
                 } else if acceptedCount == 0 {
                     Text(String(localized: "至少选择一项")).font(.callout).foregroundStyle(.secondary)
-                } else if let mode = turn.executionMode, let reason = mode.heldReason(validation: proposal.validation) {
+                } else if let mode = turn.executionMode,
+                          let reason = mode.heldReason(validation: proposal.validation, items: proposal.items.filter { proposal.accepted.contains($0.id) },
+                                                       instruction: turn.prompt) {
                     Text(reason).font(.callout).foregroundStyle(.secondary)
                 }
             case .undone:

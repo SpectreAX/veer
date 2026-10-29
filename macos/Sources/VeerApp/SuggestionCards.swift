@@ -6,11 +6,21 @@ import VeerProxy
 struct SuggestionCards: View {
     @Environment(ProxyStore.self) private var store
     @Environment(AgentStore.self) private var agent
+    /// Cards shown before the rest fold into a link to the overview; nil shows them all. Pages
+    /// without their own scroll (the Agent page) set it, or the cards push the window's content
+    /// past its top edge.
+    var limit: Int?
 
     var body: some View {
         if !store.suggestions.isEmpty {
-            VStack(spacing: Spacing.sm) {
-                ForEach(store.suggestions) { card($0) }
+            let shown = limit.map { Array(store.suggestions.prefix($0)) } ?? store.suggestions
+            VStack(alignment: .leading, spacing: Spacing.sm) {
+                ForEach(shown) { card($0) }
+                if shown.count < store.suggestions.count {
+                    Button(String(localized: "还有 \(store.suggestions.count - shown.count) 条建议，在概览查看")) { store.page = .overview }
+                        .buttonStyle(.link)
+                        .font(.callout)
+                }
             }
         }
     }

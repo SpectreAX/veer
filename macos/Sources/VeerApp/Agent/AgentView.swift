@@ -15,7 +15,7 @@ struct AgentView: View {
             Divider()
             VStack(spacing: 0) {
                 if !proxy.suggestions.isEmpty {
-                    SuggestionCards().padding(Spacing.lg)
+                    SuggestionCards(limit: 1).padding(Spacing.lg)
                     Divider()
                 }
                 conversation

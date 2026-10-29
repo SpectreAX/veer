@@ -80,6 +80,16 @@ enum SnapshotRunner {
                 agent.settings.provider = .ollama
                 sampleThread(agent, status: .pending)
             }),
+            // Five suggestions on the Agent page once pushed the window's content past its top.
+            Scene(name: "09j-agent-suggestions", store: {
+                let store = running(page: .agent)
+                store.suggestions = ["a.example.com", "b.example.com", "c.example.com", "d.example.com"].map { Suggestion(kind: .unmatched(host: $0, count: 5)) }
+                    + [Suggestion(kind: .failing(host: "ipv6.itdog.cn", count: 3))]
+                return store
+            }, view: AnyView(MainView()), agent: { agent in
+                agent.settings.provider = .ollama
+                sampleThread(agent, status: .pending)
+            }),
             Scene(name: "09d-agent-applied", store: { running(page: .agent) }, view: AnyView(MainView()), agent: { agent in
                 agent.settings.provider = .ollama
                 sampleThread(agent, status: .written)

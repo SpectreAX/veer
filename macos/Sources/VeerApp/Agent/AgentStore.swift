@@ -480,7 +480,8 @@ final class AgentStore {
     private func autoWriteIfAllowed(sessionID: UUID, turnID: UUID) {
         guard current?.id == sessionID, let turn = current?.turns.first(where: { $0.id == turnID }),
               let mode = turn.executionMode, let proposal = turn.proposal,
-              mode.writesAutomatically(items: proposal.items.filter { proposal.accepted.contains($0.id) }, validation: proposal.validation),
+              mode.writesAutomatically(items: proposal.items.filter { proposal.accepted.contains($0.id) }, validation: proposal.validation,
+                                       instruction: turn.prompt),
               canWrite(turn) else { return }
         write(turnID: turnID)
         mutateTurn(sessionID: sessionID, turnID: turnID) { $0.autoWritten = true }

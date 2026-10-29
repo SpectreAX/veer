@@ -110,6 +110,8 @@ public struct AnonymizedConfig: Sendable {
             root.append(("proxy-groups", .sequence(.init(groups.map { group in
                 var pairs: [(String, Node)] = [("id", scalar(groupIDs[group.name] ?? "")), ("name", scalar(label(group.name))),
                                                ("type", scalar(mihomoType(group.type)))]
+                // Only the verdict leaves this Mac, never the name it was read from.
+                if GroupPurpose.isDedicated(group.name) { pairs.append(("用途", scalar("专用"))) }
                 let members = group.members.filter { $0.kind != .missing }
                 if members.count <= memberListLimit {
                     pairs.append(("proxies", flowSeq(members.map { label($0.name) })))

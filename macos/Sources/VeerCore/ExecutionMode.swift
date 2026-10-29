@@ -37,8 +37,10 @@ public enum ExecutionMode: String, Sendable, Codable, CaseIterable, Identifiable
         }
     }
 
-    /// Whether a proposal goes into the draft without review. A failed Mihomo check always waits.
-    public func writesAutomatically(items: [ChangeItem], validation: ValidationResult) -> Bool {
+    /// Whether a proposal goes into the draft without review. A failed Mihomo check always waits,
+    /// and so does traffic sent into a group made for another service that the user did not name.
+    public func writesAutomatically(items: [ChangeItem], validation: ValidationResult, instruction: String? = nil) -> Bool {
+        if let instruction, !GroupPurpose.unnamedDedicated(in: items, instruction: instruction).isEmpty { return false }
         switch self {
         case .manual, .plan: return false
         case .full: return validation.status != .failed
@@ -57,8 +59,12 @@ public enum ExecutionMode: String, Sendable, Codable, CaseIterable, Identifiable
     }
 
     /// Why a mode that writes on its own left a proposal for review (nil when it would not write anyway).
-    public func heldReason(validation: ValidationResult) -> String? {
-        switch self {
+    public func heldReason(validation: ValidationResult, items: [ChangeItem] = [], instruction: String? = nil) -> String? {
+        if self != .manual, self != .plan, let instruction,
+           let group = GroupPurpose.unnamedDedicated(in: items, instruction: instruction).first {
+            return String(localized: "“\(group)”是为其他服务设置的策略组，你没有点名它，需要你确认")
+        }
+        return switch self {
         case .manual, .plan, .full: nil
         case .auto: String(localized: "自动模式：含删除、新建策略组、宽泛规则集或较多修改，需要你确认")
         case .acceptEdits: validation.status == .passed ? nil : String(localized: "自动应用模式：Mihomo 校验没有完成，需要你确认")

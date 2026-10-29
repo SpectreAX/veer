@@ -866,10 +866,14 @@ final class ProxyStore {
 
     // MARK: Suggestions
 
+    /// At most `suggestionLimit`, the newest first; an older one makes room.
     private func suggest(_ suggestion: Suggestion?) {
         guard let suggestion, !suggestions.contains(where: { $0.id == suggestion.id }) else { return }
-        suggestions.append(suggestion)
+        suggestions.insert(suggestion, at: 0)
+        if suggestions.count > Self.suggestionLimit { suggestions.removeLast(suggestions.count - Self.suggestionLimit) }
     }
+
+    static let suggestionLimit = 5
 
     /// After a delay test: a select group whose node timed out twice in a row.
     private func checkTestedNodes() {
