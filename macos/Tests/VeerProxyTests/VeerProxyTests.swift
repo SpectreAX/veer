@@ -636,3 +636,28 @@ struct SuggestionTests {
         #expect(SuggestionDetector.failedHost(inLog: "[TCP] 127.0.0.1:1(git) --> api.github.com:443 match DomainSuffix(github.com) using Proxy") == nil)
     }
 }
+
+struct LogRouteTests {
+    @Test func readsAFullRouteLine() throws {
+        let route = try #require(LogRoute.parse("[TCP] 127.0.0.1:52344(Google Chrome) --> www.youtube.com:443 match RuleSet(youtube) using 节点选择[🇯🇵 日本 东京 IPLC 01 | 0.5x 高速稳定线路]"))
+        #expect(route == LogRoute(network: "tcp", process: "Google Chrome", host: "www.youtube.com", port: "443",
+                                  rule: "RuleSet youtube", chain: ["节点选择", "🇯🇵 日本 东京 IPLC 01 | 0.5x 高速稳定线路"]))
+    }
+
+    @Test func readsDirectUnmatchedLogicAndAddresses() throws {
+        let direct = try #require(LogRoute.parse("[TCP] 127.0.0.1:52370 --> www.apple.com:443 match DomainSuffix(apple.com) using DIRECT"))
+        #expect(direct.process == nil && direct.chain == ["DIRECT"] && direct.rule == "DomainSuffix apple.com")
+        let none = try #require(LogRoute.parse("[TCP] 127.0.0.1:1(curl) --> 1.2.3.4:80 doesn't match any rule using DIRECT"))
+        #expect(none.rule == "Match" && none.host == "1.2.3.4" && none.isAddress)
+        let logic = try #require(LogRoute.parse("[UDP] 127.0.0.1:61502(Google Chrome) --> www.youtube.com:443 match AND((NETWORK,UDP),(DST-PORT,443)) using REJECT"))
+        #expect(logic.network == "udp" && logic.rule == "AND((NETWORK,UDP),(DST-PORT,443))" && logic.chain == ["REJECT"])
+        let match = try #require(LogRoute.parse("[TCP] 127.0.0.1:2(git) --> [2001:db8::1]:443 match Match() using 漏网之鱼[HK]"))
+        #expect(match.rule == "Match" && match.host == "2001:db8::1" && match.isAddress)
+    }
+
+    @Test func ignoresOtherLines() {
+        #expect(LogRoute.parse("[TCP] dial 节点选择 (match RuleSet/openai) 127.0.0.1:52361(Safari) --> chatgpt.com:443 error: i/o timeout") == nil)
+        #expect(LogRoute.parse("Start initial configuration in progress") == nil)
+        #expect(LogRoute.parse("[Provider] reject-list pull error") == nil)
+    }
+}

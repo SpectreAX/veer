@@ -1110,7 +1110,6 @@
 "“%@”正在用它。要不要换一个节点？" = "“%@” is using it. Switch to another node?";
 "清空请求记录" = "Clear the request list";
 "还没有结束的连接" = "No finished connections yet";
-"连接结束后会出现在这里，最多保留 1000 条，退出 Veer 后清空。" = "Connections appear here when they finish. Up to 1,000 are kept, and the list clears when Veer quits.";
 "结束于" = "Ended";
 "启动后可以用内核的 DNS 查询域名。" = "Start the core to look up domains with its DNS.";
 "域名" = "Domain";
@@ -1162,3 +1161,5 @@
 "没有发现问题" = "No problems found";
 "体检只报告从配置本身就能确定的问题，比如永远不会命中的规则、引用不存在的出口。" = "The check reports only what is certain from the config itself, such as rules that never match or references to missing exits.";
 "路由" = "Route";
+"这个连接不到一秒就结束了，只在日志里有记录，没有流量数据。" = "This connection lasted under a second; it's known only from the log, so there's no traffic data.";
+"连接结束后会出现在这里，最多保留 1000 条，退出 Veer 后清空。不到一秒的连接从日志里补上，需要日志级别为 info 或 debug。" = "Connections appear here when they finish. Up to 1,000 are kept, and the list clears when Veer quits. Connections under a second come from the log, which needs the info or debug log level.";

@@ -1,5 +1,6 @@
 import Foundation
 import VeerCore
+import VeerProxy
 
 /// One live connection as the connections page shows it.
 struct ConnectionRow: Identifiable, Equatable {
@@ -37,6 +38,24 @@ struct ConnectionRow: Identifiable, Equatable {
         start = connection.start
     }
 
+    /// A connection known only from the core's log: too short for the poll to see. No byte counts.
+    init(route: LogRoute, at time: Date) {
+        id = "log-\(UUID().uuidString)"
+        host = route.isAddress ? "\(route.host):\(route.port)" : route.host
+        process = route.process
+        network = route.network
+        rule = route.rule
+        chain = route.chain
+        upload = 0
+        download = 0
+        uploadRate = 0
+        downloadRate = 0
+        start = time
+    }
+
+    /// The same app reaching the same host, to tell a polled connection from a logged one.
+    var matchKey: String { "\(host)|\(process ?? "")" }
+
     /// The policy the rule chose (the first hop), where a filter by group looks.
     var policy: String { chain.first ?? "" }
     /// Whether the host is an address rather than a domain.
@@ -53,6 +72,8 @@ struct ConnectionRow: Identifiable, Equatable {
 struct ClosedRequest: Identifiable, Equatable {
     let row: ConnectionRow
     let closedAt: Date
+    /// Seen only in the log, so it lasted under a second and its traffic is unknown.
+    var fromLog = false
     var id: String { row.id }
 }
 

@@ -38,7 +38,7 @@ struct RequestsView: View {
     @ViewBuilder private var content: some View {
         if store.requests.isEmpty {
             StateView(symbol: Page.requests.symbol, title: store.isRunning ? String(localized: "还没有结束的连接") : String(localized: "内核没有运行"),
-                      message: String(localized: "连接结束后会出现在这里，最多保留 1000 条，退出 Veer 后清空。"))
+                      message: String(localized: "连接结束后会出现在这里，最多保留 1000 条，退出 Veer 后清空。不到一秒的连接从日志里补上，需要日志级别为 info 或 debug。"))
         } else {
             table
         }
@@ -63,11 +63,14 @@ struct RequestsView: View {
             }
             .width(min: 120, ideal: 190)
             TableColumn("流量") { request in
-                Text(verbatim: "↑\(Format.bytes(request.row.upload)) ↓\(Format.bytes(request.row.download))").font(Typography.codeSmall).foregroundStyle(.secondary)
+                Text(verbatim: request.fromLog ? "—" : "↑\(Format.bytes(request.row.upload)) ↓\(Format.bytes(request.row.download))")
+                    .font(Typography.codeSmall).foregroundStyle(.secondary)
+                    .help(request.fromLog ? String(localized: "这个连接不到一秒就结束了，只在日志里有记录，没有流量数据。") : "")
             }
             .width(min: 110, ideal: 120)
             TableColumn("时长") { request in
-                Text(verbatim: request.row.start.map { Format.duration(since: $0, now: request.closedAt) } ?? "—").font(Typography.codeSmall).foregroundStyle(.secondary)
+                Text(verbatim: request.fromLog ? "< 1s" : request.row.start.map { Format.duration(since: $0, now: request.closedAt) } ?? "—")
+                    .font(Typography.codeSmall).foregroundStyle(.secondary)
             }
             .width(min: 44, ideal: 52)
         }

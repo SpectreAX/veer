@@ -22,10 +22,32 @@ public protocol ConfigValidating: Sendable {
 public struct MihomoValidator: ConfigValidating {
     public let binary: URL?
     public let timeout: TimeInterval
+    /// A folder with GEO data the core already downloaded; linked in so a check does not fetch it again.
+    public let geodata: URL?
 
-    public init(binary: URL? = MihomoValidator.locateBinary(), timeout: TimeInterval = 20) {
+    public init(binary: URL? = MihomoValidator.locateBinary(), timeout: TimeInterval = 20, geodata: URL? = MihomoValidator.locateGeodata()) {
         self.binary = binary
         self.timeout = timeout
+        self.geodata = geodata
+    }
+
+    /// `VEER_GEODATA`, else the running core's home (Veer's `VeerPaths.core`).
+    public static func locateGeodata() -> URL? {
+        if let env = ProcessInfo.processInfo.environment["VEER_GEODATA"] { return URL(fileURLWithPath: env) }
+        let home = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("Veer/core", isDirectory: true)
+        return home.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
+    }
+
+    /// Links the GEO files (not the rule-set caches, which a check could write to) into `directory`.
+    static func linkGeodata(from source: URL, into directory: URL) {
+        let fm = FileManager.default
+        guard let names = try? fm.contentsOfDirectory(atPath: source.path) else { return }
+        for name in names where [".dat", ".mmdb", ".metadb"].contains(where: { name.lowercased().hasSuffix($0) }) {
+            let file = source.appendingPathComponent(name)
+            guard (try? fm.attributesOfItem(atPath: file.path)[.type] as? FileAttributeType) == .typeRegular else { continue }
+            try? fm.createSymbolicLink(at: directory.appendingPathComponent(name), withDestinationURL: file)
+        }
     }
 
     public static func locateBinary() -> URL? {
@@ -44,13 +66,14 @@ public struct MihomoValidator: ConfigValidating {
         guard let binary else {
             return ValidationResult(status: .unavailable, message: String(localized: "已通过结构检查；未找到内置 Mihomo 校验器，没有进行内核校验。"))
         }
-        let timeout = timeout
+        let timeout = timeout, geodata = geodata
         return await Task.detached(priority: .userInitiated) {
             let fm = FileManager.default
             let directory = fm.temporaryDirectory.appendingPathComponent("veer-validate-\(UUID().uuidString)")
             do {
                 try fm.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
                 defer { try? fm.removeItem(at: directory) }
+                if let geodata { Self.linkGeodata(from: geodata, into: directory) }
                 let file = directory.appendingPathComponent("config.yaml")
                 try Data(yaml.utf8).write(to: file, options: .atomic)
                 try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)

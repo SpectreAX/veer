@@ -40,3 +40,18 @@ struct DNSQueryDecodingTests {
         #expect(none.status == 3 && none.answers.isEmpty)
     }
 }
+
+struct GeodataLinkTests {
+    @Test func linksOnlyGeoFiles() throws {
+        let fm = FileManager.default
+        let source = fm.temporaryDirectory.appendingPathComponent("veer-geo-\(UUID().uuidString)")
+        let target = fm.temporaryDirectory.appendingPathComponent("veer-geo-target-\(UUID().uuidString)")
+        try fm.createDirectory(at: source.appendingPathComponent("rules"), withIntermediateDirectories: true)
+        try fm.createDirectory(at: target, withIntermediateDirectories: true)
+        for name in ["GeoSite.dat", "geoip.metadb", "ASN.mmdb", "runtime.yaml", "cache.db"] {
+            try Data("x".utf8).write(to: source.appendingPathComponent(name))
+        }
+        MihomoValidator.linkGeodata(from: source, into: target)
+        #expect(Set(try fm.contentsOfDirectory(atPath: target.path)) == ["GeoSite.dat", "geoip.metadb", "ASN.mmdb"])
+    }
+}

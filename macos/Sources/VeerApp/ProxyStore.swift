@@ -182,6 +182,10 @@ final class ProxyStore {
     @ObservationIgnored private var connectionsVisible = false
     /// The previous poll's connections, to see which closed.
     @ObservationIgnored private var previousConnections: [String: ConnectionRow] = [:]
+    /// Routes from the log waiting to learn whether a poll saw them.
+    @ObservationIgnored private var loggedRoutes: [(row: ConnectionRow, at: Date)] = []
+    /// When each host and app was last in a poll.
+    @ObservationIgnored private var polledKeys: [String: Date] = [:]
     /// The core's log while it runs, oldest first, at most `logLimit` lines.
     var logs: [LogEntry] = []
     var logsPaused = false
@@ -491,6 +495,7 @@ final class ProxyStore {
         logTask?.cancel()
         connectionsTask?.cancel()
         connections = []
+        loggedRoutes = []
         core?.stop()
         core = nil
         tunActive = false
@@ -835,9 +840,26 @@ final class ProxyStore {
             .sorted { ($0.start ?? .distantPast) > ($1.start ?? .distantPast) }
             .map { ClosedRequest(row: $0, closedAt: time) }
         previousConnections = current
-        guard !closed.isEmpty else { return }
-        requests.insert(contentsOf: closed, at: 0)
+        for row in rows { polledKeys[row.matchKey] = time }
+        polledKeys = polledKeys.filter { time.timeIntervalSince($0.value) < 30 }
+        let short = settleLoggedRoutes(at: time)
+        guard !closed.isEmpty || !short.isEmpty else { return }
+        requests.insert(contentsOf: closed + short, at: 0)
+        if !short.isEmpty { requests.sort { $0.closedAt > $1.closedAt } }
         if requests.count > Self.requestLimit { requests.removeLast(requests.count - Self.requestLimit) }
+    }
+
+    /// Logged routes two seconds old: a poll that saw the same host and app since has them (and
+    /// records them with their traffic when they close); the rest were over too fast to see.
+    private func settleLoggedRoutes(at time: Date) -> [ClosedRequest] {
+        var short: [ClosedRequest] = []
+        loggedRoutes.removeAll { route in
+            guard time.timeIntervalSince(route.at) >= 2 else { return false }
+            if let seen = polledKeys[route.row.matchKey], seen >= route.at.addingTimeInterval(-1) { return true }
+            short.append(ClosedRequest(row: route.row, closedAt: route.at, fromLog: true))
+            return true
+        }
+        return short
     }
 
     func clearRequests() { requests = [] }
@@ -905,6 +927,10 @@ final class ProxyStore {
             do {
                 for try await line in controller.logs(level: level) {
                     if let host = SuggestionDetector.failedHost(inLog: line.payload) { suggest(detector.connectionFailed(host: host)) }
+                    if let route = LogRoute.parse(line.payload) {
+                        loggedRoutes.append((ConnectionRow(route: route, at: .now), .now))
+                        if loggedRoutes.count > 2000 { loggedRoutes.removeFirst(loggedRoutes.count - 2000) }
+                    }
                     guard !logsPaused else { continue }
                     logs.append(LogEntry(level: line.type, message: line.payload))
                     if logs.count > Self.logLimit { logs.removeFirst(logs.count - Self.logLimit) }
