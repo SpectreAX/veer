@@ -2,10 +2,17 @@ import Foundation
 import SwiftUI
 
 enum Format {
-    /// Bytes per second as `1.2 MB/s`.
+    /// Bytes per second as `1.2 MB/s`; nothing reads `0 bytes/s`, not "Zero KB/s".
     static func rate(_ bytes: Int64) -> String {
-        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .binary) + "/s"
+        rateFormatter.string(fromByteCount: bytes) + "/s"
     }
+
+    private static let rateFormatter: ByteCountFormatter = {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .binary
+        formatter.allowsNonnumericFormatting = false
+        return formatter
+    }()
 
     static func delay(_ delay: Int?) -> String {
         switch delay {

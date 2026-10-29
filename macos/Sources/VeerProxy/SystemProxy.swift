@@ -74,7 +74,8 @@ public struct SystemProxy: Sendable {
                     _ = try run([kind.stateSetter, service.name, "off"])
                 }
             }
-            _ = try run(["-setproxybypassdomains", service.name] + (service.bypass.isEmpty ? ["Empty"] : service.bypass))
+            // An empty argument leaves an empty list, as most Macs have; "Empty" would remove it.
+            _ = try run(["-setproxybypassdomains", service.name] + (service.bypass.isEmpty ? [""] : service.bypass))
         }
         let known = Set(snapshot.services.map(\.name))
         for service in current where !known.contains(service) {

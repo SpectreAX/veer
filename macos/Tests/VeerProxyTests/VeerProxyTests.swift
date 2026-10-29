@@ -213,7 +213,7 @@ struct ProxySnapshotTests {
         #expect(fake.calls.contains(["-setsecurewebproxystate", "Wi-Fi", "off"]))
         #expect(fake.calls.contains(["-setproxybypassdomains", "Wi-Fi", "*.corp.example", "localhost"]))
         #expect(fake.calls.contains(["-setwebproxystate", "Ethernet", "off"]))
-        #expect(fake.calls.contains(["-setproxybypassdomains", "Ethernet", "Empty"]))
+        #expect(fake.calls.contains(["-setproxybypassdomains", "Ethernet", ""]))
     }
 
     @Test func aRecordedVeerProxyComesBackOffAndUnknownServicesOnlyLoseVeers() throws {

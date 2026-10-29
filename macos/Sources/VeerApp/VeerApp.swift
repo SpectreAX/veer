@@ -34,6 +34,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     static var openMain: (() -> Void)?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Read now: a static is set on first use, which would otherwise be after a change.
+        _ = AppLanguage.launched
         if let directory = ProcessInfo.processInfo.environment["VEER_SNAPSHOT_DIR"] {
             SnapshotRunner.run(into: URL(fileURLWithPath: directory))
             return
