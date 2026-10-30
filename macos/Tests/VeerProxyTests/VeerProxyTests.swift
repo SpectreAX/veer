@@ -733,3 +733,37 @@ struct HotRuleSetsTests {
         #expect(first?.payload == set.name)
     }
 }
+
+struct ServerRegionsTests {
+    static let profile = """
+    proxies:
+      - {name: "[A]AI JUST FOR AGENT", type: ss, server: 210.140.10.1, port: 443, cipher: aes-128-gcm, password: x}
+      - {name: "Relay 1", type: ss, server: 47.74.0.1, port: 443, cipher: aes-128-gcm, password: x}
+      - {name: "Anycast", type: ss, server: 8.8.8.8, port: 443, cipher: aes-128-gcm, password: x}
+      - {name: "By name", type: ss, server: relay.example.invalid, port: 443, cipher: aes-128-gcm, password: x}
+    rules:
+      - MATCH,DIRECT
+    """
+
+    @Test func readsEachProxysServer() {
+        let servers = ServerRegions.servers(in: Self.profile)
+        #expect(servers["[A]AI JUST FOR AGENT"] == "210.140.10.1")
+        #expect(servers["By name"] == "relay.example.invalid")
+        #expect(servers.count == 4)
+    }
+
+    /// With the core's database: `VEER_METADB=…/geoip.metadb`.
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["VEER_METADB"] != nil))
+    func placesServersButNeverChinaOrAProviderLabel() throws {
+        let path = ProcessInfo.processInfo.environment["VEER_METADB"]!
+        let database = try #require(ServerRegions.database(in: URL(fileURLWithPath: path).deletingLastPathComponent()))
+        var resolved: [String] = []
+        let found = ServerRegions.locate(["[A]AI JUST FOR AGENT", "Relay 1", "Anycast", "By name"], servers: ServerRegions.servers(in: Self.profile),
+                                         database: database) { host in resolved.append(host); return [IPAddr("13.230.0.1")!] }
+        #expect(found["[A]AI JUST FOR AGENT"] == "JP")
+        #expect(found["Relay 1"] == nil)      // CN: a relay's entry
+        #expect(found["Anycast"] == nil)      // "GOOGLE": not a place
+        #expect(found["By name"] == "JP")     // resolved, then looked up
+        #expect(resolved == ["relay.example.invalid"])
+    }
+}

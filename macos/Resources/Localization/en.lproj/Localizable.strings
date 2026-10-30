@@ -1165,3 +1165,5 @@
 "连接结束后会出现在这里，最多保留 1000 条，退出 Veer 后清空。不到一秒的连接从日志里补上，需要日志级别为 info 或 debug。" = "Connections appear here when they finish. Up to 1,000 are kept, and the list clears when Veer quits. Connections under a second come from the log, which needs the info or debug log level.";
 "还有 %lld 条建议，在概览查看" = "%lld more suggestions on the Overview";
 "“%@”是为其他服务设置的策略组，你没有点名它，需要你确认" = "“%@” is a group set up for another service and you didn't name it, so this needs your confirmation";
+"按服务器 IP 推断的地区；中转节点的入口和出口可能不在同一个地方，可以右键手动标记。" = "Region read from the server's IP address. A relay may enter and exit in different places; right-click a node to set its region by hand.";
+"其他" = "Other";

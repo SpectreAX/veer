@@ -196,6 +196,11 @@ private struct RegionList: View {
                                 .foregroundStyle(main?.now == node.name ? Color.veerAccent : Color.secondary)
                                 .opacity(usable ? 1 : 0)
                             Text(node.name).lineLimit(1).truncationMode(.middle)
+                            if store.regionIsFromIP(node.name) {
+                                Text(verbatim: "IP").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                                    .padding(.horizontal, 4).background(Color.subtleFill, in: Capsule())
+                                    .help(String(localized: "按服务器 IP 推断的地区；中转节点的入口和出口可能不在同一个地方，可以右键手动标记。"))
+                            }
                             Spacer()
                             Text(Format.delay(node.delay)).font(.caption.monospacedDigit()).foregroundStyle(Format.delayKind(node.delay).color)
                         }

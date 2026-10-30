@@ -136,12 +136,7 @@ private struct GroupSection: View {
         if let now = group.now {
             if group.isSelectable {
                 Menu {
-                    ForEach(group.members) { member in
-                        Button { store.select(member.name, in: group.name) } label: {
-                            if member.name == now { Label(member.name, systemImage: "checkmark") } else { Text(member.name) }
-                            Text(Format.delay(member.delay))
-                        }
-                    }
+                    NodeMenuItems(group: group)
                 } label: {
                     Text(verbatim: "→ \(now)").lineLimit(1).truncationMode(.middle)
                 }

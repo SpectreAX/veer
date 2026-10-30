@@ -367,12 +367,7 @@ private struct GroupsCard: View {
                         Text(group.name).lineLimit(1).truncationMode(.middle)
                         Spacer(minLength: Spacing.sm)
                         Menu {
-                            ForEach(group.members) { member in
-                                Button { store.select(member.name, in: group.name) } label: {
-                                    if member.name == group.now { Label(member.name, systemImage: "checkmark") } else { Text(member.name) }
-                                    Text(Format.delay(member.delay))
-                                }
-                            }
+                            NodeMenuItems(group: group)
                         } label: {
                             Text(group.now ?? "—").lineLimit(1).truncationMode(.middle)
                         }

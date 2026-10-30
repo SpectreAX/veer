@@ -63,6 +63,9 @@ final class ProxyStore {
     }
     /// The active profile's hand-set node regions, by node name.
     var regionMarks: [String: String] = [:]
+    /// Regions read from servers' addresses, for nodes whose names say nothing (`ServerRegions`).
+    var ipRegions: [String: String] = [:]
+    @ObservationIgnored private var ipRegionTask: Task<Void, Never>?
     var groups: [Group] = []
     var mode: Mode = .rule
     var systemProxyOn = false
@@ -220,8 +223,30 @@ final class ProxyStore {
         regionMarks = activeProfileID.map { routingStore.load($0).regionMarks } ?? [:]
     }
 
-    /// Where a node of the active profile exits, as an ISO code: the user's mark, else its name.
-    func region(of node: String) -> String? { regionMarks[node] ?? NodeLocator.locate(node) }
+    /// Where a node of the active profile exits, as an ISO code: the user's mark, else its name,
+    /// else its server's address.
+    func region(of node: String) -> String? { regionMarks[node] ?? NodeLocator.locate(node) ?? ipRegions[node] }
+
+    /// Whether `region(of:)` came from the server's address, which for a relay is its entry.
+    func regionIsFromIP(_ node: String) -> Bool { regionMarks[node] == nil && NodeLocator.locate(node) == nil && ipRegions[node] != nil }
+
+    /// Looks up the servers of the active profile's unrecognized nodes in the core's GeoIP
+    /// database, off the main thread. Runs once the core has run (it downloads the database).
+    func locateServersByIP() {
+        ipRegionTask?.cancel()
+        guard let id = activeProfileID, let text = try? profileStore.text(of: id) else { ipRegions = [:]; return }
+        let marks = regionMarks, home = paths.core
+        ipRegionTask = Task {
+            let found = await Task.detached(priority: .utility) { () -> [String: String] in
+                guard let database = ServerRegions.database(in: home) else { return [:] }
+                let servers = ServerRegions.servers(in: text)
+                let unknown = servers.keys.filter { marks[$0] == nil && NodeLocator.locate($0) == nil && !NodeCleanup.isInfoNode($0) }.sorted()
+                return ServerRegions.locate(unknown, servers: servers, database: database)
+            }.value
+            guard !Task.isCancelled, id == activeProfileID else { return }
+            ipRegions = found
+        }
+    }
 
     /// Sets (or with nil clears) a node's region by hand. Only the template's region groups and
     /// edits that pick nodes by region read it, so the core reloads only when those exist.
@@ -367,6 +392,7 @@ final class ProxyStore {
                 }
                 phase = .running
                 state.running = true
+                locateServersByIP()
                 await refresh()
                 // The mode and system proxy the user last chose come back with the core.
                 if let saved = state.mode.flatMap(Mode.init(rawValue:)), saved != mode { setMode(saved) }
@@ -1271,6 +1297,8 @@ final class ProxyStore {
         guard id != activeProfileID else { return }
         activeProfileID = id
         effective = effectiveCache[id]
+        ipRegions = [:]
+        locateServersByIP()
         if isRunning {
             Task {
                 await reloadRunningCore(closingConnections: true)
@@ -1372,7 +1400,10 @@ final class ProxyStore {
                 forgetEffective(id)
                 profiles = profileStore.loadAll()
                 alertAboutUsage(of: profile)
-                if id == activeProfileID { await reloadRunningCore(closingConnections: true) }
+                if id == activeProfileID {
+                    await reloadRunningCore(closingConnections: true)
+                    locateServersByIP()
+                }
             } catch {
                 if automatic {
                     profile.updateError = message(for: error)

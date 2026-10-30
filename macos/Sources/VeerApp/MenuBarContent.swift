@@ -41,8 +41,8 @@ struct MenuBarContent: View {
         }
         .disabled(!store.isRunning)
         if let group = store.mainGroup {
-            Picker(selection: Binding(get: { group.now ?? "" }, set: { store.select($0, in: group.name) })) {
-                ForEach(group.members) { Text($0.name).tag($0.name) }
+            Menu {
+                NodeMenuItems(group: group)
             } label: {
                 Text(verbatim: "\(group.name)：\(group.now ?? "—")")
             }
