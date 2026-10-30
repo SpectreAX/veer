@@ -18,4 +18,13 @@ struct ToolbarSearchTests {
         }
         #expect(found.isEmpty, "Use ToolbarSearchField or AgentPanelColumn: \(found)")
     }
+
+    /// As the sidebar opens the toolbar runs short of room for a few frames and moves items into an
+    /// overflow button, which threw the capsule aside; the main window's toolbar stays empty.
+    @Test func theMainWindowsToolbarHasNoItems() throws {
+        let file = LocalizationTests.root.appendingPathComponent("Sources/VeerApp/MainView.swift")
+        let source = try String(contentsOf: file, encoding: .utf8)
+        #expect(!source.contains("ToolbarItem("))
+        #expect(source.contains(".toolbar(removing: .sidebarToggle)"))
+    }
 }

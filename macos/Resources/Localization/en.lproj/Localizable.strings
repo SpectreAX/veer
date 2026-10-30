@@ -31,6 +31,8 @@
 "启动" = "Start";
 "先导入一个配置" = "Import a profile first";
 "启动内核（⌘R）" = "Start the core (⌘R)";
+"显示边栏" = "Show Sidebar";
+"隐藏边栏" = "Hide Sidebar";
 
 /* Modes */
 "规则" = "Rule";

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import VeerProxy
 
@@ -48,6 +49,7 @@ struct MainView: View {
     @Environment(AgentStore.self) private var agent
     @Environment(\.openSettings) private var openSettings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var sidebarVisibility = NavigationSplitViewVisibility.all
 
     var body: some View {
         @Bindable var store = store
@@ -88,10 +90,77 @@ struct MainView: View {
         .animation(reduceMotion ? nil : Motion.standard, value: store.agentPanel)
         // The band would stop at the panel, which is outside the split view; the capsule floats.
         .toolbarBackground(.hidden, for: .windowToolbar)
+        // The window's controls float over the toolbar, which is left with nothing in it. As the
+        // sidebar opens the toolbar runs short of room for a few frames, whatever the window's
+        // width, and any item it holds lands in an overflow button that throws the rest aside. An
+        // item's content also snaps to a new page rather than animating.
+        .background(EmptyWindowToolbar())
+        // Over the pages, which scroll under the row: a click here is the window's, not theirs.
+        .overlay(alignment: .top) {
+            WindowDragArea()
+                .frame(height: 52)
+                .ignoresSafeArea(.container, edges: .top)
+        }
+        .overlay(alignment: .topLeading) {
+            sidebarButton
+                .padding(.top, 6)
+                .padding(.leading, Self.windowButtonsWidth)
+                .ignoresSafeArea(.container, edges: .top)
+        }
+        .overlayPreferenceValue(PageToolbarKey.self) { content in
+            // Hidden until there is a profile: without one they do nothing.
+            if !store.profiles.isEmpty {
+                ToolbarCapsule(content: content)
+                    .padding([.top, .trailing], 6)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .ignoresSafeArea(.container, edges: .top)
+            }
+        }
+    }
+
+    /// Room for the close, minimize and zoom buttons, which the sidebar button sits beside.
+    private static let windowButtonsWidth: CGFloat = 88
+
+    private var sidebarHidden: Bool { sidebarVisibility == .detailOnly }
+
+    private var sidebarButton: some View {
+        Button {
+            withAnimation(reduceMotion ? nil : .default) { sidebarVisibility = sidebarHidden ? .all : .detailOnly }
+        } label: {
+            Label(sidebarHidden ? String(localized: "显示边栏") : String(localized: "隐藏边栏"), systemImage: "sidebar.left")
+        }
+        .buttonStyle(ToolbarCapsuleButtonStyle())
+        .labelStyle(.iconOnly)
+        .help(sidebarHidden ? String(localized: "显示边栏") : String(localized: "隐藏边栏"))
+        .padding(Spacing.xs)
+        .glassSurface(in: Circle())
+    }
+
+    /// The page and profile, over the toolbar at the top of the page, clear of the sidebar button
+    /// when there is no sidebar.
+    private var pageTitle: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(store.page.title).font(.headline)
+            if !profileName.isEmpty {
+                Text(profileName).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .lineLimit(1)
+        .frame(height: 52)
+        .padding(.leading, sidebarHidden ? Self.windowButtonsWidth + 52 : Spacing.lg)
+        .animation(reduceMotion ? nil : Motion.standard, value: sidebarHidden)
+        .allowsHitTesting(false)
+    }
+
+    /// Short enough to stay clear of the capsule in the narrowest window; the foot of the sidebar
+    /// has it in full.
+    private var profileName: String {
+        let name = store.activeProfile?.name ?? ""
+        return name.count > 18 ? name.prefix(17) + "…" : name
     }
 
     private var sidebarAndPage: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $sidebarVisibility) {
             List(selection: Binding<Page?>(get: { store.page }, set: { if let page = $0 { store.page = page } })) {
                 ForEach(Page.Section.allCases, id: \.self) { section in
                     Section(section.title) {
@@ -103,6 +172,7 @@ struct MainView: View {
             }
             .safeAreaInset(edge: .bottom) { profileFooter }
             .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 260)
+            .toolbar(removing: .sidebarToggle)
         } detail: {
             Group {
                 switch store.page {
@@ -120,16 +190,13 @@ struct MainView: View {
             // The toolbar has no band, so nothing may scroll under the title and window buttons.
             .clipped()
             .background(Color.surface)
-            // Read here, in the same update as the page, so the capsule animates with it.
-            .overlayPreferenceValue(PageToolbarKey.self) { content in
-                Color.clear
-                    .allowsHitTesting(false)
-                    .toolbar { toolbar(content) }
+            .overlay(alignment: .topLeading) {
+                pageTitle.ignoresSafeArea(.container, edges: .top)
             }
         }
         .agentPresentations(agent)
+        // For the window's name elsewhere, such as the Window menu; `pageTitle` shows it here.
         .navigationTitle(store.page.title)
-        .navigationSubtitle(store.activeProfile?.name ?? "")
     }
 
     /// The profile in use, at the foot of the sidebar (a click opens the profiles page), and the
@@ -163,20 +230,41 @@ struct MainView: View {
         .padding(.horizontal, Spacing.lg)
         .padding(.vertical, Spacing.md)
     }
+}
 
-    /// Hidden until there is a profile: without one they do nothing. One item for the whole
-    /// toolbar, never added or removed as pages change; the mode lives on the overview's card, the
-    /// menu bar and the 代理 menu.
-    @ToolbarContentBuilder private func toolbar(_ content: PageToolbarContent?) -> some ToolbarContent {
-        if !store.profiles.isEmpty {
-            if #available(macOS 26, *) {
-                ToolbarItem(placement: .primaryAction) { ToolbarCapsule(content: content) }
-                    .sharedBackgroundVisibility(.hidden)
-            } else {
-                ToolbarItem(placement: .primaryAction) { ToolbarCapsule(content: content) }
+/// Keeps the toolbar's height, which centres the window's buttons on the row and starts the pages
+/// below it, with no items for it to rearrange.
+private struct EmptyWindowToolbar: NSViewRepresentable {
+    final class Host: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let window, window.toolbar == nil else { return }
+            window.toolbar = NSToolbar(identifier: "Veer")
+            window.toolbarStyle = .unified
+        }
+    }
+
+    func makeNSView(context: Context) -> Host { Host() }
+    func updateNSView(_ view: Host, context: Context) {}
+}
+
+/// The top row of the window, which moves it as a title bar does. With no items in the toolbar,
+/// clicks pass through it to whatever is below.
+private struct WindowDragArea: NSViewRepresentable {
+    final class Area: NSView {
+        override func mouseDown(with event: NSEvent) {
+            guard let window else { return }
+            guard event.clickCount == 2 else { return window.performDrag(with: event) }
+            switch UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick") {
+            case "Minimize": window.performMiniaturize(nil)
+            case "None": break
+            default: window.performZoom(nil)
             }
         }
     }
+
+    func makeNSView(context: Context) -> Area { Area() }
+    func updateNSView(_ view: Area, context: Context) {}
 }
 
 /// A page that later steps fill in.
@@ -189,21 +277,45 @@ struct ComingLaterView: View {
     }
 }
 
-/// The one primary action: start or stop the core.
+/// The one primary action: start or stop the core. One button whatever the phase, so its hover and
+/// press survive a change and only the symbol moves.
 struct StartStopButton: View {
     @Environment(ProxyStore.self) private var store
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        Button {
+            if store.phase == .running { store.stop() } else { store.start() }
+        } label: {
+            Label(title, systemImage: symbol)
+                .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+        }
+        .help(help)
+        .disabled(store.phase == .starting || (store.phase != .running && store.activeProfile == nil))
+        .animation(reduceMotion ? nil : Motion.quick, value: symbol)
+    }
+
+    private var symbol: String {
         switch store.phase {
-        case .starting:
-            Button {} label: { Label("正在启动", systemImage: "hourglass") }.disabled(true)
-        case .running:
-            Button { store.stop() } label: { Label("停止", systemImage: "stop.fill") }
-                .help("停止内核（⌘R）")
-        case .stopped, .failed:
-            Button { store.start() } label: { Label("启动", systemImage: "play.fill") }
-                .help(store.activeProfile == nil ? String(localized: "先导入一个配置") : String(localized: "启动内核（⌘R）"))
-                .disabled(store.activeProfile == nil)
+        case .starting: "hourglass"
+        case .running: "stop.fill"
+        case .stopped, .failed: "play.fill"
+        }
+    }
+
+    private var title: String {
+        switch store.phase {
+        case .starting: String(localized: "正在启动")
+        case .running: String(localized: "停止")
+        case .stopped, .failed: String(localized: "启动")
+        }
+    }
+
+    private var help: String {
+        switch store.phase {
+        case .starting: ""
+        case .running: String(localized: "停止内核（⌘R）")
+        case .stopped, .failed: store.activeProfile == nil ? String(localized: "先导入一个配置") : String(localized: "启动内核（⌘R）")
         }
     }
 }

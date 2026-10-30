@@ -3,8 +3,8 @@ import SwiftUI
 import VeerUI
 
 enum ToolbarSearchFocus {
-    /// Puts the cursor in the key window's toolbar field. By hand: `@FocusState` doesn't reach a
-    /// field hosted in the toolbar.
+    /// Puts the cursor in the key window's capsule field. By hand: the shortcut lives in the app's
+    /// commands, which have no way into the page that made the field.
     static func focus() {
         guard let window = NSApp.keyWindow, let frame = window.contentView?.superview else { return }
         func fields(_ view: NSView) -> [NSTextField] {

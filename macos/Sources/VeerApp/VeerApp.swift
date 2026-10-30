@@ -15,6 +15,8 @@ struct VeerApp: App {
                 .tint(.veerAccent)
                 .frame(minWidth: 860, minHeight: 560)
         }
+        // The window's title is `MainView`'s own, in the row with its other controls.
+        .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1080, height: 720)
         .commands { VeerCommands(store: store, agent: agent) }
 
