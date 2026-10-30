@@ -152,6 +152,10 @@ enum SnapshotRunner {
             Scene(name: "14-settings-proxy", size: CGSize(width: 520, height: 300), store: { sample() }, view: AnyView(ProxySettings())),
             Scene(name: "15-overview-tun", store: { running(tun: true) }, view: AnyView(MainView())),
             Scene(name: "18-proxies-map", size: CGSize(width: 900, height: 520), store: { running(page: .proxies) }, view: AnyView(NodeMapView())),
+            Scene(name: "18b-proxies-map-page", store: { running(page: .proxies) }, view: AnyView(NodeMapView().frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.surface))),
+            // Beside the Agent panel in the smallest window.
+            Scene(name: "18c-proxies-map-narrow", size: CGSize(width: 480, height: 640), store: { running(page: .proxies) }, view: AnyView(NodeMapView().background(Color.surface))),
+            Scene(name: "18d-proxies-map-search", store: { running(page: .proxies) }, view: AnyView(NodeMapView(query: "大阪").frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.surface))),
             Scene(name: "19-profiles-update-failed", store: {
                 let store = running(page: .profiles)
                 if var first = store.profiles.first {

@@ -2,11 +2,17 @@ import SwiftUI
 import VeerCore
 import VeerProxy
 
-/// Nodes on a world map: one dot per region, colored by the region's best delay. Choosing a dot
-/// lists its nodes; choosing a node uses it in the main group when that group has it.
+/// Nodes on a world map, with the regions below it and the chosen region's nodes below those.
+/// A dot's color is the region's best delay and its number the region's nodes; choosing a node
+/// uses it in the main group when that group has it.
 struct NodeMapView: View {
     @Environment(ProxyStore.self) private var store
-    @State private var selected: String?
+    /// The toolbar's search: nodes whose name or region contains it.
+    var query = ""
+    /// A region code or `unknownRegion`; until the user chooses, the region of the node in use.
+    @State private var chosen: String?
+
+    static let unknownRegion = "unknown"
 
     /// Every real node in the running config with its best known delay, by region code; nodes
     /// whose region is unknown are under nil.
@@ -19,9 +25,18 @@ struct NodeMapView: View {
                 best[member.name] = Self.better(known, member.delay)
             }
         }
-        return Dictionary(grouping: best.map { MapNode(name: $0.key, delay: $0.value) }.sorted { $0.name < $1.name }) {
+        let text = query.trimmingCharacters(in: .whitespaces).lowercased()
+        let all = Dictionary(grouping: best.map { MapNode(name: $0.key, delay: $0.value) }.sorted { $0.name < $1.name }) {
             store.region(of: $0.name)
         }
+        guard !text.isEmpty else { return all }
+        var shown: [String?: [MapNode]] = [:]
+        for (code, nodes) in all {
+            let placeMatches = code.flatMap(NodeLocator.place)?.name.lowercased().contains(text) ?? false
+            let matching = placeMatches ? nodes : nodes.filter { $0.name.lowercased().contains(text) }
+            if !matching.isEmpty { shown[code] = matching }
+        }
+        return shown
     }
 
     static let builtins: Set<String> = ["DIRECT", "REJECT", "REJECT-DROP", "PASS", "COMPATIBLE"]
@@ -39,13 +54,33 @@ struct NodeMapView: View {
 
     var body: some View {
         let regions = regions
-        HStack(alignment: .top, spacing: Spacing.lg) {
-            WorldMap(regions: regions, selected: $selected)
-                .frame(maxWidth: .infinity)
-            RegionList(regions: regions, selected: $selected)
-                .frame(width: 280)
+        let selected = selection(in: regions)
+        if regions.isEmpty {
+            StateView(symbol: "magnifyingglass", title: String(localized: "没有匹配“\(query)”的节点"))
+        } else {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Spacing.lg) {
+                    MapCard(regions: regions, selected: selected) { chosen = $0 }
+                    RegionGrid(regions: regions, selected: selected) { chosen = $0 }
+                    if let selected {
+                        RegionNodes(code: selected, nodes: nodes(of: selected, in: regions))
+                    } else {
+                        Text("选择一个地区查看节点").font(.callout).foregroundStyle(.secondary)
+                    }
+                }
+                .padding(Spacing.xl)
+            }
         }
-        .padding(Spacing.xl)
+    }
+
+    /// What the user chose, else the region of the node in use, if it is still listed.
+    private func selection(in regions: [String?: [MapNode]]) -> String? {
+        let main = store.mainGroup?.now.flatMap(store.region(of:))
+        return [chosen, main].compactMap { $0 }.first { !nodes(of: $0, in: regions).isEmpty }
+    }
+
+    private func nodes(of code: String, in regions: [String?: [MapNode]]) -> [MapNode] {
+        (code == Self.unknownRegion ? regions[nil] : regions[code]) ?? []
     }
 }
 
@@ -55,11 +90,53 @@ struct MapNode: Identifiable, Hashable {
     var id: String { name }
 }
 
+/// The title, the map at the card's full width, and what the colors mean.
+private struct MapCard: View {
+    let regions: [String?: [MapNode]]
+    let selected: String?
+    let choose: (String) -> Void
+
+    private var summary: String {
+        let places = regions.keys.compactMap { $0 }.count
+        let nodes = regions.values.reduce(0) { $0 + $1.count }
+        return String(localized: "\(String(places)) 个地区 · \(String(nodes)) 个节点")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.md) {
+            HStack(spacing: Spacing.sm) {
+                Image(systemName: "globe").foregroundStyle(.secondary)
+                Text("节点分布").font(.headline)
+                Text(verbatim: summary).font(.callout).foregroundStyle(.secondary)
+            }
+            WorldMap(regions: regions, selected: selected, choose: choose)
+            HStack(spacing: Spacing.md) {
+                legend(.success, String(localized: "低于 200 ms"))
+                legend(.warning, String(localized: "200 到 500 ms"))
+                legend(.failure, String(localized: "更慢或失败"))
+                legend(.neutral, String(localized: "未测速"))
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .panel()
+    }
+
+    private func legend(_ kind: StatusKind, _ title: String) -> some View {
+        HStack(spacing: Spacing.xs) {
+            Circle().fill(kind.color).frame(width: Spacing.sm, height: Spacing.sm)
+            Text(verbatim: title).lineLimit(1)
+        }
+    }
+}
+
 /// Land outlines from Natural Earth (public domain) in an equirectangular projection, with a dot
 /// for each region that has nodes.
 private struct WorldMap: View {
     let regions: [String?: [MapNode]]
-    @Binding var selected: String?
+    let selected: String?
+    let choose: (String) -> Void
+    @State private var hovered: String?
 
     /// Latitudes shown: Antarctica and the far north add nothing here.
     private static let north = 84.0, south = -58.0
@@ -67,52 +144,90 @@ private struct WorldMap: View {
     var body: some View {
         GeometryReader { proxy in
             let size = proxy.size
+            let codes = regions.keys.compactMap { $0 }.sorted()
             ZStack(alignment: .topLeading) {
-                Canvas { context, size in
-                    for ring in Self.land {
-                        var path = Path()
-                        for (index, point) in ring.enumerated() {
-                            let p = Self.project(longitude: point[0], latitude: point[1], in: size)
-                            index == 0 ? path.move(to: p) : path.addLine(to: p)
-                        }
-                        path.closeSubpath()
-                        context.fill(path, with: .color(Color.secondary.opacity(0.18)))
-                    }
-                }
-                ForEach(regions.keys.compactMap { $0 }.sorted(), id: \.self) { code in
+                LandLayer()
+                ForEach(codes, id: \.self) { code in
                     if let place = NodeLocator.place(code), let nodes = regions[code] {
                         dot(place: place, nodes: nodes)
                             .position(Self.project(longitude: place.longitude, latitude: place.latitude, in: size))
+                            .zIndex(hovered == code || selected == code ? 1 : 0)
                     }
+                }
+                if let hovered, let place = NodeLocator.place(hovered), let nodes = regions[hovered] {
+                    tooltip(place: place, nodes: nodes, in: size)
+                        .zIndex(2)
                 }
             }
         }
         .aspectRatio(360 / (Self.north - Self.south), contentMode: .fit)
-        .padding(Spacing.md)
-        .panel()
+        .frame(maxWidth: .infinity)
     }
 
     private func dot(place: NodeLocator.Place, nodes: [MapNode]) -> some View {
         let best = nodes.map(\.delay).reduce(nil, NodeMapView.better)
         let isSelected = selected == place.code
-        return Button { selected = isSelected ? nil : place.code } label: {
-            Circle()
-                .fill(Format.delayKind(best).color)
-                .frame(width: isSelected ? 16 : 11, height: isSelected ? 16 : 11)
-                .overlay(Circle().strokeBorder(Color.white.opacity(0.9), lineWidth: isSelected ? 2.5 : 1.5))
-                .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
-                .padding(6)
+        let size: CGFloat = isSelected ? 28 : 22
+        return Button { choose(place.code) } label: {
+            Text(verbatim: "\(nodes.count)")
+                .font(.caption2.weight(.bold).monospacedDigit())
+                .foregroundStyle(.white)
+                .minimumScaleFactor(0.6)
+                .lineLimit(1)
+                .padding(Spacing.xxs)
+                .frame(width: size, height: size)
+                .background(Format.delayKind(best).color, in: Circle())
+                .overlay(Circle().strokeBorder(Color.white.opacity(0.95), lineWidth: isSelected ? 2.5 : 1.5))
+                .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .help(String(localized: "\(place.flag) \(place.name)：\(nodes.count) 个节点，最低延迟 \(Format.delay(best))"))
-        .accessibilityLabel(String(localized: "\(place.name)，\(nodes.count) 个节点，最低延迟 \(Format.delay(best))"))
+        .onHover { inside in
+            if inside { hovered = place.code } else if hovered == place.code { hovered = nil }
+        }
+        .accessibilityLabel(String(localized: "\(place.name)，\(String(nodes.count)) 个节点，最低延迟 \(Format.delay(best))"))
         .animation(Motion.standard, value: isSelected)
+    }
+
+    /// Above the dot, kept inside the map; below it for regions at the map's top edge.
+    private func tooltip(place: NodeLocator.Place, nodes: [MapNode], in size: CGSize) -> some View {
+        let best = nodes.map(\.delay).reduce(nil, NodeMapView.better)
+        let point = Self.project(longitude: place.longitude, latitude: place.latitude, in: size)
+        let margin: CGFloat = 130, offset: CGFloat = 32
+        return Text(String(localized: "\(place.flag) \(place.name)：\(String(nodes.count)) 个节点，最低延迟 \(Format.delay(best))"))
+            .font(.callout)
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, Spacing.md)
+            .padding(.vertical, Spacing.xs)
+            .background(.regularMaterial, in: Capsule())
+            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.1)))
+            .position(x: min(max(point.x, margin), max(margin, size.width - margin)),
+                      y: point.y > offset + Spacing.sm ? point.y - offset : point.y + offset)
+            .allowsHitTesting(false)
     }
 
     static func project(longitude: Double, latitude: Double, in size: CGSize) -> CGPoint {
         let clamped = min(max(latitude, south), north)
         return CGPoint(x: (longitude + 180) / 360 * size.width, y: (north - clamped) / (north - south) * size.height)
+    }
+
+    /// The land, drawn on its own so hovering a dot does not redraw it.
+    private struct LandLayer: View {
+        var body: some View {
+            Canvas { context, size in
+                for ring in WorldMap.land {
+                    var path = Path()
+                    for (index, point) in ring.enumerated() {
+                        let p = WorldMap.project(longitude: point[0], latitude: point[1], in: size)
+                        index == 0 ? path.move(to: p) : path.addLine(to: p)
+                    }
+                    path.closeSubpath()
+                    context.fill(path, with: .color(Color.secondary.opacity(0.18)))
+                }
+            }
+            .accessibilityHidden(true)
+        }
     }
 
     /// Rings of [longitude, latitude], loaded once from the app bundle.
@@ -124,94 +239,103 @@ private struct WorldMap: View {
     }()
 }
 
-/// The regions by node count, or the chosen region's nodes. Nodes the names say nothing about
-/// come last, with a hint that they can be marked by hand.
-private struct RegionList: View {
-    @Environment(ProxyStore.self) private var store
+/// The regions by node count, as cards. Nodes the names say nothing about come last.
+private struct RegionGrid: View {
     let regions: [String?: [MapNode]]
-    @Binding var selected: String?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Spacing.sm) {
-            if let code = selected, let place = NodeLocator.place(code) {
-                HStack {
-                    Button { selected = nil } label: { Label("全部地区", systemImage: "chevron.left") }
-                        .buttonStyle(.borderless)
-                    Spacer()
-                }
-                Text(verbatim: "\(place.flag) \(place.name)").font(.headline)
-                nodeList(regions[code] ?? [])
-            } else {
-                Text("地区").font(.headline)
-                ScrollView {
-                    VStack(spacing: Spacing.xxs) {
-                        ForEach(sortedCodes, id: \.self) { code in
-                            if let place = NodeLocator.place(code), let nodes = regions[code] {
-                                Button { selected = code } label: {
-                                    HStack {
-                                        Text(verbatim: "\(place.flag) \(place.name)").lineLimit(1)
-                                        Spacer()
-                                        Text(verbatim: "\(nodes.count)").foregroundStyle(.secondary).monospacedDigit()
-                                        let best = nodes.map(\.delay).reduce(nil, NodeMapView.better)
-                                        Text(Format.delay(best)).font(.caption.monospacedDigit()).foregroundStyle(Format.delayKind(best).color)
-                                            .frame(width: 56, alignment: .trailing)
-                                    }
-                                    .padding(.horizontal, Spacing.sm).padding(.vertical, Spacing.xs)
-                                    .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        if let unknown = regions[nil], !unknown.isEmpty {
-                            VStack(alignment: .leading, spacing: Spacing.xxs) {
-                                Text("未识别 \(unknown.count) 个").font(.subheadline.weight(.semibold))
-                                Text("在代理页的节点上右键，可以手动标记地区。").font(.caption).foregroundStyle(.secondary)
-                                ForEach(unknown) { Text($0.name).font(.caption).lineLimit(1).truncationMode(.middle) }
-                            }
-                            .padding(Spacing.sm)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    }
-                }
-            }
-        }
-        .padding(Spacing.md)
-        .frame(maxHeight: .infinity, alignment: .top)
-        .panel()
-    }
+    let selected: String?
+    let choose: (String) -> Void
 
     private var sortedCodes: [String] {
         regions.keys.compactMap { $0 }.sorted { (regions[$0]?.count ?? 0, $1) > (regions[$1]?.count ?? 0, $0) }
     }
 
-    private func nodeList(_ nodes: [MapNode]) -> some View {
-        let main = store.mainGroup
-        return ScrollView {
-            VStack(spacing: Spacing.xxs) {
-                ForEach(nodes) { node in
-                    let usable = main.map { $0.isSelectable && $0.members.contains { $0.name == node.name } } ?? false
-                    Button { if let main, usable { store.select(node.name, in: main.name) } } label: {
-                        HStack {
-                            Image(systemName: main?.now == node.name ? "checkmark.circle.fill" : "circle")
-                                .foregroundStyle(main?.now == node.name ? Color.veerAccent : Color.secondary)
-                                .opacity(usable ? 1 : 0)
-                            Text(node.name).lineLimit(1).truncationMode(.middle)
-                            if store.regionIsFromIP(node.name) {
-                                Text(verbatim: "IP").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
-                                    .padding(.horizontal, 4).background(Color.subtleFill, in: Capsule())
-                                    .help(String(localized: "按服务器 IP 推断的地区；中转节点的入口和出口可能不在同一个地方，可以右键手动标记。"))
-                            }
-                            Spacer()
-                            Text(Format.delay(node.delay)).font(.caption.monospacedDigit()).foregroundStyle(Format.delayKind(node.delay).color)
-                        }
-                        .padding(.horizontal, Spacing.sm).padding(.vertical, Spacing.xs)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!usable)
-                    .help(usable ? String(localized: "在“\(main?.name ?? "")”中使用这个节点") : node.name)
+    var body: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: Spacing.sm)], spacing: Spacing.sm) {
+            ForEach(sortedCodes, id: \.self) { code in
+                if let place = NodeLocator.place(code), let nodes = regions[code] {
+                    card(code: code, title: "\(place.flag) \(place.name)", nodes: nodes)
                 }
             }
+            if let unknown = regions[nil], !unknown.isEmpty {
+                card(code: NodeMapView.unknownRegion, title: String(localized: "未识别"), nodes: unknown)
+            }
         }
+    }
+
+    private func card(code: String, title: String, nodes: [MapNode]) -> some View {
+        let best = nodes.map(\.delay).reduce(nil, NodeMapView.better)
+        let isSelected = selected == code
+        return Button { choose(code) } label: {
+            HStack(spacing: Spacing.sm) {
+                Text(verbatim: title).lineLimit(1).truncationMode(.tail)
+                Spacer(minLength: Spacing.xs)
+                Text(verbatim: "\(nodes.count)").foregroundStyle(.secondary).monospacedDigit()
+                Text(Format.delay(best)).font(.caption.monospacedDigit()).foregroundStyle(Format.delayKind(best).color)
+                    .lineLimit(1).fixedSize()
+            }
+            .padding(.horizontal, Spacing.md)
+            .padding(.vertical, Spacing.sm)
+            .background(isSelected ? Color.veerAccent.opacity(0.14) : Color.surfaceRaised, in: RoundedRectangle(cornerRadius: Radius.medium, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Radius.medium, style: .continuous)
+                .strokeBorder(isSelected ? Color.veerAccent : Color.primary.opacity(0.08), lineWidth: isSelected ? 1.5 : 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// The chosen region's nodes as cards; choosing one uses it in the main group when it can.
+private struct RegionNodes: View {
+    @Environment(ProxyStore.self) private var store
+    let code: String
+    let nodes: [MapNode]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.md) {
+            HStack(spacing: Spacing.sm) {
+                if let place = NodeLocator.place(code) {
+                    Text(verbatim: "\(place.flag) \(place.name)").font(.headline)
+                } else {
+                    Text("未识别").font(.headline)
+                }
+                Text("\(String(nodes.count)) 个节点").font(.callout).foregroundStyle(.secondary)
+            }
+            if code == NodeMapView.unknownRegion {
+                Text("在代理页的节点上右键，可以手动标记地区。").font(.caption).foregroundStyle(.secondary)
+            }
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: Spacing.sm)], spacing: Spacing.sm) {
+                ForEach(nodes) { card($0) }
+            }
+        }
+        .panel()
+    }
+
+    private func card(_ node: MapNode) -> some View {
+        let main = store.mainGroup
+        let usable = main.map { $0.isSelectable && $0.members.contains { $0.name == node.name } } ?? false
+        let inUse = main?.now == node.name
+        return Button { if let main, usable { store.select(node.name, in: main.name) } } label: {
+            HStack(spacing: Spacing.sm) {
+                Image(systemName: inUse ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(inUse ? Color.veerAccent : Color.secondary)
+                    .opacity(usable ? 1 : 0)
+                Text(node.name).lineLimit(1).truncationMode(.middle)
+                if store.regionIsFromIP(node.name) {
+                    Text(verbatim: "IP").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                        .padding(.horizontal, Spacing.xs).background(Color.subtleFill, in: Capsule())
+                        .help(String(localized: "按服务器 IP 推断的地区；中转节点的入口和出口可能不在同一个地方，可以右键手动标记。"))
+                }
+                Spacer(minLength: Spacing.xs)
+                Text(Format.delay(node.delay)).font(.caption.monospacedDigit()).foregroundStyle(Format.delayKind(node.delay).color)
+                    .lineLimit(1).fixedSize()
+            }
+            .padding(.horizontal, Spacing.md)
+            .padding(.vertical, Spacing.sm)
+            .background(inUse ? Color.veerAccent.opacity(0.14) : Color.subtleFill, in: RoundedRectangle(cornerRadius: Radius.medium, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!usable)
+        .help(usable ? String(localized: "在“\(main?.name ?? "")”中使用这个节点") : node.name)
     }
 }

@@ -53,7 +53,7 @@ struct ProxiesView: View {
             StateView(symbol: "square.stack.3d.up.slash", title: String(localized: "这个配置没有策略组"),
                       message: String(localized: "所有流量按规则直接发往节点或直连。"))
         } else if showMap {
-            NodeMapView()
+            NodeMapView(query: query)
         } else if shownGroups.isEmpty {
             StateView(symbol: "magnifyingglass", title: String(localized: "没有匹配“\(query)”的节点或策略组"))
         } else {

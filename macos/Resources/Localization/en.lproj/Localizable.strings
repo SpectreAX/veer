@@ -1184,3 +1184,15 @@
 "查找" = "Find";
 "搜索" = "Search";
 "清除搜索" = "Clear Search";
+
+/* Node map */
+"节点分布" = "Node Map";
+"%@ 个地区 · %@ 个节点" = "Regions: %1$@ · Nodes: %2$@";
+"低于 200 ms" = "Under 200 ms";
+"200 到 500 ms" = "200 to 500 ms";
+"更慢或失败" = "Slower or failed";
+"未测速" = "Not tested";
+"选择一个地区查看节点" = "Choose a region to see its nodes";
+"未识别" = "Not recognized";
+"%@ 个节点" = "Nodes: %@";
+"没有匹配“%@”的节点" = "No nodes match “%@”";
