@@ -292,14 +292,13 @@ public extension View {
 }
 
 public extension View {
-    /// The native, uncolored look for selection controls and secondary buttons. The accent is
-    /// kept for the one primary action of a view, so it stays easy to find.
+    /// The system's own look for selection controls and secondary buttons, rather than Veer's
+    /// green, which is kept for the one primary action of a view so it stays easy to find.
     func neutralControl() -> some View { tint(nil) }
 }
 
-/// The standard SwiftUI segmented picker with the selected segment in neutral gray
-/// (`Color.selectionNeutral`), so the accent stays on primary actions (impeccable review,
-/// 2026-10-19).
+/// The standard SwiftUI segmented picker, with the selected segment in the system's own color (the
+/// accent the person chose) rather than Veer's green, as in any other Mac app.
 public struct SegmentedControl<Value: Hashable>: View {
     public init(label: String, selection: Binding<Value>, options: [Option]) {
         self.label = label
@@ -338,7 +337,7 @@ public struct SegmentedControl<Value: Hashable>: View {
         }
         .pickerStyle(.segmented)
         .labelsHidden()
-        .tint(Color.selectionNeutral)
+        .neutralControl()
     }
 }
 

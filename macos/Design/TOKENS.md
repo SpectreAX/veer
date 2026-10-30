@@ -26,14 +26,13 @@ only fade.
 
 | Token | Use |
 |---|---|
-| `veerAccent` | Small areas: primary actions, selection, written state |
+| `veerAccent` | Small areas: primary actions, the node in use, written state |
 | `userBubble` | The user's message bubble |
 | `statusSuccess`, `statusWarning`, `statusFailure`, `statusInfo` | Status, always with an icon and text through `StatusKind` |
 | `surface`, `surfaceRaised`, `surfaceSunken` | Window, raised and recessed backgrounds |
 | `separatorLine` | Separators |
 | `codeBackground` | Code and diffs |
 | `diffAdded`, `diffRemoved` | Diff lines |
-| `selectionNeutral` | Selected segment in `SegmentedControl` |
 | `subtleFill` | Quiet fill for secondary text |
 | `ChartPalette` | Categorical chart colors in fixed order. A seventh category folds into `other` |
 

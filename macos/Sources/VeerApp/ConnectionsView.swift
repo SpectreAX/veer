@@ -67,11 +67,13 @@ struct ConnectionsView: View {
                 ForEach(Set(store.connections.compactMap(\.process)).sorted(), id: \.self) { Text($0).tag(Optional($0)) }
             }
             .fixedSize()
+            .neutralControl()
             Picker("策略组", selection: $policy) {
                 Text("全部策略组").tag(String?.none)
                 ForEach(Set(store.connections.map(\.policy)).filter { !$0.isEmpty }.sorted(), id: \.self) { Text($0).tag(Optional($0)) }
             }
             .fixedSize()
+            .neutralControl()
             Spacer()
             Text("\(shown.count) 个连接").font(.callout).foregroundStyle(.secondary).monospacedDigit().lineLimit(1).fixedSize()
         }
@@ -169,11 +171,13 @@ struct AddRuleSheet: View {
                 Picker("匹配方式", selection: $matchType) {
                     ForEach(types, id: \.self) { Text(Self.title(of: $0)).tag($0) }
                 }
+                .neutralControl()
                 TextField("匹配内容", text: $value)
                 Picker("出口", selection: $target) {
                     ForEach(targets, id: \.self) { Text($0).tag($0) }
                 }
                 .disabled(targets.isEmpty)
+                .neutralControl()
             }
             .formStyle(.grouped)
             if let error { StatusBadge(kind: .failure, text: error).fixedSize(horizontal: false, vertical: true) }

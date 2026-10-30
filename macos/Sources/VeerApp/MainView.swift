@@ -50,6 +50,10 @@ struct MainView: View {
     @Environment(\.openSettings) private var openSettings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var sidebarVisibility = NavigationSplitViewVisibility.all
+    @State private var isFullScreen = false
+
+    /// The window's top row, which the sidebar button, the title and the capsule float in.
+    static let topRowHeight: CGFloat = 52
 
     var body: some View {
         @Bindable var store = store
@@ -83,6 +87,8 @@ struct MainView: View {
             // AppKit raise over a view it has already removed, ending the app.
             if store.agentPanel && store.page != .agent {
                 AgentPanelColumn()
+                    .padding(.top, fullScreenTopInset)
+                    .background(Color.surface)
                     .transition(.move(edge: .trailing))
             }
         }
@@ -94,17 +100,20 @@ struct MainView: View {
         // sidebar opens the toolbar runs short of room for a few frames, whatever the window's
         // width, and any item it holds lands in an overflow button that throws the rest aside. An
         // item's content also snaps to a new page rather than animating.
-        .background(EmptyWindowToolbar())
+        .background(EmptyWindowToolbar(isFullScreen: $isFullScreen))
         // Over the pages, which scroll under the row: a click here is the window's, not theirs.
+        // A full-screen window does not move.
         .overlay(alignment: .top) {
-            WindowDragArea()
-                .frame(height: 52)
-                .ignoresSafeArea(.container, edges: .top)
+            if !isFullScreen {
+                WindowDragArea()
+                    .frame(height: Self.topRowHeight)
+                    .ignoresSafeArea(.container, edges: .top)
+            }
         }
         .overlay(alignment: .topLeading) {
             sidebarButton
                 .padding(.top, 6)
-                .padding(.leading, Self.windowButtonsWidth)
+                .padding(.leading, sidebarButtonLeading)
                 .ignoresSafeArea(.container, edges: .top)
         }
         .overlayPreferenceValue(PageToolbarKey.self) { content in
@@ -118,8 +127,13 @@ struct MainView: View {
         }
     }
 
-    /// Room for the close, minimize and zoom buttons, which the sidebar button sits beside.
-    private static let windowButtonsWidth: CGFloat = 88
+    /// Full screen has no toolbar to start the columns below the row (see `EmptyWindowToolbar`). For
+    /// each column: a split view passes no safe area from outside it on to them.
+    private var fullScreenTopInset: CGFloat { isFullScreen ? Self.topRowHeight : 0 }
+
+    /// Room for the close, minimize and zoom buttons, which the sidebar button sits beside. Full
+    /// screen hides them, and the button takes their place.
+    private var sidebarButtonLeading: CGFloat { isFullScreen ? Spacing.sm : 88 }
 
     private var sidebarHidden: Bool { sidebarVisibility == .detailOnly }
 
@@ -146,8 +160,8 @@ struct MainView: View {
             }
         }
         .lineLimit(1)
-        .frame(height: 52)
-        .padding(.leading, sidebarHidden ? Self.windowButtonsWidth + 52 : Spacing.lg)
+        .frame(height: Self.topRowHeight)
+        .padding(.leading, sidebarHidden ? sidebarButtonLeading + 52 : Spacing.lg)
         .animation(reduceMotion ? nil : Motion.standard, value: sidebarHidden)
         .allowsHitTesting(false)
     }
@@ -171,8 +185,9 @@ struct MainView: View {
                 }
             }
             .safeAreaInset(edge: .bottom) { profileFooter }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 260)
+            .safeAreaPadding(.top, fullScreenTopInset)
             .toolbar(removing: .sidebarToggle)
+            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 260)
         } detail: {
             Group {
                 switch store.page {
@@ -189,6 +204,7 @@ struct MainView: View {
             .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             // The toolbar has no band, so nothing may scroll under the title and window buttons.
             .clipped()
+            .padding(.top, fullScreenTopInset)
             .background(Color.surface)
             .overlay(alignment: .topLeading) {
                 pageTitle.ignoresSafeArea(.container, edges: .top)
@@ -208,8 +224,9 @@ struct MainView: View {
                     HStack(spacing: Spacing.sm) {
                         Image(systemName: profile.isSubscription ? "antenna.radiowaves.left.and.right" : "doc")
                             .foregroundStyle(.secondary)
+                        // Not beside a Spacer, which would take half of what the name could use.
                         Text(profile.name).lineLimit(1).truncationMode(.middle)
-                        Spacer(minLength: 0)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .contentShape(Rectangle())
                 }
@@ -234,18 +251,60 @@ struct MainView: View {
 
 /// Keeps the toolbar's height, which centres the window's buttons on the row and starts the pages
 /// below it, with no items for it to rearrange.
+///
+/// In full screen AppKit moves a toolbar to a window of its own, in front of this one, and it would
+/// cover everything floating in the row. So the toolbar comes off for full screen and the row is
+/// `MainView`'s to keep: hiding it is not enough, as entering full screen shows it again. AppKit,
+/// because `windowToolbarFullScreenVisibility` needs macOS 15 and this runs on 14.
 private struct EmptyWindowToolbar: NSViewRepresentable {
+    @Binding var isFullScreen: Bool
+
     final class Host: NSView {
+        var onFullScreen: ((Bool) -> Void)?
+        private let toolbar = NSToolbar(identifier: "Veer")
+
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            guard let window, window.toolbar == nil else { return }
-            window.toolbar = NSToolbar(identifier: "Veer")
-            window.toolbarStyle = .unified
+            let center = NotificationCenter.default
+            center.removeObserver(self)
+            guard let window else { return }
+            center.addObserver(self, selector: #selector(enteringFullScreen), name: NSWindow.willEnterFullScreenNotification, object: window)
+            center.addObserver(self, selector: #selector(leavingFullScreen), name: NSWindow.willExitFullScreenNotification, object: window)
+            // A window restored to full screen is there before this view is.
+            setToolbar(fullScreen: window.styleMask.contains(.fullScreen))
+            // Later, and read then: this can run while SwiftUI is updating the view that owns the
+            // state, and the window can already be on its way into full screen.
+            Task { @MainActor [weak self] in
+                guard let self, let window = self.window else { return }
+                onFullScreen?(window.styleMask.contains(.fullScreen))
+            }
+        }
+
+        @objc private func enteringFullScreen() {
+            setToolbar(fullScreen: true)
+            onFullScreen?(true)
+        }
+
+        @objc private func leavingFullScreen() {
+            setToolbar(fullScreen: false)
+            onFullScreen?(false)
+        }
+
+        private func setToolbar(fullScreen: Bool) {
+            window?.toolbar = fullScreen ? nil : toolbar
+            window?.toolbarStyle = .unified
         }
     }
 
-    func makeNSView(context: Context) -> Host { Host() }
-    func updateNSView(_ view: Host, context: Context) {}
+    func makeNSView(context: Context) -> Host {
+        let host = Host()
+        host.onFullScreen = { isFullScreen = $0 }
+        return host
+    }
+
+    func updateNSView(_ view: Host, context: Context) {
+        view.onFullScreen = { isFullScreen = $0 }
+    }
 }
 
 /// The top row of the window, which moves it as a title bar does. With no items in the toolbar,

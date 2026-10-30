@@ -882,7 +882,7 @@
 "设置" = "Settings";
 
 /* Connections */
-"搜索主机、进程、规则或节点" = "Search hosts, processes, rules or nodes";
+"搜索主机、进程、规则或节点" = "Search hosts or nodes";
 "关闭全部连接？" = "Close all connections?";
 "关闭全部" = "Close All";
 "正在进行的下载和通话会中断，应用会按当前规则重新连接。" = "Downloads and calls in progress are interrupted; apps reconnect by the current rules.";
@@ -960,7 +960,6 @@
 "状态" = "Status";
 "运行时间" = "Run time";
 "网络" = "Network";
-"正在检测出口…" = "Detecting the exit…";
 "上传" = "Upload";
 "下载" = "Download";
 "峰值 %@" = "Peak %@";
@@ -1046,7 +1045,6 @@
 "显示方式" = "View";
 "网格" = "Grid";
 "地图" = "Map";
-"按策略组或在地图上查看节点" = "Show nodes by group or on a map";
 "“%@”的流量快用完了" = "“%@” is running out of data";
 "还剩 %@，已不到总量的十分之一。" = "Only %@ left, less than a tenth of the total.";
 "“%@”已经到期" = "“%@” has expired";

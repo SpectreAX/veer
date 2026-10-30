@@ -144,11 +144,14 @@ private struct StatusCard: View {
                 Text("无法检测出口").font(.title3.weight(.semibold)).foregroundStyle(.secondary)
             } else if store.isRunning {
                 ProgressView().controlSize(.small)
-                Text("正在检测出口…").font(.title3).foregroundStyle(.secondary)
+                // Short, on one line as the IP that replaces it is: the narrowest window has room for
+                // little more, and the card's title says what this is about.
+                Text("正在检测…").font(.title3).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7)
             } else {
                 Text(store.activeProfile?.name ?? "").font(.title3.weight(.semibold)).lineLimit(1)
             }
-            if store.isRunning {
+            // Not while a check is under way.
+            if store.isRunning, store.exit != nil {
                 Button { store.checkExit() } label: { Image(systemName: "arrow.clockwise") }
                     .buttonStyle(.borderless)
                     .help("重新检测出口")
@@ -182,7 +185,8 @@ private struct LabeledValue<Value: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.xxs) {
-            Text(title).font(.caption).foregroundStyle(.secondary)
+            // Whole: the row shares its width out evenly, which broke "Network" in the narrowest window.
+            Text(title).font(.caption).foregroundStyle(.secondary).fixedSize()
             value().font(.callout)
         }
     }

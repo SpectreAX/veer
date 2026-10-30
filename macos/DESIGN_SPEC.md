@@ -19,6 +19,8 @@ Brand expression must not damage native usability.
 - Standard window controls, resizing and full screen.
 - Minimum 960 × 640, default 1320 × 860 (`Metrics`). Below 1100 wide the layout goes compact.
 - The empty space in the top row moves the window; a double click follows the system setting.
+- Full screen is the system's. The top row stays, and the sidebar button moves into the place of the
+  window buttons, which the system shows with the menu bar when the pointer reaches the top.
 
 ## Navigation
 
@@ -40,7 +42,8 @@ System fonts and semantic text styles. Code and logs use `Typography.code` and `
 
 - Semantic system colors and `VeerUI` tokens only. Check light and dark.
 - Never carry meaning by color alone: `StatusKind` is always icon plus text.
-- Green is for small areas: primary actions, selection, written state.
+- Green is for small areas: primary actions, the node in use, written state. System controls such
+  as segmented pickers keep the system's own colors.
 
 ## Materials
 
@@ -72,10 +75,10 @@ as a violation unless its reason no longer holds. Anything not listed here is no
 | Deviation | Why | Where |
 |---|---|---|
 | The system toolbar stays empty and the controls float above it | With items in `NSToolbar`, opening the sidebar pushes them into the `»` overflow, and they jump instead of animating between pages | SPEC 5, `PageToolbar`, `ToolbarCapsule` |
+| The window has no toolbar at all in full screen | AppKit moves a toolbar to a window of its own in front of the content, which covers the floating controls, and entering full screen shows it again if it is hidden | SPEC 5, `EmptyWindowToolbar` |
 | Own search field instead of `.searchable` | Several `.searchable` pages crash `NSToolbar` with a duplicate identifier on page switch (1.0.3 crash) | SPEC 5, `ToolbarSearchField` |
 | Plain Agent column instead of `.inspector` | `NSSplitViewController` throws if the inspector changes mid-animation (crash on 2026-10-30) | `AgentPanelColumn` |
 | Veer green tint instead of the system accent color | Brand color, used only on small areas. Custom accent colors are out of scope for v1 | `Color.veerAccent` |
-| Neutral gray selected segment | Keeps the accent on primary actions. Standard picker otherwise | `SegmentedControl` |
 | Fixed chart palette | Categorical colors need stable, color-blind-checked pairs that the system colors do not give. Every chart has a legend with exact counts | `ChartPalette` |
 | `.strings` instead of String Catalog | `xcstringstool` needs Xcode, which this machine does not have | SPEC 9 |
 | Carbon `RegisterEventHotKey` for global shortcuts | The only system API for them without a third-party library. Unbound by default | SPEC 8, `HotKeys` |

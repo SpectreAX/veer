@@ -11,8 +11,9 @@ enum ToolbarSearchFocus {
             if let field = view as? NSTextField { return field.isEditable ? [field] : [] }
             return view.subviews.flatMap(fields)
         }
-        // Above the content area: a page's own fields stay out of it.
-        let field = fields(frame).first { $0.convert($0.bounds, to: nil).midY > window.contentLayoutRect.maxY }
+        // In the window's top row: a page's own fields stay out of it. Measured from the window, as
+        // in full screen, with no toolbar, the content area reaches the top.
+        let field = fields(frame).first { $0.convert($0.bounds, to: nil).midY > window.frame.height - MainView.topRowHeight }
         if let field { window.makeFirstResponder(field) }
     }
 }

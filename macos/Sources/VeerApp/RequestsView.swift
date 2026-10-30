@@ -114,7 +114,7 @@ struct DNSView: View {
                             .textFieldStyle(.roundedBorder)
                             .onSubmit(ask)
                         Picker("类型", selection: $type) { ForEach(Self.types, id: \.self) { Text(verbatim: $0).tag($0) } }
-                            .labelsHidden().fixedSize()
+                            .labelsHidden().fixedSize().neutralControl()
                         Button("查询", action: ask).primaryAction(.regular).keyboardShortcut(.defaultAction)
                             .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || asking)
                     }

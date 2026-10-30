@@ -9,24 +9,36 @@ enum SnapshotRunner {
     static func run(into directory: URL) {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let appearances = (ProcessInfo.processInfo.environment["VEER_SNAPSHOT_APPEARANCE"] ?? "light,dark").split(separator: ",").map(String.init)
+        // `VEER_SNAPSHOT_SCENES=05,25`: only the scenes whose names start with these.
+        let only = ProcessInfo.processInfo.environment["VEER_SNAPSHOT_SCENES"]?.split(separator: ",").map(String.init)
         Task { @MainActor in
             for appearance in appearances {
                 let name = appearance == "dark" ? NSAppearance.Name.darkAqua : .aqua
-                for scene in scenes() {
+                for scene in scenes() where only?.contains(where: scene.name.hasPrefix) ?? true {
                     let store = scene.store()
                     let agent = AgentStore(proxy: store, keyStore: FileKeyStore(url: store.paths.secrets),
                                            defaults: UserDefaults(suiteName: "veer-snapshot-agent-\(UUID().uuidString)")!, persist: false)
                     scene.agent?(agent)
                     // The app's window never gets smaller than this; content sized views would shrink it.
-                    let view = scene.view.environment(store).environment(agent).tint(.veerAccent).frame(width: scene.size.width, height: scene.size.height)
+                    let view = scene.fullScreen
+                        ? AnyView(scene.view.environment(store).environment(agent).tint(.veerAccent))
+                        : AnyView(scene.view.environment(store).environment(agent).tint(.veerAccent).frame(width: scene.size.width, height: scene.size.height))
                     let window = NSWindow(contentRect: CGRect(origin: .zero, size: scene.size), styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
                     window.appearance = NSAppearance(named: name)
+                    // As `.windowStyle(.hiddenTitleBar)` leaves the app's window.
+                    window.titleVisibility = .hidden
+                    window.titlebarAppearsTransparent = true
                     window.contentViewController = NSHostingController(rootView: view)
                     window.setContentSize(scene.size)
                     window.makeKeyAndOrderFront(nil)
                     NSApp.activate()
-                    try? await Task.sleep(for: .milliseconds(700))
-                    capture(window, to: directory.appendingPathComponent("\(scene.name)-\(appearance).png"))
+                    let path = directory.appendingPathComponent("\(scene.name)-\(appearance).png")
+                    if scene.fullScreen {
+                        await captureFullScreen(window, to: path)
+                    } else {
+                        try? await Task.sleep(for: .milliseconds(700))
+                        capture(window, to: path)
+                    }
                     window.orderOut(nil)
                 }
             }
@@ -41,6 +53,8 @@ enum SnapshotRunner {
         let view: AnyView
         /// Fills the Agent page's state, for its scenes.
         var agent: ((AgentStore) -> Void)? = nil
+        /// Takes the window into full screen, in its own Space, for the capture.
+        var fullScreen = false
     }
 
     // swiftlint:disable:next function_body_length
@@ -114,12 +128,25 @@ enum SnapshotRunner {
                 agent.settings.provider = .ollama
                 sampleThread(agent, status: .written)
             }),
+            // In full screen the system moves the toolbar to a window of its own, over this one.
+            Scene(name: "25-fullscreen-connections-panel", store: {
+                let store = sample()
+                store.page = .connections
+                store.agentPanel = true
+                return store
+            }, view: AnyView(MainView()), agent: { agent in
+                agent.settings.provider = .ollama
+                sampleThread(agent, status: .written)
+            }, fullScreen: true),
+            Scene(name: "25b-fullscreen-proxies", store: { running(page: .proxies) }, view: AnyView(MainView()), fullScreen: true),
             Scene(name: "09e-connections", store: {
                 let store = running(page: .connections)
                 store.connectionsPaused = true
                 store.connections = sampleConnections()
                 return store
             }, view: AnyView(MainView())),
+            Scene(name: "09k-add-rule", size: CGSize(width: 480, height: 420), store: { running(page: .connections) },
+                  view: AnyView(AddRuleSheet(row: sampleConnections()[0]))),
             Scene(name: "09g-route-map", size: CGSize(width: 260, height: 460), store: { running(page: .connections) },
                   view: AnyView(RouteMap(row: sampleConnections()[0]))),
             Scene(name: "09h-requests", store: {
@@ -336,6 +363,44 @@ enum SnapshotRunner {
     }
 
     private typealias WindowImageFunction = @convention(c) (CGRect, UInt32, UInt32, UInt32) -> Unmanaged<CGImage>?
+
+    /// Into full screen and out again, with a picture of everything this app shows in between: the
+    /// toolbar's own full-screen window is above `window`, so capturing that alone would leave it out.
+    static func captureFullScreen(_ window: NSWindow, to url: URL) async {
+        window.styleMask.insert(.resizable)
+        window.collectionBehavior.insert(.fullScreenPrimary)
+        window.toggleFullScreen(nil)
+        try? await Task.sleep(for: .seconds(2))
+        // Core Graphics counts from the top of the main screen. optionOnScreenAboveWindow = 1 << 1,
+        // optionIncludingWindow = 1 << 3, bestResolution = 1 << 3.
+        let flipped = (NSScreen.screens.first?.frame.height ?? 0) - window.frame.maxY
+        let bounds = CGRect(x: window.frame.minX, y: flipped, width: window.frame.width, height: window.frame.height)
+        if let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGWindowListCreateImage") {
+            let function = unsafeBitCast(symbol, to: WindowImageFunction.self)
+            if let image = function(bounds, (1 << 1) | (1 << 3), UInt32(window.windowNumber), 1 << 3)?.takeRetainedValue() {
+                try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?.write(to: url)
+            }
+        }
+        // What covers what, for a check that does not depend on reading the picture.
+        let layout = NSApp.windows.filter(\.isVisible).map { shown in
+            "\(type(of: shown)) \(shown.frame) level \(shown.level.rawValue) toolbar \(shown.toolbar?.isVisible.description ?? "none")"
+                + " mouse \(!shown.ignoresMouseEvents) alpha \(shown.alphaValue) opaque \(shown.isOpaque) number \(shown.windowNumber)"
+        }
+        let top = NSWindow.windowNumber(at: CGPoint(x: window.frame.maxX - 60, y: window.frame.maxY - 20), belowWindowWithWindowNumber: 0)
+        let notes = url.deletingPathExtension().appendingPathExtension("txt")
+        try? (["content \(window.contentLayoutRect)", "frontmost in the row \(top), this window \(window.windowNumber)"] + layout).joined(separator: "\n")
+            .write(to: notes, atomically: true, encoding: .utf8)
+        // ⌘F finds the field by where it is in the window, which full screen changes.
+        ToolbarSearchFocus.focus()
+        let searching = "search field focused \(window.firstResponder is NSTextView)"
+        window.toggleFullScreen(nil)
+        try? await Task.sleep(for: .seconds(2))
+        // And the toolbar is back for the ordinary window.
+        let after = "after leaving: toolbar \(window.toolbar?.isVisible.description ?? "none"), content \(window.contentLayoutRect)"
+        let layoutNotes = (try? String(contentsOf: notes, encoding: .utf8)) ?? ""
+        try? [searching, after, layoutNotes].joined(separator: "\n").write(to: notes, atomically: true, encoding: .utf8)
+        capture(window, to: url.deletingPathExtension().appendingPathExtension("left.png"))
+    }
 
     /// The window as the screen shows it (sidebar material included); falls back to drawing the
     /// view hierarchy, which leaves vibrancy out.

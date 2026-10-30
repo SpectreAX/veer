@@ -34,7 +34,7 @@ Use the native control first, then a `VeerUI` component, then a new one. Shared 
 | `Chip`, `ToggleChip`, `PillButtonStyle` | Compact pills |
 | `StateView` | Empty, loading and error states |
 | `ExitLabel` | Exit node and country |
-| `SegmentedControl` | Standard segmented picker with a neutral selection |
+| `SegmentedControl` | Standard segmented picker in the system's colors, for symbols or text |
 | `KeyCap`, `ShortcutHint` | Keyboard shortcut display |
 | `ChoiceRow` | A row in a choice list |
 

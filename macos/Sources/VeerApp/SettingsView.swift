@@ -32,6 +32,7 @@ struct GeneralSettings: View {
                 Picker(String(localized: "语言"), selection: $language) {
                     ForEach(AppLanguage.allCases) { Text($0.title).tag($0) }
                 }
+                .neutralControl()
                 .onChange(of: language) { _, value in
                     value.apply()
                     languageChanged = value != AppLanguage.launched
@@ -94,6 +95,7 @@ struct ProxySettings: View {
                 Picker(String(localized: "日志级别"), selection: $store.settings.logLevel) {
                     ForEach(["error", "warning", "info", "debug"], id: \.self) { Text(verbatim: $0).tag($0) }
                 }
+                .neutralControl()
             } header: {
                 Text(String(localized: "内核"))
             } footer: {
@@ -263,6 +265,7 @@ struct DNSSettings: View {
                     Text(verbatim: "fake-ip").tag(RuntimeSettings.DNSMode.fakeIP)
                     Text(verbatim: "redir-host").tag(RuntimeSettings.DNSMode.redirHost)
                 }
+                .neutralControl()
             } footer: {
                 Text(String(localized: "大多数订阅自带 DNS 设置，默认沿用它们。fake-ip 解析更快，开启 TUN 时需要；redir-host 返回真实地址。"))
                     .font(.caption).foregroundStyle(.secondary)

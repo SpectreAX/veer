@@ -216,6 +216,7 @@ struct ProfileDetailSheet: View {
                 Text(RuleTemplate.title(RuleTemplate.standard)).tag(RuleTemplate.standard)
             }
             .fixedSize()
+            .neutralControl()
             Text("模板按地区为这份配置的节点分组，并用内核自带的 GEOSITE 和 GEOIP 数据分流：AI 服务优先走美国，国内网站和苹果服务直连，广告拦截。下面的修改在模板之上重新应用。")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             edits

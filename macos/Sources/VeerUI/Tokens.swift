@@ -60,13 +60,6 @@ public extension Color {
     static let separatorLine = Color(nsColor: .separatorColor)
     static let codeBackground = Color(nsColor: .textBackgroundColor)
     static let diffAdded = Color.veerAccent.opacity(0.13)
-    /// Selected segment of a segmented control: a neutral gray (white text stays above 4.5:1), so
-    /// the accent is not spent on navigation.
-    static let selectionNeutral = Color(nsColor: NSColor(name: "VeerSelectionNeutral") { appearance in
-        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? NSColor(srgbRed: 0.40, green: 0.40, blue: 0.42, alpha: 1)
-            : NSColor(srgbRed: 0.39, green: 0.39, blue: 0.40, alpha: 1)
-    })
     /// Quiet fill that sets secondary text (model reasoning) apart from the white page.
     static let subtleFill = Color.primary.opacity(0.05)
     static let diffRemoved = Color(nsColor: .systemRed).opacity(0.11)
