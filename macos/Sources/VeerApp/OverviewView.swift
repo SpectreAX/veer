@@ -6,6 +6,11 @@ import VeerProxy
 /// groups, as cards in a grid that reflows with the window.
 struct OverviewView: View {
     @Environment(ProxyStore.self) private var store
+    /// Halves side by side need about this much; narrower (the Agent panel open in a small
+    /// window), each row's halves stack, and below the second width the quarter cards too.
+    static let stackBelow: CGFloat = 720, stackPairsBelow: CGFloat = 460
+    @State private var width: CGFloat = 1000
+    private var stacked: Bool { width < Self.stackBelow }
 
     var body: some View {
         if store.profiles.isEmpty {
@@ -17,6 +22,8 @@ struct OverviewView: View {
                 VStack(alignment: .leading, spacing: Spacing.lg) {
                     if case .failed(let message, let log) = store.phase { FailurePanel(message: message, log: log) }
                     if let notice = store.notice { StatusBadge(kind: .warning, text: notice).fixedSize(horizontal: false, vertical: true) }
+                    // The panel brings its own composer.
+                    if !store.agentPanel { AgentAskBar() }
                     SuggestionCards()
                     // Rows of two equal halves: cards shrink with the window (a Grid sizes cells to
                     // their widest content and overflowed it).
@@ -28,6 +35,7 @@ struct OverviewView: View {
                 .padding(Spacing.xl)
                 .frame(maxWidth: 1180)
                 .frame(maxWidth: .infinity)
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
             }
             .task(id: store.isRunning) {
                 guard store.isRunning else { return }
@@ -43,9 +51,10 @@ struct OverviewView: View {
 }
 
 extension OverviewView {
-    /// Two halves of equal width and height.
+    /// Two halves of equal width and height, or one above the other when the page is narrow.
     func row<Left: View, Right: View>(@ViewBuilder _ left: () -> Left, @ViewBuilder right: () -> Right) -> some View {
-        HStack(alignment: .top, spacing: Spacing.lg) {
+        let layout = stacked ? AnyLayout(VStackLayout(alignment: .leading, spacing: Spacing.lg)) : AnyLayout(HStackLayout(alignment: .top, spacing: Spacing.lg))
+        return layout {
             left().frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
             right().frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -53,7 +62,8 @@ extension OverviewView {
     }
 
     func pair<Left: View, Right: View>(@ViewBuilder _ left: () -> Left, @ViewBuilder and right: () -> Right) -> some View {
-        HStack(alignment: .top, spacing: Spacing.lg) {
+        let layout = width < Self.stackPairsBelow ? AnyLayout(VStackLayout(alignment: .leading, spacing: Spacing.lg)) : AnyLayout(HStackLayout(alignment: .top, spacing: Spacing.lg))
+        return layout {
             left().frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
             right().frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
         }

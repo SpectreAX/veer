@@ -197,6 +197,14 @@ final class AgentStore {
         draftInstruction(text)
     }
 
+    /// Shows the Agent without leaving the page: the panel beside it, or the Agent page when that
+    /// is the page. `fresh` starts a new conversation; `text` goes into the composer.
+    func open(asking text: String? = nil, fresh: Bool = false) {
+        if proxy.page != .agent { proxy.agentPanel = true }
+        if fresh { newThread() }
+        if let text { ask(text) } else { composerFocusToken += 1 }
+    }
+
     func draftInstruction(_ text: String) {
         composerText = text
         composerFocusToken += 1

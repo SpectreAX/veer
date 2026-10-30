@@ -94,6 +94,25 @@ enum SnapshotRunner {
                 agent.settings.provider = .ollama
                 sampleThread(agent, status: .written)
             }),
+            Scene(name: "24-panel-overview", store: { running(panel: true) }, view: AnyView(MainView()), agent: { agent in
+                agent.settings.provider = .ollama
+                sampleThread(agent, status: .pending)
+            }),
+            Scene(name: "24b-panel-setup", store: { running(panel: true) }, view: AnyView(MainView())),
+            // The smallest window: the overview's rows stack beside the panel.
+            Scene(name: "24c-panel-narrow", size: CGSize(width: 860, height: 640), store: { running(panel: true) }, view: AnyView(MainView()), agent: { agent in
+                agent.settings.provider = .ollama
+            }),
+            Scene(name: "24d-panel-connections", store: {
+                let store = running(page: .connections, panel: true)
+                store.connectionsPaused = true
+                store.connections = sampleConnections()
+                store.suggestions = [Suggestion(kind: .failing(host: "chatgpt.com", count: 3))]
+                return store
+            }, view: AnyView(MainView()), agent: { agent in
+                agent.settings.provider = .ollama
+                sampleThread(agent, status: .written)
+            }),
             Scene(name: "09e-connections", store: {
                 let store = running(page: .connections)
                 store.connectionsPaused = true
@@ -246,6 +265,8 @@ enum SnapshotRunner {
     static func sample(profiles: Bool = true) -> ProxyStore {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("veer-snapshot-\(UUID().uuidString)")
         let defaults = UserDefaults(suiteName: "veer-snapshot-\(UUID().uuidString)")!
+        // Scenes that want the Agent panel say so.
+        defaults.set(false, forKey: "agentPanel")
         let paths = VeerPaths(root: root)
         if profiles {
             let hour: TimeInterval = 3600
@@ -262,8 +283,9 @@ enum SnapshotRunner {
         return ProxyStore(paths: paths, systemProxy: SystemProxy(runner: { _ in "" }), binary: nil, defaults: defaults)
     }
 
-    static func running(page: Page = .overview, tun: Bool = false) -> ProxyStore {
+    static func running(page: Page = .overview, tun: Bool = false, panel: Bool = false) -> ProxyStore {
         let store = sample()
+        store.agentPanel = panel
         // Before the phase: turning TUN on in a running store restarts the core.
         store.settings.tun = tun
         store.tunActive = tun

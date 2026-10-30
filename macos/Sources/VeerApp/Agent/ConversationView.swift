@@ -3,6 +3,7 @@ import VeerCore
 
 struct ConversationView: View {
     @Environment(AgentStore.self) private var store
+    @Environment(\.agentCompact) private var compact
     @State private var followsBottom = true
 
     static let examples = [String(localized: "Netflix 走日本，ChatGPT 走美国"), String(localized: "YouTube 走香港"), String(localized: "example.com 直连"), String(localized: "屏蔽广告")]
@@ -37,8 +38,8 @@ struct ConversationView: View {
                     }
                     Color.clear.frame(height: 1).id("bottom")
                 }
-                .padding(.horizontal, Spacing.xl)
-                .padding(.top, Spacing.xl)
+                .padding(.horizontal, compact ? Spacing.md : Spacing.xl)
+                .padding(.top, compact ? Spacing.lg : Spacing.xl)
                 .padding(.bottom, Spacing.lg)
                 .frame(maxWidth: Metrics.readingWidth)
                 .frame(maxWidth: .infinity)
@@ -83,7 +84,7 @@ struct ConversationView: View {
                             .transition(.opacity)
                         }
                     }
-                .padding(.horizontal, Spacing.xl)
+                .padding(.horizontal, compact ? Spacing.md : Spacing.xl)
                 .padding(.bottom, Spacing.md)
                 .padding(.top, Spacing.sm)
                 .background {

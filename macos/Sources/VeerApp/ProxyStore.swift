@@ -53,6 +53,8 @@ final class ProxyStore {
     // MARK: State
 
     var page: Page = .overview
+    /// The Agent beside every page but its own (`AgentPanel`). Open until the user closes it.
+    var agentPanel: Bool { didSet { defaults.set(agentPanel, forKey: "agentPanel") } }
     var phase: Phase = .stopped
     var profiles: [Profile] = []
     var activeProfileID: UUID? {
@@ -215,6 +217,7 @@ final class ProxyStore {
         showExitIP = defaults.object(forKey: "showExitIP") as? Bool ?? true
         reconnectAfterChanges = defaults.object(forKey: "reconnectAfterChanges") as? Bool ?? true
         collapsedGroups = Set(defaults.stringArray(forKey: "collapsedGroups") ?? [])
+        agentPanel = defaults.object(forKey: "agentPanel") as? Bool ?? true
         state = stateStore.load()
         profiles = profileStore.loadAll()
         activeProfileID = defaults.string(forKey: "activeProfile").flatMap(UUID.init(uuidString:)).flatMap { id in profiles.contains { $0.id == id } ? id : nil }

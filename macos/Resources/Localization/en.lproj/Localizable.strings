@@ -1167,3 +1167,15 @@
 "“%@”是为其他服务设置的策略组，你没有点名它，需要你确认" = "“%@” is a group set up for another service and you didn't name it, so this needs your confirmation";
 "按服务器 IP 推断的地区；中转节点的入口和出口可能不在同一个地方，可以右键手动标记。" = "Region read from the server's IP address. A relay may enter and exit in different places; right-click a node to set its region by hand.";
 "其他" = "Other";
+
+/* Agent side panel */
+"全部对话…" = "All Conversations…";
+"切换对话" = "Switch Conversation";
+"在 Agent 页打开" = "Open in Agent Page";
+"在 Agent 页打开，查看全部对话" = "Open in the Agent page, with every conversation";
+"告诉 AI 想怎么分流，例如 Netflix 走日本" = "Tell the AI how to route, e.g. Netflix via Japan";
+"Veer 使用你自己的 API Key，或者本机的 Ollama。" = "Veer uses your own API key, or Ollama on this Mac.";
+"设置 AI 服务…" = "Set Up AI Service…";
+"Agent 面板" = "Agent Panel";
+"显示 Agent 面板（⌥⌘I）" = "Show Agent Panel (⌥⌘I)";
+"隐藏 Agent 面板（⌥⌘I）" = "Hide Agent Panel (⌥⌘I)";

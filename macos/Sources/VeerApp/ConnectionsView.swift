@@ -74,7 +74,7 @@ struct ConnectionsView: View {
             }
             .fixedSize()
             Spacer()
-            Text("\(shown.count) 个连接").font(.callout).foregroundStyle(.secondary).monospacedDigit()
+            Text("\(shown.count) 个连接").font(.callout).foregroundStyle(.secondary).monospacedDigit().lineLimit(1).fixedSize()
         }
         .padding(.horizontal, Spacing.lg)
         .padding(.vertical, Spacing.sm)
@@ -138,10 +138,7 @@ struct ConnectionsView: View {
 
     private func rows(_ ids: Set<ConnectionRow.ID>) -> [ConnectionRow] { store.connections.filter { ids.contains($0.id) } }
 
-    private func ask(_ text: String) {
-        store.page = .agent
-        agent.ask(text)
-    }
+    private func ask(_ text: String) { agent.open(asking: text) }
 
     private func copy(_ text: String) {
         NSPasteboard.general.clearContents()

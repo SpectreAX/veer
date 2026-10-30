@@ -6,6 +6,7 @@ import VeerProxy
 struct SuggestionCards: View {
     @Environment(ProxyStore.self) private var store
     @Environment(AgentStore.self) private var agent
+    @Environment(\.agentCompact) private var compact
     /// Cards shown before the rest fold into a link to the overview; nil shows them all. Pages
     /// without their own scroll (the Agent page) set it, or the cards push the window's content
     /// past its top edge.
@@ -25,23 +26,47 @@ struct SuggestionCards: View {
         }
     }
 
-    private func card(_ suggestion: Suggestion) -> some View {
+    @ViewBuilder private func card(_ suggestion: Suggestion) -> some View {
         let text = Self.text(suggestion)
-        return HStack(alignment: .top, spacing: Spacing.md) {
-            Image(systemName: "lightbulb").foregroundStyle(Color.veerAccent).font(.title3)
-            VStack(alignment: .leading, spacing: Spacing.xxs) {
-                Text(text.title).font(.headline).lineLimit(1).truncationMode(.middle)
-                Text(text.detail).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        if compact {
+            // The side panel: too narrow for the button beside the text, and with no scroll of
+            // its own, so the text is held to a few lines.
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                HStack(spacing: Spacing.sm) {
+                    Image(systemName: "lightbulb").foregroundStyle(Color.veerAccent)
+                    Text(text.title).font(.headline).lineLimit(1).truncationMode(.middle)
+                    Spacer(minLength: Spacing.sm)
+                    dismissMenu(suggestion)
+                }
+                Text(text.detail).font(.callout).foregroundStyle(.secondary).lineLimit(3)
+                askButton(suggestion, prompt: text.prompt).controlSize(.small)
             }
-            Spacer(minLength: Spacing.sm)
-            Button(String(localized: "问 AI")) {
-                store.dismiss(suggestion)
-                store.page = .agent
-                agent.newThread()
-                agent.ask(text.prompt)
+            .panel(padding: Spacing.md)
+        } else {
+            HStack(alignment: .top, spacing: Spacing.md) {
+                Image(systemName: "lightbulb").foregroundStyle(Color.veerAccent).font(.title3)
+                VStack(alignment: .leading, spacing: Spacing.xxs) {
+                    Text(text.title).font(.headline).lineLimit(1).truncationMode(.middle)
+                    Text(text.detail).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: Spacing.sm)
+                askButton(suggestion, prompt: text.prompt)
+                dismissMenu(suggestion)
             }
-            .secondaryAction()
-            Menu {
+            .panel(padding: Spacing.md)
+        }
+    }
+
+    private func askButton(_ suggestion: Suggestion, prompt: String) -> some View {
+        Button(String(localized: "问 AI")) {
+            store.dismiss(suggestion)
+            agent.open(asking: prompt, fresh: true)
+        }
+        .secondaryAction()
+    }
+
+    private func dismissMenu(_ suggestion: Suggestion) -> some View {
+        Menu {
                 if suggestion.host != nil {
                     Button(String(localized: "不再提示这个域名")) { store.dismiss(suggestion, forever: true) }
                 }
@@ -49,8 +74,6 @@ struct SuggestionCards: View {
             } label: { Image(systemName: "xmark") }
             .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().neutralControl()
             .accessibilityLabel(String(localized: "忽略这条建议"))
-        }
-        .panel(padding: Spacing.md)
     }
 
     static func text(_ suggestion: Suggestion) -> (title: String, detail: String, prompt: String) {

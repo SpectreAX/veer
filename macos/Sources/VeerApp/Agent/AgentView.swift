@@ -8,7 +8,6 @@ struct AgentView: View {
     @Environment(ProxyStore.self) private var proxy
 
     var body: some View {
-        @Bindable var agent = agent
         HStack(spacing: 0) {
             ThreadList()
                 .frame(width: Metrics.sidebarWidth)
@@ -18,45 +17,70 @@ struct AgentView: View {
                     SuggestionCards(limit: 1).padding(Spacing.lg)
                     Divider()
                 }
-                conversation
+                AgentConversation()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .overlay(alignment: .bottom) {
-            if let toast = agent.toast {
-                ToastView(toast: toast) { agent.undo() }
-                    .padding(.bottom, 120)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-        }
-        .animation(Motion.standard, value: agent.toast)
-        .sheet(item: $agent.editingGroup) { GroupEditorSheet(target: $0) }
-        .sheet(item: Binding(get: { agent.payloadTurn }, set: { _ in agent.payloadTurnID = nil })) { PayloadSheet(turn: $0) }
-        .alert(String(localized: "删除对话？"), isPresented: Binding(get: { agent.pendingDeletion != nil }, set: { if !$0 { agent.pendingDeletion = nil } })) {
-            Button(String(localized: "删除"), role: .destructive) { if let session = agent.pendingDeletion { agent.delete(session) } }
-            Button(String(localized: "取消"), role: .cancel) {}
-        } message: {
-            Text(String(localized: "对话记录会从本机删除；已经应用的修改仍在“我的分流”里。"))
         }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button { agent.undo() } label: { Label(String(localized: "撤销修改"), systemImage: "arrow.uturn.backward") }
                     .help(String(localized: "撤销这个对话里最近应用的修改"))
                     .disabled(!agent.canUndo)
+                // ⌘N is the File menu's, on every page.
                 Button { agent.newThread() } label: { Label(String(localized: "新对话"), systemImage: "square.and.pencil") }
                     .help(String(localized: "新对话（⌘N）"))
-                    .keyboardShortcut("n")
                     .disabled(proxy.activeProfile == nil)
             }
         }
     }
+}
 
-    @ViewBuilder private var conversation: some View {
+/// The Agent in the side panel: narrower margins, and setup sent to the Agent page.
+private struct AgentCompactKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    // Not @Entry: Command Line Tools ship without the SwiftUI macro plugin.
+    var agentCompact: Bool {
+        get { self[AgentCompactKey.self] }
+        set { self[AgentCompactKey.self] = newValue }
+    }
+}
+
+/// The selected conversation with its composer, or what comes before one: no profile, no AI
+/// service, an empty conversation. The Agent page's right column and the side panel.
+struct AgentConversation: View {
+    @Environment(AgentStore.self) private var agent
+    @Environment(ProxyStore.self) private var proxy
+    @Environment(\.agentCompact) private var compact
+
+    var body: some View {
+        content
+            .overlay(alignment: .bottom) {
+                if let toast = agent.toast {
+                    ToastView(toast: toast) { agent.undo() }
+                        .padding(.bottom, 120)
+                        .padding(.horizontal, compact ? Spacing.md : 0)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .animation(Motion.standard, value: agent.toast)
+    }
+
+    @ViewBuilder private var content: some View {
         if proxy.activeProfile == nil {
             StateView(symbol: "tray.and.arrow.down", title: String(localized: "还没有配置"),
                       message: String(localized: "导入一个配置后，就可以用一句话调整它的分流。"))
         } else if !agent.aiConfigured && agent.current == nil {
-            AISetupView()
+            if compact {
+                // The setup form needs the page's width.
+                StateView(symbol: "sparkles", title: String(localized: "先选择一个 AI 服务"),
+                          message: String(localized: "Veer 使用你自己的 API Key，或者本机的 Ollama。"),
+                          actionTitle: String(localized: "设置 AI 服务…")) { proxy.page = .agent }
+            } else {
+                AISetupView()
+            }
         } else {
             VStack(spacing: 0) {
                 if agent.profileIsInactive, let name = agent.profile?.name {
@@ -68,8 +92,8 @@ struct AgentView: View {
                 if agent.current == nil {
                     AgentWelcome()
                     ComposerView()
-                        .padding(.horizontal, Spacing.xl)
-                        .padding(.bottom, Spacing.lg)
+                        .padding(.horizontal, compact ? Spacing.md : Spacing.xl)
+                        .padding(.bottom, compact ? Spacing.md : Spacing.lg)
                         .frame(maxWidth: Metrics.readingWidth)
                         .frame(maxWidth: .infinity)
                 } else {
@@ -78,6 +102,29 @@ struct AgentView: View {
                 }
             }
         }
+    }
+}
+
+extension View {
+    /// The Agent's sheets and confirmations, once per window: the page and the panel both raise them.
+    func agentPresentations(_ agent: AgentStore) -> some View {
+        modifier(AgentPresentations(agent: agent))
+    }
+}
+
+private struct AgentPresentations: ViewModifier {
+    @Bindable var agent: AgentStore
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(item: $agent.editingGroup) { GroupEditorSheet(target: $0) }
+            .sheet(item: Binding(get: { agent.payloadTurn }, set: { _ in agent.payloadTurnID = nil })) { PayloadSheet(turn: $0) }
+            .alert(String(localized: "删除对话？"), isPresented: Binding(get: { agent.pendingDeletion != nil }, set: { if !$0 { agent.pendingDeletion = nil } })) {
+                Button(String(localized: "删除"), role: .destructive) { if let session = agent.pendingDeletion { agent.delete(session) } }
+                Button(String(localized: "取消"), role: .cancel) {}
+            } message: {
+                Text(String(localized: "对话记录会从本机删除；已经应用的修改仍在“我的分流”里。"))
+            }
     }
 }
 

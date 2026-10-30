@@ -103,14 +103,25 @@ struct ComposerView: View {
                         .opacity(completionHeight > 0 ? 1 : 0)
                 }
             }
-            HStack(spacing: Spacing.md) {
-                ShortcutHint(keys: "↩", label: String(localized: "发送"))
-                ShortcutHint(keys: "⇧↩", label: String(localized: "换行"))
-                ShortcutHint(keys: "@", label: String(localized: "选择出口"))
-                ShortcutHint(keys: "/", label: String(localized: "命令"))
+            // As many hints as the width allows: the side panel fits two.
+            ViewThatFits(in: .horizontal) {
+                hints(4)
+                hints(2)
             }
         }
         .onChange(of: query?.text) { highlighted = 0 }
+    }
+
+    private func hints(_ count: Int) -> some View {
+        HStack(spacing: Spacing.md) {
+            // Return to send is what anyone tries first; @ and / are what nobody would guess.
+            if count > 2 {
+                ShortcutHint(keys: "↩", label: String(localized: "发送"))
+                ShortcutHint(keys: "⇧↩", label: String(localized: "换行"))
+            }
+            ShortcutHint(keys: "@", label: String(localized: "选择出口"))
+            ShortcutHint(keys: "/", label: String(localized: "命令"))
+        }
     }
 
     private func options(hint: Bool) -> some View {

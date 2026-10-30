@@ -155,11 +155,8 @@ private struct GroupSection: View {
         return store.region(of: member.name).flatMap(NodeLocator.place)?.flag
     }
 
-    /// Opens the Agent page with `text` in the composer, in a conversation about this profile.
-    private func ask(_ text: String) {
-        store.page = .agent
-        agent.ask(text)
-    }
+    /// Opens the Agent beside this page with `text` in the composer, in a conversation about this profile.
+    private func ask(_ text: String) { agent.open(asking: text) }
 
     static func typeLabel(_ type: String) -> String {
         switch type {

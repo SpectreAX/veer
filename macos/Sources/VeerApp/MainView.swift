@@ -45,6 +45,7 @@ enum Page: String, CaseIterable, Identifiable, Hashable {
 
 struct MainView: View {
     @Environment(ProxyStore.self) private var store
+    @Environment(AgentStore.self) private var agent
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
@@ -96,7 +97,9 @@ struct MainView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(Color.surface)
             .toolbar { toolbar }
+            .inspector(isPresented: panelShown) { AgentPanel() }
         }
+        .agentPresentations(agent)
         .navigationTitle(store.page.title)
         .navigationSubtitle(store.activeProfile?.name ?? "")
     }
@@ -133,12 +136,25 @@ struct MainView: View {
         .padding(.vertical, Spacing.md)
     }
 
+    /// The Agent panel, on every page but the Agent page, which is the Agent at full size.
+    private var panelShown: Binding<Bool> {
+        Binding(get: { store.agentPanel && store.page != .agent },
+                set: { if store.page != .agent { store.agentPanel = $0 } })
+    }
+
     /// Hidden until there is a profile: without one they do nothing.
-    /// Start and stop only; the mode lives on the overview's card, the menu bar and the 代理 menu.
+    /// Start and stop and the Agent panel; the mode lives on the overview's card, the menu bar and the 代理 menu.
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
         if !store.profiles.isEmpty {
             ToolbarItem(placement: .primaryAction) {
                 StartStopButton()
+            }
+            if store.page != .agent {
+                ToolbarItem(placement: .primaryAction) {
+                    @Bindable var store = store
+                    Toggle(isOn: $store.agentPanel) { Label(String(localized: "Agent 面板"), systemImage: "sparkles") }
+                        .help(store.agentPanel ? String(localized: "隐藏 Agent 面板（⌥⌘I）") : String(localized: "显示 Agent 面板（⌥⌘I）"))
+                }
             }
         }
     }

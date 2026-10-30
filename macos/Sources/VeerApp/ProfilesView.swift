@@ -409,8 +409,7 @@ private struct ConfigCheckList: View {
                 } else if let instruction = finding.aiInstruction {
                     Button(String(localized: "问 AI")) {
                         dismiss()
-                        store.page = .agent
-                        agent.ask(instruction)
+                        agent.open(asking: instruction)
                     }
                     .secondaryAction()
                 }

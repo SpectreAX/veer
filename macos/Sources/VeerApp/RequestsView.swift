@@ -77,8 +77,7 @@ struct RequestsView: View {
         .contextMenu(forSelectionType: ClosedRequest.ID.self) { ids in
             if let request = store.requests.first(where: { ids.contains($0.id) }) {
                 Button("问 AI：为什么这样走？") {
-                    store.page = .agent
-                    agent.ask(String(localized: "为什么 \(request.row.host) 走了“\(request.row.policy)”？"))
+                    agent.open(asking: String(localized: "为什么 \(request.row.host) 走了“\(request.row.policy)”？"))
                 }
                 Button("为这个主机添加规则…") { addingRule = request.row }
                 Divider()
