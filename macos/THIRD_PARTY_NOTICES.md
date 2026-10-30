@@ -35,9 +35,10 @@ Veer 随应用打包以下组件，各自适用其许可证；许可证全文位
 
 ## Natural Earth
 
-- `Resources/Map/land-110m.json` is the 1:110m land layer of Natural Earth, simplified, used to
-  draw the node map. Public domain. Made with Natural Earth: <https://www.naturalearthdata.com>.
-- 节点地图的世界轮廓来自 Natural Earth 1:110m 陆地数据（公有领域）。
+- `Resources/Map/countries-110m.json` is the 1:110m Admin 0 countries layer of Natural Earth
+  (v5.1.2), simplified, used to draw the node map. Public domain. Made with Natural Earth:
+  <https://www.naturalearthdata.com>.
+- 节点地图的国家轮廓来自 Natural Earth 1:110m 国家数据（v5.1.2，公有领域）。
 
 ## Reference projects · 参考项目
 

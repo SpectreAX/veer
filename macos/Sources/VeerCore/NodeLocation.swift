@@ -123,6 +123,9 @@ public enum NodeLocator {
         }
     }
 
+    /// Every region Veer can place.
+    public static var allPlaces: [Place] { table.map(\.place) }
+
     private static let placesByCode = Dictionary(uniqueKeysWithValues: table.map { ($0.place.code, $0.place) })
 
     // Mainland Chinese cities are left out on purpose: in relay names ("沪日", "广港 IPLC") they

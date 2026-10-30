@@ -1196,3 +1196,6 @@
 "未识别" = "Not recognized";
 "%@ 个节点" = "Nodes: %@";
 "没有匹配“%@”的节点" = "No nodes match “%@”";
+"1 到 2 个节点" = "1 to 2 nodes";
+"3 到 9 个节点" = "3 to 9 nodes";
+"10 个以上" = "10 or more";

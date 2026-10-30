@@ -156,6 +156,18 @@ enum SnapshotRunner {
             // Beside the Agent panel in the smallest window.
             Scene(name: "18c-proxies-map-narrow", size: CGSize(width: 480, height: 640), store: { running(page: .proxies) }, view: AnyView(NodeMapView().background(Color.surface))),
             Scene(name: "18d-proxies-map-search", store: { running(page: .proxies) }, view: AnyView(NodeMapView(query: "大阪").frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.surface))),
+            // Every shade, a crowded Europe, a region with no shape, and nodes with no region.
+            Scene(name: "18e-proxies-map-many", store: {
+                let store = running(page: .proxies)
+                typealias Member = ProxyStore.Group.Member
+                let counts = [("🇺🇸 美国", 12), ("🇯🇵 日本", 5), ("🇩🇪 德国", 4), ("🇫🇷 法国", 2), ("🇬🇧 英国", 1), ("🇳🇱 荷兰", 1), ("🇭🇰 香港", 8), ("🇹🇼 台湾", 3), ("🇸🇬 新加坡", 4)]
+                var members = counts.flatMap { place, count in
+                    (1...count).map { Member(name: "\(place) \($0)", delay: place.contains("德国") || place.contains("法国") ? 260 : 90 + $0 * 7, isGroup: false) }
+                }
+                members += [Member(name: "Relay Alpha", delay: 120, isGroup: false), Member(name: "Relay Beta", delay: nil, isGroup: false)]
+                store.groups = [.init(name: "节点选择", type: "Selector", now: "🇺🇸 美国 1", members: members)]
+                return store
+            }, view: AnyView(NodeMapView().frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.surface))),
             Scene(name: "19-profiles-update-failed", store: {
                 let store = running(page: .profiles)
                 if var first = store.profiles.first {

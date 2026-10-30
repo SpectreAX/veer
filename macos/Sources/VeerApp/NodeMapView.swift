@@ -110,16 +110,27 @@ private struct MapCard: View {
                 Text(verbatim: summary).font(.callout).foregroundStyle(.secondary)
             }
             WorldMap(regions: regions, selected: selected, choose: choose)
-            HStack(spacing: Spacing.md) {
+            FlowLayout(spacing: Spacing.md) {
                 legend(.success, String(localized: "低于 200 ms"))
                 legend(.warning, String(localized: "200 到 500 ms"))
                 legend(.failure, String(localized: "更慢或失败"))
                 legend(.neutral, String(localized: "未测速"))
+                Rectangle().fill(Color.primary.opacity(0.15)).frame(width: 1, height: Spacing.md)
+                coverage(1, String(localized: "1 到 2 个节点"))
+                coverage(3, String(localized: "3 到 9 个节点"))
+                coverage(10, String(localized: "10 个以上"))
             }
             .font(.caption)
             .foregroundStyle(.secondary)
         }
         .panel()
+    }
+
+    private func coverage(_ count: Int, _ title: String) -> some View {
+        HStack(spacing: Spacing.xs) {
+            RoundedRectangle(cornerRadius: Radius.tiny).fill(WorldMap.shade(count)).frame(width: Spacing.md, height: Spacing.sm)
+            Text(verbatim: title).lineLimit(1)
+        }
     }
 
     private func legend(_ kind: StatusKind, _ title: String) -> some View {
@@ -130,13 +141,15 @@ private struct MapCard: View {
     }
 }
 
-/// Land outlines from Natural Earth (public domain) in an equirectangular projection, with a dot
-/// for each region that has nodes.
+/// Countries from Natural Earth (public domain) in an equirectangular projection, shaded by how
+/// many nodes they have, with a dot for each region that has nodes. Regions too small to have a
+/// shape at this scale (Singapore, Hong Kong) are the dot alone.
 private struct WorldMap: View {
     let regions: [String?: [MapNode]]
     let selected: String?
     let choose: (String) -> Void
-    @State private var hovered: String?
+    @State private var hoveredDot: String?
+    @State private var hoveredCountry: String?
 
     /// Latitudes shown: Antarctica and the far north add nothing here.
     private static let north = 84.0, south = -58.0
@@ -145,17 +158,27 @@ private struct WorldMap: View {
         GeometryReader { proxy in
             let size = proxy.size
             let codes = regions.keys.compactMap { $0 }.sorted()
+            let hovered = hoveredDot ?? hoveredCountry
+            let positions = dotPositions(codes, in: size)
             ZStack(alignment: .topLeading) {
-                LandLayer()
+                CountriesLayer()
+                CoverageLayer(counts: counts, selected: selected)
+                    .contentShape(Rectangle())
+                    .onContinuousHover { phase in
+                        if case .active(let location) = phase { hoveredCountry = country(at: location, in: size) } else { hoveredCountry = nil }
+                    }
+                    .onTapGesture { location in
+                        if let code = country(at: location, in: size) { choose(code) }
+                    }
                 ForEach(codes, id: \.self) { code in
-                    if let place = NodeLocator.place(code), let nodes = regions[code] {
+                    if let place = NodeLocator.place(code), let nodes = regions[code], let position = positions[code] {
                         dot(place: place, nodes: nodes)
-                            .position(Self.project(longitude: place.longitude, latitude: place.latitude, in: size))
+                            .position(position)
                             .zIndex(hovered == code || selected == code ? 1 : 0)
                     }
                 }
-                if let hovered, let place = NodeLocator.place(hovered), let nodes = regions[hovered] {
-                    tooltip(place: place, nodes: nodes, in: size)
+                if let hovered, let place = NodeLocator.place(hovered), let nodes = regions[hovered], let position = positions[hovered] {
+                    tooltip(place: place, nodes: nodes, at: position, in: size)
                         .zIndex(2)
                 }
             }
@@ -183,16 +206,15 @@ private struct WorldMap: View {
         }
         .buttonStyle(.plain)
         .onHover { inside in
-            if inside { hovered = place.code } else if hovered == place.code { hovered = nil }
+            if inside { hoveredDot = place.code } else if hoveredDot == place.code { hoveredDot = nil }
         }
         .accessibilityLabel(String(localized: "\(place.name)，\(String(nodes.count)) 个节点，最低延迟 \(Format.delay(best))"))
         .animation(Motion.standard, value: isSelected)
     }
 
     /// Above the dot, kept inside the map; below it for regions at the map's top edge.
-    private func tooltip(place: NodeLocator.Place, nodes: [MapNode], in size: CGSize) -> some View {
+    private func tooltip(place: NodeLocator.Place, nodes: [MapNode], at point: CGPoint, in size: CGSize) -> some View {
         let best = nodes.map(\.delay).reduce(nil, NodeMapView.better)
-        let point = Self.project(longitude: place.longitude, latitude: place.latitude, in: size)
         let margin: CGFloat = 130, offset: CGFloat = 32
         return Text(String(localized: "\(place.flag) \(place.name)：\(String(nodes.count)) 个节点，最低延迟 \(Format.delay(best))"))
             .font(.callout)
@@ -212,30 +234,87 @@ private struct WorldMap: View {
         return CGPoint(x: (longitude + 180) / 360 * size.width, y: (north - clamped) / (north - south) * size.height)
     }
 
-    /// The land, drawn on its own so hovering a dot does not redraw it.
-    private struct LandLayer: View {
+    /// Crowded regions (western Europe, say) moved just far enough apart to read and click; the
+    /// shading still shows where they are.
+    private func dotPositions(_ codes: [String], in size: CGSize) -> [String: CGPoint] {
+        var points: [String: CGPoint] = [:]
+        for code in codes {
+            if let place = NodeLocator.place(code) { points[code] = Self.project(longitude: place.longitude, latitude: place.latitude, in: size) }
+        }
+        return MapDots.spread(points, spacing: 26, in: size)
+    }
+
+    private var counts: [String: Int] {
+        var counts: [String: Int] = [:]
+        for (code, nodes) in regions { if let code { counts[code] = nodes.count } }
+        return counts
+    }
+
+    /// The listed region whose shape holds `location`.
+    private func country(at location: CGPoint, in size: CGSize) -> String? {
+        let longitude = location.x / size.width * 360 - 180
+        let latitude = Self.north - location.y / size.height * (Self.north - Self.south)
+        return Self.countries.first { shape in
+            guard let code = shape.code, regions[code] != nil else { return false }
+            return shape.contains(longitude: longitude, latitude: latitude)
+        }?.code
+    }
+
+    /// A country with this many nodes: the same three steps as the legend.
+    static func shade(_ count: Int) -> Color {
+        Color.veerAccent.opacity(count >= 10 ? 0.72 : count >= 3 ? 0.46 : 0.24)
+    }
+
+    private static func path(_ shape: MapCountry, in size: CGSize) -> Path {
+        var path = Path()
+        for ring in shape.rings {
+            for (index, point) in ring.enumerated() {
+                let p = project(longitude: point[0], latitude: point[1], in: size)
+                index == 0 ? path.move(to: p) : path.addLine(to: p)
+            }
+            path.closeSubpath()
+        }
+        return path
+    }
+
+    /// Every country, on its own so that hovering and choosing do not redraw them.
+    private struct CountriesLayer: View {
         var body: some View {
             Canvas { context, size in
-                for ring in WorldMap.land {
-                    var path = Path()
-                    for (index, point) in ring.enumerated() {
-                        let p = WorldMap.project(longitude: point[0], latitude: point[1], in: size)
-                        index == 0 ? path.move(to: p) : path.addLine(to: p)
-                    }
-                    path.closeSubpath()
-                    context.fill(path, with: .color(Color.secondary.opacity(0.18)))
+                for shape in WorldMap.countries {
+                    let path = WorldMap.path(shape, in: size)
+                    context.fill(path, with: .color(Color.secondary.opacity(0.18)), style: FillStyle(eoFill: true))
+                    context.stroke(path, with: .color(Color.surfaceRaised), lineWidth: 0.5)
                 }
             }
             .accessibilityHidden(true)
         }
     }
 
-    /// Rings of [longitude, latitude], loaded once from the app bundle.
-    static let land: [[[Double]]] = {
-        guard let url = Bundle.main.url(forResource: "land-110m", withExtension: "json", subdirectory: "Map")
-                ?? Bundle.main.url(forResource: "land-110m", withExtension: "json"),
+    /// The countries with nodes.
+    private struct CoverageLayer: View {
+        let counts: [String: Int]
+        let selected: String?
+
+        var body: some View {
+            Canvas { context, size in
+                for shape in WorldMap.countries {
+                    guard let code = shape.code, let count = counts[code] else { continue }
+                    let path = WorldMap.path(shape, in: size)
+                    context.fill(path, with: .color(WorldMap.shade(count)), style: FillStyle(eoFill: true))
+                    if code == selected { context.stroke(path, with: .color(Color.veerAccent), lineWidth: 1.5) }
+                }
+            }
+            .accessibilityHidden(true)
+        }
+    }
+
+    /// Loaded once from the app bundle.
+    static let countries: [MapCountry] = {
+        guard let url = Bundle.main.url(forResource: "countries-110m", withExtension: "json", subdirectory: "Map")
+                ?? Bundle.main.url(forResource: "countries-110m", withExtension: "json"),
               let data = try? Data(contentsOf: url) else { return [] }
-        return (try? JSONDecoder().decode([[[Double]]].self, from: data)) ?? []
+        return (try? JSONDecoder().decode([MapCountry].self, from: data)) ?? []
     }()
 }
 
