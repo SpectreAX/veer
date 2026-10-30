@@ -32,7 +32,7 @@ struct LogsView: View {
 
     var body: some View {
         content
-            .searchable(text: $query, placement: .toolbar, prompt: Text("搜索日志"))
+            .toolbarSearch($query, prompt: Text("搜索日志"))
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
                     Button { store.logsPaused.toggle() } label: {

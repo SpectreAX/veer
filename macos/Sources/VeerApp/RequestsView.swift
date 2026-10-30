@@ -24,7 +24,7 @@ struct RequestsView: View {
 
     var body: some View {
         content
-            .searchable(text: $query, placement: .toolbar, prompt: Text("搜索主机、进程、规则或节点"))
+            .toolbarSearch($query, prompt: Text("搜索主机、进程、规则或节点"))
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button { store.clearRequests() } label: { Label("清空", systemImage: "trash") }

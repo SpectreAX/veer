@@ -109,7 +109,6 @@ struct VeerCommands: Commands {
         CommandGroup(replacing: .newItem) {
             Button("新对话") { agent.open(fresh: true) }
                 .keyboardShortcut("n")
-                .disabled(store.activeProfile == nil)
             Divider()
             Button("导入配置…") { store.openImport() }.keyboardShortcut("o")
             Button("用剪贴板内容导入…") { store.openImport(prefill: NSPasteboard.general.string(forType: .string) ?? "") }
@@ -122,6 +121,11 @@ struct VeerCommands: Commands {
             Button("备份…") { BackupFlow.backUp(store: store) }
             Button("从备份恢复…") { BackupFlow.restore(store: store) }
         }
+        // In place of the default Find menu, which takes ⌘F first and has nothing to do here.
+        CommandGroup(replacing: .textEditing) {
+            Button("查找") { ToolbarSearchFocus.focus() }
+                .keyboardShortcut("f")
+        }
         CommandGroup(after: .sidebar) {
             ForEach(Array(Page.allCases.enumerated()), id: \.element) { index, page in
                 Button(page.title) { store.page = page }.keyboardShortcut(KeyEquivalent(Character(String(index + 1))))
@@ -129,7 +133,6 @@ struct VeerCommands: Commands {
             Divider()
             Toggle("Agent 面板", isOn: Binding(get: { store.agentPanel }, set: { store.agentPanel = $0 }))
                 .keyboardShortcut("i", modifiers: [.command, .option])
-                .disabled(store.page == .agent || store.profiles.isEmpty)
             Divider()
         }
         CommandMenu("代理") {

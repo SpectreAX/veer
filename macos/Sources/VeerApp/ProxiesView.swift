@@ -21,7 +21,7 @@ struct ProxiesView: View {
 
     var body: some View {
         content
-            .searchable(text: $query, placement: .toolbar, prompt: Text("搜索节点或策略组"))
+            .toolbarSearch($query, prompt: Text("搜索节点或策略组"))
             .toolbar {
                 ToolbarItem {
                     Picker(String(localized: "显示方式"), selection: $showMap) {
