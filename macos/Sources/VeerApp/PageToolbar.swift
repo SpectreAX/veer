@@ -52,8 +52,9 @@ struct ToolbarCapsule: View {
         .frame(height: 40)
         .glassSurface(in: Capsule())
         // A constant width: a toolbar item snaps to a new size at once, which would throw the
-        // capsule sideways while it grows. It stays anchored at the far end instead.
-        .frame(width: Self.width, alignment: .trailing)
+        // capsule sideways while it grows. It stays anchored at the far end instead. Able to give
+        // way, or the toolbar adds an overflow button whenever room is short for a moment.
+        .frame(minWidth: 120, idealWidth: Self.width, maxWidth: Self.width, alignment: .trailing)
         .animation(reduceMotion ? nil : .spring(duration: 0.38, bounce: 0.14), value: content?.page)
         .animation(reduceMotion ? nil : .spring(duration: 0.38, bounce: 0.14), value: store.page)
     }

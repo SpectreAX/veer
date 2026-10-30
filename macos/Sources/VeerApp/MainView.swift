@@ -69,7 +69,28 @@ struct MainView: View {
         .onDisappear { DockPresence.windowClosed() }
     }
 
+    /// The sidebar and page, with the Agent panel outside them: collapsing a sidebar gives the
+    /// detail column its final width at once and then slides it, which would throw anything inside
+    /// it past the window's edge.
     private var split: some View {
+        HStack(spacing: 0) {
+            sidebarAndPage
+                .frame(minWidth: 0, maxWidth: .infinity)
+            // On every page but the Agent page, which is the Agent at full size. A plain column,
+            // not `.inspector`: changing an inspector again before its collapse has finished makes
+            // AppKit raise over a view it has already removed, ending the app.
+            if store.agentPanel && store.page != .agent {
+                AgentPanelColumn()
+                    .transition(.move(edge: .trailing))
+            }
+        }
+        // Only for opening and closing: going to and from the Agent page swaps pages at once.
+        .animation(reduceMotion ? nil : Motion.standard, value: store.agentPanel)
+        // The band would stop at the panel, which is outside the split view; the capsule floats.
+        .toolbarBackground(.hidden, for: .windowToolbar)
+    }
+
+    private var sidebarAndPage: some View {
         NavigationSplitView {
             List(selection: Binding<Page?>(get: { store.page }, set: { if let page = $0 { store.page = page } })) {
                 ForEach(Page.Section.allCases, id: \.self) { section in
@@ -83,32 +104,22 @@ struct MainView: View {
             .safeAreaInset(edge: .bottom) { profileFooter }
             .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 260)
         } detail: {
-            HStack(spacing: 0) {
-                Group {
-                    switch store.page {
-                    case .overview: OverviewView()
-                    case .proxies: ProxiesView()
-                    case .profiles: ProfilesView()
-                    case .connections: ConnectionsView()
-                    case .requests: RequestsView()
-                    case .logs: LogsView()
-                    case .dns: DNSView()
-                    case .agent: AgentView()
-                    }
-                }
-                .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .background(Color.surface)
-                // On every page but the Agent page, which is the Agent at full size. A plain
-                // column, not `.inspector`: changing an inspector again before its collapse has
-                // finished makes AppKit raise over a view it has already removed, ending the app.
-                if store.agentPanel && store.page != .agent {
-                    AgentPanelColumn()
-                        .transition(.move(edge: .trailing))
+            Group {
+                switch store.page {
+                case .overview: OverviewView()
+                case .proxies: ProxiesView()
+                case .profiles: ProfilesView()
+                case .connections: ConnectionsView()
+                case .requests: RequestsView()
+                case .logs: LogsView()
+                case .dns: DNSView()
+                case .agent: AgentView()
                 }
             }
-            // Only for opening and closing: going to and from the Agent page swaps pages at once.
-            .animation(reduceMotion ? nil : Motion.standard, value: store.agentPanel)
+            .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            // The toolbar has no band, so nothing may scroll under the title and window buttons.
             .clipped()
+            .background(Color.surface)
             // Read here, in the same update as the page, so the capsule animates with it.
             .overlayPreferenceValue(PageToolbarKey.self) { content in
                 Color.clear

@@ -55,12 +55,14 @@ struct NodeMapView: View {
     var body: some View {
         let regions = regions
         let selected = selection(in: regions)
-        if regions.isEmpty {
-            StateView(symbol: "magnifyingglass", title: String(localized: "没有匹配“\(query)”的节点"))
-        } else {
-            ScrollView {
-                VStack(alignment: .leading, spacing: Spacing.lg) {
-                    MapCard(regions: regions, selected: selected) { chosen = $0 }
+        // The same scroll view whatever the search finds: taking it away for an empty state would
+        // take the keyboard focus out of the search field, in the middle of typing.
+        ScrollView {
+            VStack(alignment: .leading, spacing: Spacing.lg) {
+                MapCard(regions: regions, selected: selected) { chosen = $0 }
+                if regions.isEmpty {
+                    Text(String(localized: "没有匹配“\(query)”的节点")).font(.callout).foregroundStyle(.secondary)
+                } else {
                     RegionGrid(regions: regions, selected: selected) { chosen = $0 }
                     if let selected {
                         RegionNodes(code: selected, nodes: nodes(of: selected, in: regions))
@@ -68,8 +70,8 @@ struct NodeMapView: View {
                         Text("选择一个地区查看节点").font(.callout).foregroundStyle(.secondary)
                     }
                 }
-                .padding(Spacing.xl)
             }
+            .padding(Spacing.xl)
         }
     }
 

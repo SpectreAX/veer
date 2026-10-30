@@ -50,10 +50,14 @@ struct ProxiesView: View {
                       message: String(localized: "所有流量按规则直接发往节点或直连。"))
         } else if showMap {
             NodeMapView(query: query)
-        } else if shownGroups.isEmpty {
-            StateView(symbol: "magnifyingglass", title: String(localized: "没有匹配“\(query)”的节点或策略组"))
         } else {
+            // The same scroll view whatever the search finds: taking it away for an empty state
+            // would take the keyboard focus out of the search field, in the middle of typing.
             ScrollView {
+                if shownGroups.isEmpty {
+                    StateView(symbol: "magnifyingglass", title: String(localized: "没有匹配“\(query)”的节点或策略组"))
+                        .frame(minHeight: 320)
+                }
                 LazyVStack(alignment: .leading, spacing: Spacing.lg) {
                     if let notice = store.notice { StatusBadge(kind: .warning, text: notice) }
                     ForEach(shownGroups) { GroupSection(group: $0) }
