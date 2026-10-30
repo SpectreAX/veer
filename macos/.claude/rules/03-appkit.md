@@ -1,8 +1,3 @@
----
-paths:
-  - "**/*.swift"
----
-
 # AppKit interop
 
 Use AppKit for native capabilities SwiftUI does not expose well: advanced window management, the

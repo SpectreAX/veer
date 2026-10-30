@@ -1,8 +1,3 @@
----
-paths:
-  - "**/*.swift"
----
-
 # SwiftUI
 
 - SwiftUI is the default UI framework. Prefer native containers and controls.

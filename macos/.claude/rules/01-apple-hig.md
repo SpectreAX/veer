@@ -1,10 +1,3 @@
----
-paths:
-  - "**/*.swift"
-  - "DESIGN_SPEC.md"
-  - "Design/**"
----
-
 # Apple HIG
 
 The official guidelines are the source of truth. Links are in `Design/HIG_REFERENCES.md`.

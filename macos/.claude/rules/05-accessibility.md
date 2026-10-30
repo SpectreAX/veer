@@ -1,8 +1,3 @@
----
-paths:
-  - "**/*.swift"
----
-
 # Accessibility
 
 Accessibility is part of implementation, not polish.

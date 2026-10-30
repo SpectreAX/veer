@@ -1,9 +1,3 @@
----
-paths:
-  - "**/*.swift"
-  - "Tests/**"
----
-
 # Testing and verification
 
 Never claim a check passed unless it ran in this session.

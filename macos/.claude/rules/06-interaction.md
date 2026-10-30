@@ -1,8 +1,3 @@
----
-paths:
-  - "**/*.swift"
----
-
 # macOS interaction
 
 - Important commands have menu-bar access, with shortcuts that follow macOS conventions.

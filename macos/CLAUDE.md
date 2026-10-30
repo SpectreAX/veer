@@ -9,7 +9,7 @@ Read these before changing the matching area:
 - Behavior of every page: [docs/SPEC.md](docs/SPEC.md). Requirements: [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
 - Design: [DESIGN_SPEC.md](DESIGN_SPEC.md), [Design/TOKENS.md](Design/TOKENS.md), [Design/COMPONENTS.md](Design/COMPONENTS.md).
 - Code layout and state: [ARCHITECTURE.md](ARCHITECTURE.md).
-- Rules for Swift files load from `.claude/rules/` when those files are opened.
+- Coding and design rules are in `.claude/rules/` and load at the start of each session.
 
 ## Commands
 

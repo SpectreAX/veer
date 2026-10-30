@@ -1,10 +1,3 @@
----
-paths:
-  - "**/*.swift"
-  - "DESIGN_SPEC.md"
-  - "Design/**"
----
-
 # Visual design
 
 - Use semantic system colors, system typography and SF Symbols.
