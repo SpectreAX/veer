@@ -24,13 +24,11 @@ struct RequestsView: View {
 
     var body: some View {
         content
-            .toolbarSearch($query, prompt: Text("搜索主机、进程、规则或节点"))
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button { store.clearRequests() } label: { Label("清空", systemImage: "trash") }
-                        .help("清空请求记录")
-                        .disabled(store.requests.isEmpty)
-                }
+            .pageToolbar(.requests) {
+                Button { store.clearRequests() } label: { Label("清空", systemImage: "trash") }
+                    .help("清空请求记录")
+                    .disabled(store.requests.isEmpty)
+                ToolbarSearchField(text: $query, prompt: Text("搜索主机、进程、规则或节点"))
             }
             .sheet(item: $addingRule) { AddRuleSheet(row: $0) }
     }

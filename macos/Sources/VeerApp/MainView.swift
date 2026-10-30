@@ -109,7 +109,12 @@ struct MainView: View {
             // Only for opening and closing: going to and from the Agent page swaps pages at once.
             .animation(reduceMotion ? nil : Motion.standard, value: store.agentPanel)
             .clipped()
-            .toolbar { toolbar }
+            // Read here, in the same update as the page, so the capsule animates with it.
+            .overlayPreferenceValue(PageToolbarKey.self) { content in
+                Color.clear
+                    .allowsHitTesting(false)
+                    .toolbar { toolbar(content) }
+            }
         }
         .agentPresentations(agent)
         .navigationTitle(store.page.title)
@@ -148,19 +153,16 @@ struct MainView: View {
         .padding(.vertical, Spacing.md)
     }
 
-    /// Hidden until there is a profile: without one they do nothing.
-    /// Start and stop and the Agent panel; the mode lives on the overview's card, the menu bar and the 代理 menu.
-    @ToolbarContentBuilder private var toolbar: some ToolbarContent {
+    /// Hidden until there is a profile: without one they do nothing. One item for the whole
+    /// toolbar, never added or removed as pages change; the mode lives on the overview's card, the
+    /// menu bar and the 代理 menu.
+    @ToolbarContentBuilder private func toolbar(_ content: PageToolbarContent?) -> some ToolbarContent {
         if !store.profiles.isEmpty {
-            ToolbarItem(placement: .primaryAction) {
-                StartStopButton()
-            }
-            if store.page != .agent {
-                ToolbarItem(placement: .primaryAction) {
-                    @Bindable var store = store
-                    Toggle(isOn: $store.agentPanel) { Label(String(localized: "Agent 面板"), systemImage: "sparkles") }
-                        .help(store.agentPanel ? String(localized: "隐藏 Agent 面板（⌥⌘I）") : String(localized: "显示 Agent 面板（⌥⌘I）"))
-                }
+            if #available(macOS 26, *) {
+                ToolbarItem(placement: .primaryAction) { ToolbarCapsule(content: content) }
+                    .sharedBackgroundVisibility(.hidden)
+            } else {
+                ToolbarItem(placement: .primaryAction) { ToolbarCapsule(content: content) }
             }
         }
     }

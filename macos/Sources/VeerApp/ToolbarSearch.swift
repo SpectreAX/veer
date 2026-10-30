@@ -17,28 +17,14 @@ enum ToolbarSearchFocus {
     }
 }
 
-extension View {
-    /// A search field in the toolbar, for pages with something to filter. Not `.searchable`: its
-    /// toolbar item has one fixed identifier, and going straight from one page with a field to
-    /// another could insert the new item before removing the old, which NSToolbar answers by
-    /// raising an exception that ends the app.
-    func toolbarSearch(_ text: Binding<String>, prompt: Text) -> some View {
-        modifier(ToolbarSearch(text: text, prompt: prompt))
-    }
-}
-
-private struct ToolbarSearch: ViewModifier {
+/// A search field for a page's toolbar (⌘F focuses it). Not `.searchable`: its toolbar item has one
+/// fixed identifier, and going straight from one page with a field to another could insert the new
+/// item before removing the old, which NSToolbar answers by raising an exception that ends the app.
+struct ToolbarSearchField: View {
     @Binding var text: String
     let prompt: Text
 
-    func body(content: Content) -> some View {
-        content
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) { field }
-            }
-    }
-
-    private var field: some View {
+    var body: some View {
         HStack(spacing: Spacing.xs) {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
             TextField(String(localized: "搜索"), text: $text, prompt: prompt)
@@ -55,6 +41,6 @@ private struct ToolbarSearch: ViewModifier {
             }
         }
         .padding(.horizontal, Spacing.sm)
-        .frame(minWidth: 120, idealWidth: 220, maxWidth: 280)
+        .frame(width: 210)
     }
 }

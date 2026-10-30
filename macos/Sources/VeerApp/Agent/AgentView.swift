@@ -21,16 +21,14 @@ struct AgentView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button { agent.undo() } label: { Label(String(localized: "撤销修改"), systemImage: "arrow.uturn.backward") }
-                    .help(String(localized: "撤销这个对话里最近应用的修改"))
-                    .disabled(!agent.canUndo)
-                // ⌘N is the File menu's, on every page.
-                Button { agent.newThread() } label: { Label(String(localized: "新对话"), systemImage: "square.and.pencil") }
-                    .help(String(localized: "新对话（⌘N）"))
-                    .disabled(proxy.activeProfile == nil)
-            }
+        .pageToolbar(.agent) {
+            Button { agent.undo() } label: { Label(String(localized: "撤销修改"), systemImage: "arrow.uturn.backward") }
+                .help(String(localized: "撤销这个对话里最近应用的修改"))
+                .disabled(!agent.canUndo)
+            // ⌘N is the File menu's, on every page.
+            Button { agent.newThread() } label: { Label(String(localized: "新对话"), systemImage: "square.and.pencil") }
+                .help(String(localized: "新对话（⌘N）"))
+                .disabled(proxy.activeProfile == nil)
         }
     }
 }

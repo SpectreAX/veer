@@ -32,10 +32,8 @@ struct ProfilesView: View {
                 }
             }
         }
-        .toolbar {
-            ToolbarItem {
-                Button { store.openImport() } label: { Label("导入配置", systemImage: "plus") }.help("导入配置（⌘O）")
-            }
+        .pageToolbar(.profiles) {
+            Button { store.openImport() } label: { Label("导入配置", systemImage: "plus") }.help("导入配置（⌘O）")
         }
         .sheet(item: $details) { ProfileDetailSheet(profile: $0) }
         .alert("删除配置？", isPresented: Binding(get: { pendingDeletion != nil }, set: { if !$0 { pendingDeletion = nil } })) {

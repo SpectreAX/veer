@@ -32,20 +32,18 @@ struct LogsView: View {
 
     var body: some View {
         content
-            .toolbarSearch($query, prompt: Text("搜索日志"))
-            .toolbar {
-                ToolbarItemGroup(placement: .primaryAction) {
-                    Button { store.logsPaused.toggle() } label: {
-                        store.logsPaused ? Label("继续", systemImage: "play") : Label("暂停", systemImage: "pause")
-                    }
-                    .help(store.logsPaused ? String(localized: "继续记录日志") : String(localized: "暂停记录日志"))
-                    Button { copy(shown) } label: { Label("复制", systemImage: "doc.on.doc") }
-                        .help("复制显示的日志")
-                        .disabled(shown.isEmpty)
-                    Button { store.clearLogs() } label: { Label("清空", systemImage: "trash") }
-                        .help("清空日志")
-                        .disabled(store.logs.isEmpty)
+            .pageToolbar(.logs) {
+                Button { store.logsPaused.toggle() } label: {
+                    store.logsPaused ? Label("继续", systemImage: "play") : Label("暂停", systemImage: "pause")
                 }
+                .help(store.logsPaused ? String(localized: "继续记录日志") : String(localized: "暂停记录日志"))
+                Button { copy(shown) } label: { Label("复制", systemImage: "doc.on.doc") }
+                    .help("复制显示的日志")
+                    .disabled(shown.isEmpty)
+                Button { store.clearLogs() } label: { Label("清空", systemImage: "trash") }
+                    .help("清空日志")
+                    .disabled(store.logs.isEmpty)
+                ToolbarSearchField(text: $query, prompt: Text("搜索日志"))
             }
     }
 

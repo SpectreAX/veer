@@ -25,8 +25,7 @@ struct ConnectionsView: View {
 
     var body: some View {
         content
-            .toolbarSearch($query, prompt: Text("搜索主机、进程、规则或节点"))
-            .toolbar { toolbar }
+            .pageToolbar(.connections) { toolbar }
             .onAppear { store.watchConnections(true) }
             .onDisappear { store.watchConnections(false) }
             .sheet(item: $addingRule) { AddRuleSheet(row: $0) }
@@ -123,17 +122,16 @@ struct ConnectionsView: View {
         .onDeleteCommand { for id in selection { store.closeConnection(id) } }
     }
 
-    @ToolbarContentBuilder private var toolbar: some ToolbarContent {
-        ToolbarItemGroup(placement: .primaryAction) {
-            Button { store.connectionsPaused.toggle() } label: {
-                store.connectionsPaused ? Label("继续刷新", systemImage: "play") : Label("暂停刷新", systemImage: "pause")
-            }
-            .help(store.connectionsPaused ? String(localized: "继续实时刷新") : String(localized: "暂停实时刷新，方便查看"))
-            .disabled(!store.isRunning)
-            Button { confirmingCloseAll = true } label: { Label("关闭全部连接", systemImage: "xmark.circle") }
-                .help("关闭全部连接")
-                .disabled(store.connections.isEmpty)
+    @ViewBuilder private var toolbar: some View {
+        Button { store.connectionsPaused.toggle() } label: {
+            store.connectionsPaused ? Label("继续刷新", systemImage: "play") : Label("暂停刷新", systemImage: "pause")
         }
+        .help(store.connectionsPaused ? String(localized: "继续实时刷新") : String(localized: "暂停实时刷新，方便查看"))
+        .disabled(!store.isRunning)
+        Button { confirmingCloseAll = true } label: { Label("关闭全部连接", systemImage: "xmark.circle") }
+            .help("关闭全部连接")
+            .disabled(store.connections.isEmpty)
+        ToolbarSearchField(text: $query, prompt: Text("搜索主机、进程、规则或节点"))
     }
 
     private func rows(_ ids: Set<ConnectionRow.ID>) -> [ConnectionRow] { store.connections.filter { ids.contains($0.id) } }

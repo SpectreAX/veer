@@ -21,25 +21,21 @@ struct ProxiesView: View {
 
     var body: some View {
         content
-            .toolbarSearch($query, prompt: Text("搜索节点或策略组"))
-            .toolbar {
-                ToolbarItem {
-                    Picker(String(localized: "显示方式"), selection: $showMap) {
-                        Label("网格", systemImage: "square.grid.2x2").tag(false)
-                        Label("地图", systemImage: "map").tag(true)
-                    }
-                    .pickerStyle(.segmented)
-                    .help(String(localized: "按策略组或在地图上查看节点"))
+            .pageToolbar(.proxies) {
+                Picker(String(localized: "显示方式"), selection: $showMap) {
+                    Label("网格", systemImage: "square.grid.2x2").tag(false)
+                    Label("地图", systemImage: "map").tag(true)
                 }
-                ToolbarItem {
-                    let allCollapsed = !store.groups.isEmpty && store.groups.allSatisfy { store.collapsedGroups.contains($0.name) }
-                    Button { store.setAllCollapsed(!allCollapsed) } label: {
-                        allCollapsed ? Label("全部展开", systemImage: "rectangle.expand.vertical")
-                                     : Label("全部收起", systemImage: "rectangle.compress.vertical")
-                    }
-                    .help(allCollapsed ? String(localized: "展开全部策略组") : String(localized: "收起全部策略组"))
-                    .disabled(store.groups.isEmpty || showMap)
+                .pickerStyle(.segmented)
+                .help(String(localized: "按策略组或在地图上查看节点"))
+                let allCollapsed = !store.groups.isEmpty && store.groups.allSatisfy { store.collapsedGroups.contains($0.name) }
+                Button { store.setAllCollapsed(!allCollapsed) } label: {
+                    allCollapsed ? Label("全部展开", systemImage: "rectangle.expand.vertical")
+                                 : Label("全部收起", systemImage: "rectangle.compress.vertical")
                 }
+                .help(allCollapsed ? String(localized: "展开全部策略组") : String(localized: "收起全部策略组"))
+                .disabled(store.groups.isEmpty || showMap)
+                ToolbarSearchField(text: $query, prompt: Text("搜索节点或策略组"))
             }
     }
 

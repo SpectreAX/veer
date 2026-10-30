@@ -3,7 +3,7 @@ import Testing
 
 /// Two system pieces that crashed the app. `.searchable` on more than one page: switching between
 /// them made NSToolbar raise over a duplicate `com.apple.SwiftUI.search` item; pages use
-/// `toolbarSearch`. `.inspector`: changing it again before its collapse finished made AppKit raise
+/// `ToolbarSearchField`. `.inspector`: changing it again before its collapse finished made AppKit raise
 /// over a removed view; the Agent panel is `AgentPanelColumn`.
 struct ToolbarSearchTests {
     @Test func noPageUsesTheCrashingSystemPieces() throws {
@@ -16,6 +16,6 @@ struct ToolbarSearchTests {
                 found.append(url.lastPathComponent)
             }
         }
-        #expect(found.isEmpty, "Use toolbarSearch or AgentPanelColumn: \(found)")
+        #expect(found.isEmpty, "Use ToolbarSearchField or AgentPanelColumn: \(found)")
     }
 }
