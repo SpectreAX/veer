@@ -118,7 +118,7 @@ public struct ProfileAnalysis: Sendable, Equatable {
                 },
                 providers: strings(group["use"]),
                 includesAll: ["include-all", "include-all-proxies", "include-all-providers"].contains { group[$0]?.bool == true },
-                referenceCount: references[name] ?? 0
+                referenceCount: references[name] ?? 0,
             )
         }
 
@@ -142,7 +142,7 @@ public struct ProfileAnalysis: Sendable, Equatable {
             groups: groups,
             flows: flows,
             proxyTypes: Dictionary(proxies.compactMap { proxy in proxy["name"]?.string.map { ($0, label(proxy["type"]?.string, in: protocolLabels, uppercaseFallback: true)) } },
-                                   uniquingKeysWith: { a, _ in a })
+                                   uniquingKeysWith: { a, _ in a }),
         )
     }
 

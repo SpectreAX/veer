@@ -1,7 +1,7 @@
 import Foundation
 import Testing
-import Yams
 @testable import VeerCore
+import Yams
 
 enum GroupFixture {
     static let yaml = """
@@ -63,7 +63,7 @@ struct GroupTests {
     @Test func namesNeverCollideAndNamedExitsCanBeMembers() throws {
         let doc = try ConfigDocument.parse(GroupFixture.yaml.replacingOccurrences(of: "🍎 Apple", with: "巴哈姆特"))
         let regions = GroupFixture.regions(doc)
-        let plan = EditPlan(operations: [.group(.init(id: "new-1", name: "巴哈姆特", type: "url-test", members: [doc.target(named: "🇯🇵 东京 01")!.id], )),
+        let plan = EditPlan(operations: [.group(.init(id: "new-1", name: "巴哈姆特", type: "url-test", members: [doc.target(named: "🇯🇵 东京 01")!.id])),
                                          .route(matchType: "DOMAIN-SUFFIX", match: "gamer.com.tw", targetId: "new-1")])
         let result = try PlanApplier.apply(plan, to: doc, regions: regions)
         #expect(try ConfigDocument.parse(result.candidate).rules.first == "DOMAIN-SUFFIX,gamer.com.tw,巴哈姆特 2")

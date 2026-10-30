@@ -1,7 +1,6 @@
 import SwiftUI
 import VeerCore
 
-
 struct ToastView: View {
     let toast: Toast
     let undo: () -> Void
@@ -20,7 +19,6 @@ struct ToastView: View {
         .accessibilityElement(children: .combine)
     }
 }
-
 
 /// Thinking strength as a stepped slider (one stop per level the model supports), with the
 /// level names under their stops. Click a name to jump to it.

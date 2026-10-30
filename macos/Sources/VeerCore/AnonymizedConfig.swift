@@ -41,7 +41,7 @@ public struct AnonymizedConfig: Sendable {
 
     static let catalogNames: Set<String> = Set(
         (SystemPrompt.geositeNames + SystemPrompt.geoipNames.map { "\($0)-ip" } + SystemPrompt.acl4ssrNames.map { String($0.split(separator: "/").last!) }
-            + SystemPrompt.blackmatrix7Names).map { $0.lowercased() }
+            + SystemPrompt.blackmatrix7Names).map { $0.lowercased() },
     )
 
     /// `instruction`: the user's instruction. Rule values it contains stay readable, so "把 google 的

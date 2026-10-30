@@ -291,8 +291,6 @@ public extension View {
     }
 }
 
-
-
 public extension View {
     /// The native, uncolored look for selection controls and secondary buttons. The accent is
     /// kept for the one primary action of a view, so it stays easy to find.

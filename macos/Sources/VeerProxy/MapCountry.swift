@@ -55,4 +55,3 @@ public enum MapDots {
         CGPoint(x: min(max(point.x, margin), max(margin, size.width - margin)), y: min(max(point.y, margin), max(margin, size.height - margin)))
     }
 }
-

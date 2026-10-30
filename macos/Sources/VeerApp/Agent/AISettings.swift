@@ -1,7 +1,6 @@
 import SwiftUI
 import VeerCore
 
-
 struct AISettingsPane: View {
     @Environment(AgentStore.self) private var store
     @State private var key = ""

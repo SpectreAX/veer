@@ -1,7 +1,7 @@
 import Foundation
 import Testing
-import Yams
 @testable import VeerCore
+import Yams
 
 struct AnonymizedConfigTests {
     let source = """
