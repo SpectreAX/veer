@@ -55,6 +55,8 @@ final class ProxyStore {
     var page: Page = .overview
     /// The Agent beside every page but its own (`AgentPanel`). Open until the user closes it.
     var agentPanel: Bool { didSet { defaults.set(agentPanel, forKey: "agentPanel") } }
+    /// Its width, which the user drags.
+    var agentPanelWidth: Double { didSet { defaults.set(agentPanelWidth, forKey: "agentPanelWidth") } }
     var phase: Phase = .stopped
     var profiles: [Profile] = []
     var activeProfileID: UUID? {
@@ -218,6 +220,7 @@ final class ProxyStore {
         reconnectAfterChanges = defaults.object(forKey: "reconnectAfterChanges") as? Bool ?? true
         collapsedGroups = Set(defaults.stringArray(forKey: "collapsedGroups") ?? [])
         agentPanel = defaults.object(forKey: "agentPanel") as? Bool ?? true
+        agentPanelWidth = defaults.object(forKey: "agentPanelWidth") as? Double ?? AgentPanelColumn.idealWidth
         state = stateStore.load()
         profiles = profileStore.loadAll()
         activeProfileID = defaults.string(forKey: "activeProfile").flatMap(UUID.init(uuidString:)).flatMap { id in profiles.contains { $0.id == id } ? id : nil }

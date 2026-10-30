@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import VeerProxy
 
@@ -23,7 +24,6 @@ struct AgentPanel: View {
         }
         .background(Color.surface)
         .environment(\.agentCompact, true)
-        .inspectorColumnWidth(min: 320, ideal: 380, max: 520)
     }
 
     private var header: some View {
@@ -63,6 +63,39 @@ struct AgentPanel: View {
         }
         .padding(.horizontal, Spacing.md)
         .frame(height: 36)
+    }
+}
+
+/// The panel as a column beside the page, its left edge dragged to resize it.
+struct AgentPanelColumn: View {
+    @Environment(ProxyStore.self) private var store
+    @State private var widthAtDragStart: Double?
+
+    nonisolated static let idealWidth = 380.0
+    static let widths = 320.0...520.0
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Divider()
+            AgentPanel()
+                .frame(width: Self.widths.contains(store.agentPanelWidth) ? store.agentPanelWidth : Self.idealWidth)
+        }
+        .overlay(alignment: .leading) {
+            Color.clear
+                .frame(width: Spacing.sm)
+                .contentShape(Rectangle())
+                .onHover { inside in
+                    if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+                }
+                .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                    .onChanged { drag in
+                        let start = widthAtDragStart ?? store.agentPanelWidth
+                        widthAtDragStart = start
+                        store.agentPanelWidth = min(max(start - drag.translation.width, Self.widths.lowerBound), Self.widths.upperBound)
+                    }
+                    .onEnded { _ in widthAtDragStart = nil })
+                .accessibilityHidden(true)
+        }
     }
 }
 

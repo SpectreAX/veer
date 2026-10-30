@@ -82,22 +82,29 @@ struct MainView: View {
             .safeAreaInset(edge: .bottom) { profileFooter }
             .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 260)
         } detail: {
-            Group {
-                switch store.page {
-                case .overview: OverviewView()
-                case .proxies: ProxiesView()
-                case .profiles: ProfilesView()
-                case .connections: ConnectionsView()
-                case .requests: RequestsView()
-                case .logs: LogsView()
-                case .dns: DNSView()
-                case .agent: AgentView()
+            HStack(spacing: 0) {
+                Group {
+                    switch store.page {
+                    case .overview: OverviewView()
+                    case .proxies: ProxiesView()
+                    case .profiles: ProfilesView()
+                    case .connections: ConnectionsView()
+                    case .requests: RequestsView()
+                    case .logs: LogsView()
+                    case .dns: DNSView()
+                    case .agent: AgentView()
+                    }
+                }
+                .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .background(Color.surface)
+                // On every page but the Agent page, which is the Agent at full size. A plain
+                // column, not `.inspector`: changing an inspector again before its collapse has
+                // finished makes AppKit raise over a view it has already removed, ending the app.
+                if store.agentPanel && store.page != .agent {
+                    AgentPanelColumn()
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .background(Color.surface)
             .toolbar { toolbar }
-            .inspector(isPresented: panelShown) { AgentPanel() }
         }
         .agentPresentations(agent)
         .navigationTitle(store.page.title)
@@ -134,12 +141,6 @@ struct MainView: View {
         .font(.callout)
         .padding(.horizontal, Spacing.lg)
         .padding(.vertical, Spacing.md)
-    }
-
-    /// The Agent panel, on every page but the Agent page, which is the Agent at full size.
-    private var panelShown: Binding<Bool> {
-        Binding(get: { store.agentPanel && store.page != .agent },
-                set: { if store.page != .agent { store.agentPanel = $0 } })
     }
 
     /// Hidden until there is a profile: without one they do nothing.
