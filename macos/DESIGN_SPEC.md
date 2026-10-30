@@ -1,0 +1,86 @@
+# Design specification
+
+Veer should feel like a first-party Mac app. [docs/SPEC.md](docs/SPEC.md) section 10 records the
+visual decisions; this file gives the priorities and the deviations.
+
+## Priorities
+
+1. Native usability
+2. Platform consistency
+3. Accessibility
+4. Information hierarchy
+5. Visual refinement
+6. Brand expression
+
+Brand expression must not damage native usability.
+
+## Window
+
+- Standard window controls, resizing and full screen.
+- Minimum 960 × 640, default 1320 × 860 (`Metrics`). Below 1100 wide the layout goes compact.
+- The empty space in the top row moves the window; a double click follows the system setting.
+
+## Navigation
+
+- `NavigationSplitView` sidebar in two groups: Proxy and AI.
+- `⌘1`–`⌘8` switch pages. Important commands are also in the menu bar.
+- The Agent panel is a plain column beside the page.
+
+## Toolbar
+
+- Icon-only buttons have accessibility labels and tooltips.
+- A page's own buttons sit on the left. The Agent toggle and start/stop stay fixed on the right.
+- Search is `⌘F`; Esc clears it and leaves the field.
+
+## Typography
+
+System fonts and semantic text styles. Code and logs use `Typography.code` and `codeSmall`.
+
+## Color
+
+- Semantic system colors and `VeerUI` tokens only. Check light and dark.
+- Never carry meaning by color alone: `StatusKind` is always icon plus text.
+- Green is for small areas: primary actions, selection, written state.
+
+## Materials
+
+- Glass belongs to controls and navigation. Content panels (`panel()`) stay solid.
+- Page code uses `primaryAction()`, `secondaryAction()` and `floatingPanel()`, which fall back to
+  standard styles on macOS 14 and 15. It does not call `glassEffect`.
+
+## Motion
+
+`Motion.quick` and `Motion.standard`, or a documented spring. With Reduce Motion on, only fade.
+
+## Components and interaction
+
+- Prefer `Button`, `Toggle`, `Picker`, `List`, `Table`, sheets, alerts and context menus.
+- One primary action per page.
+- Runtime actions run at once and can be undone. Config changes need an Apply click on a diff card.
+- Destructive actions use the standard confirmation pattern.
+
+## Language
+
+Simplified Chinese is the source text and English translates it, in `.strings` files. Layouts must
+hold both: English runs longer.
+
+## Documented deviations
+
+Each entry is a known, deliberate departure from the system default. Reviews should not report one
+as a violation unless its reason no longer holds. Anything not listed here is not excused.
+
+| Deviation | Why | Where |
+|---|---|---|
+| The system toolbar stays empty and the controls float above it | With items in `NSToolbar`, opening the sidebar pushes them into the `»` overflow, and they jump instead of animating between pages | SPEC 5, `PageToolbar`, `ToolbarCapsule` |
+| Own search field instead of `.searchable` | Several `.searchable` pages crash `NSToolbar` with a duplicate identifier on page switch (1.0.3 crash) | SPEC 5, `ToolbarSearchField` |
+| Plain Agent column instead of `.inspector` | `NSSplitViewController` throws if the inspector changes mid-animation (crash on 2026-10-30) | `AgentPanelColumn` |
+| Veer green tint instead of the system accent color | Brand color, used only on small areas. Custom accent colors are out of scope for v1 | `Color.veerAccent` |
+| Neutral gray selected segment | Keeps the accent on primary actions. Standard picker otherwise | `SegmentedControl` |
+| Fixed chart palette | Categorical colors need stable, color-blind-checked pairs that the system colors do not give. Every chart has a legend with exact counts | `ChartPalette` |
+| `.strings` instead of String Catalog | `xcstringstool` needs Xcode, which this machine does not have | SPEC 9 |
+| Carbon `RegisterEventHotKey` for global shortcuts | The only system API for them without a third-party library. Unbound by default | SPEC 8, `HotKeys` |
+
+## Acceptance
+
+Major UI changes are reviewed from real rendered output. Reading source alone cannot establish
+visual compliance, and a screenshot cannot establish keyboard or VoiceOver behavior.

@@ -43,7 +43,8 @@ enum SnapshotRunner {
         var agent: ((AgentStore) -> Void)? = nil
     }
 
-    static func scenes() -> [Scene] {
+    // swiftlint:disable:next function_body_length
+    static func scenes() -> [Scene] { // A flat list that grows with every screen.
         [
             Scene(name: "01-onboarding-add", store: { sample(profiles: false) }, view: AnyView(MainView())),
             Scene(name: "02-onboarding-routing", store: {
