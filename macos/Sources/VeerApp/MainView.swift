@@ -47,6 +47,7 @@ struct MainView: View {
     @Environment(ProxyStore.self) private var store
     @Environment(AgentStore.self) private var agent
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         @Bindable var store = store
@@ -102,8 +103,12 @@ struct MainView: View {
                 // finished makes AppKit raise over a view it has already removed, ending the app.
                 if store.agentPanel && store.page != .agent {
                     AgentPanelColumn()
+                        .transition(.move(edge: .trailing))
                 }
             }
+            // Only for opening and closing: going to and from the Agent page swaps pages at once.
+            .animation(reduceMotion ? nil : Motion.standard, value: store.agentPanel)
+            .clipped()
             .toolbar { toolbar }
         }
         .agentPresentations(agent)

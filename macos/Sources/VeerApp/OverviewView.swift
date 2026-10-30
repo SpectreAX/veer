@@ -6,6 +6,7 @@ import VeerProxy
 /// groups, as cards in a grid that reflows with the window.
 struct OverviewView: View {
     @Environment(ProxyStore.self) private var store
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Halves side by side need about this much; narrower (the Agent panel open in a small
     /// window), each row's halves stack, and below the second width the quarter cards too.
     static let stackBelow: CGFloat = 720, stackPairsBelow: CGFloat = 460
@@ -36,6 +37,9 @@ struct OverviewView: View {
                 .frame(maxWidth: 1180)
                 .frame(maxWidth: .infinity)
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+                // Cards rearrange rather than jump when the Agent panel opens or closes.
+                .animation(reduceMotion ? nil : Motion.standard, value: stacked)
+                .animation(reduceMotion ? nil : Motion.standard, value: width < Self.stackPairsBelow)
             }
             .task(id: store.isRunning) {
                 guard store.isRunning else { return }
