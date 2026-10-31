@@ -134,33 +134,76 @@ private struct StatusCard: View {
         } content: {
             // The whole width for the address, which matters most here, beside the Agent panel too.
             exit
-            HStack(alignment: .center, spacing: Spacing.lg) {
+            // As few lines as fit. The network's name, which can be long, is the first to get its own;
+            // last the address, which must keep its port and has no room beside the button.
+            ViewThatFits(in: .horizontal) {
+                beside {
+                    HStack(alignment: .top, spacing: Spacing.xl) {
+                        runTime
+                        localAddress
+                        network
+                    }
+                }
+                beside {
+                    VStack(alignment: .leading, spacing: Spacing.sm) {
+                        HStack(alignment: .top, spacing: Spacing.xl) {
+                            runTime
+                            localAddress
+                        }
+                        network
+                    }
+                }
                 VStack(alignment: .leading, spacing: Spacing.sm) {
-                    // As few lines as fit. The name of the network, which can be long, is the first to get its own.
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: Spacing.xl) {
-                            runTime
-                            localAddress
-                            network
-                        }
-                        VStack(alignment: .leading, spacing: Spacing.sm) {
-                            HStack(spacing: Spacing.xl) {
-                                runTime
-                                localAddress
-                            }
-                            network
-                        }
+                    beside {
                         VStack(alignment: .leading, spacing: Spacing.sm) {
                             runTime
-                            localAddress
                             network
                         }
                     }
+                    localAddress
                 }
-                Spacer(minLength: 0)
-                startButton
+            }
+            reach
+        }
+    }
+
+    private func beside<Details: View>(@ViewBuilder _ details: () -> Details) -> some View {
+        HStack(alignment: .center, spacing: Spacing.lg) {
+            details()
+            Spacer(minLength: 0)
+            startButton
+        }
+    }
+
+    /// Whether traffic reaches Veer at all, in words, as the toolbar's switches say it only in a fill.
+    @ViewBuilder private var reach: some View {
+        let tun = String(localized: "TUN：\(store.tunStatus)")
+        switch TrafficReach(running: store.isRunning, tunActive: store.tunActive, systemProxyOn: store.systemProxyOn,
+                            systemProxyRemembered: store.systemProxyRemembered) {
+        case .bypassed:
+            StatusBadge(kind: .warning, text: String(localized: "系统代理和 TUN 都没生效，流量不经过 Veer"))
+                .fixedSize(horizontal: false, vertical: true)
+        case .tun:
+            reachLine(String(localized: "TUN 已接管全部流量"))
+        case .systemProxy:
+            reachLine(String(localized: "系统代理已打开，端口 \(String(store.proxyPort))"), tun)
+        case .systemProxyComing:
+            reachLine(String(localized: "正在打开系统代理"), tun)
+        case .stopped(let proxyOnStart):
+            reachLine(proxyOnStart ? String(localized: "启动后打开系统代理") : String(localized: "系统代理已关闭"), tun)
+        }
+    }
+
+    /// On one line, or a line each when that would break in the middle of one.
+    private func reachLine(_ parts: String...) -> some View {
+        ViewThatFits(in: .horizontal) {
+            Text(verbatim: parts.joined(separator: " · ")).lineLimit(1)
+            VStack(alignment: .leading, spacing: Spacing.xxs) {
+                ForEach(parts, id: \.self) { Text(verbatim: $0) }
             }
         }
+        .font(.caption)
+        .foregroundStyle(.secondary)
     }
 
     private var runTime: some View {
@@ -182,7 +225,15 @@ private struct StatusCard: View {
     /// What a device on the local network connects to.
     private var localAddress: some View {
         LabeledValue(String(localized: "局域网")) {
-            Text(verbatim: ProxyStore.localAddress ?? "—").lineLimit(1).textSelection(.enabled)
+            if !store.settings.allowLAN {
+                Text("仅本机可用").lineLimit(1)
+            } else if !store.isRunning {
+                Text("启动后生效").lineLimit(1)
+            } else if let address = ProxyStore.localAddress {
+                Text(verbatim: "\(address):\(store.proxyPort)").lineLimit(1).textSelection(.enabled)
+            } else {
+                Text(verbatim: "—")
+            }
         }
     }
 
@@ -349,7 +400,7 @@ private struct OverviewToolbar: View {
         }
         .disabled(!store.isRunning)
         ToolbarToggle(title: String(localized: "TUN"), symbol: tunWithoutEffect ? "exclamationmark.shield" : "shield.lefthalf.filled",
-                      isOn: store.settings.tun && !tunWithoutEffect, help: String(localized: "TUN：\(tunStatus)"), value: tunStatus) {
+                      isOn: store.settings.tun && !tunWithoutEffect, help: String(localized: "TUN：\(store.tunStatus)"), value: store.tunStatus) {
             store.setTUN(!store.settings.tun)
         }
         ToolbarToggle(title: String(localized: "允许局域网设备连接"), symbol: "rectangle.connected.to.line.below", isOn: store.settings.allowLAN,
@@ -363,11 +414,13 @@ private struct OverviewToolbar: View {
     }
 
     private var tunWithoutEffect: Bool { store.settings.tun && store.isRunning && !store.tunActive }
+}
 
-    private var tunStatus: String {
-        if store.tunActive { return String(localized: "运行中") }
-        if !store.settings.tun { return String(localized: "已关闭") }
-        return store.isRunning ? String(localized: "未生效，已改用系统代理") : String(localized: "启动后生效")
+private extension ProxyStore {
+    var tunStatus: String {
+        if tunActive { return String(localized: "运行中") }
+        if !settings.tun { return String(localized: "已关闭") }
+        return isRunning ? String(localized: "未生效，已改用系统代理") : String(localized: "启动后生效")
     }
 }
 

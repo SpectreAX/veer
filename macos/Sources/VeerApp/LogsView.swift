@@ -5,9 +5,13 @@ import VeerProxy
 /// The core's log while it runs: filter by level, search, pause, copy.
 struct LogsView: View {
     @Environment(ProxyStore.self) private var store
-    @State private var level = Level.all
+    @State private var level: Level
     @State private var query = ""
     @State private var selection = Set<LogEntry.ID>()
+
+    init(level: Level = .all) {
+        _level = State(initialValue: level)
+    }
 
     enum Level: String, CaseIterable, Identifiable {
         case all, info, warning, error, debug
@@ -51,12 +55,9 @@ struct LogsView: View {
     @ViewBuilder private var content: some View {
         if !store.isRunning && store.logs.isEmpty {
             StateView(symbol: Page.logs.symbol, title: String(localized: "内核没有运行"), message: String(localized: "启动后，内核的日志会实时显示在这里。"))
-        } else if shown.isEmpty {
-            StateView(symbol: Page.logs.symbol,
-                      title: store.logs.isEmpty ? String(localized: "还没有日志") : String(localized: "没有匹配的日志"),
-                      message: store.logs.isEmpty ? String(localized: "日志级别是“\(store.settings.logLevel)”，可以在设置中调整。") : nil)
         } else {
             VStack(spacing: 0) {
+                // Above the empty state too: a level with no entries must not take away the way back.
                 HStack {
                     SegmentedControl(label: String(localized: "级别"), selection: $level,
                                      options: Level.allCases.map { .init(value: $0, title: $0.title) })
@@ -67,7 +68,16 @@ struct LogsView: View {
                 .padding(.horizontal, Spacing.lg)
                 .padding(.vertical, Spacing.sm)
                 Divider()
-                logList
+                if shown.isEmpty {
+                    StateView(symbol: Page.logs.symbol,
+                              title: store.logs.isEmpty ? String(localized: "还没有日志") : String(localized: "没有匹配的日志"),
+                              // The core sends only what its level lets through, which may be why this one is empty.
+                              message: query.trimmingCharacters(in: .whitespaces).isEmpty
+                                  ? String(localized: "日志级别是“\(store.settings.logLevel)”，可以在设置中调整。") : nil,
+                              actionTitle: level != .all && !store.logs.isEmpty ? String(localized: "显示全部级别") : nil) { level = .all }
+                } else {
+                    logList
+                }
             }
         }
     }

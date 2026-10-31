@@ -143,7 +143,13 @@ private struct StartStep: View {
                 Spacer()
                 if store.phase == .starting { ProgressView().controlSize(.small) }
                 Toggle("开启代理", isOn: Binding(get: { store.isRunning && store.systemProxyOn }, set: { on in
-                    if on { store.startWithSystemProxy() } else { store.stop() }
+                    if on {
+                        store.startWithSystemProxy()
+                    } else {
+                        // Off here means the proxy too, not only for this run.
+                        store.setSystemProxy(false)
+                        store.stop()
+                    }
                 }))
                 .toggleStyle(.switch)
                 .controlSize(.large)

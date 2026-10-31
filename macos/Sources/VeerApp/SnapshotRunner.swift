@@ -97,6 +97,24 @@ enum SnapshotRunner {
                 store.exit = nil
                 return store
             }, view: AnyView(MainView())),
+            // Nothing reaches the core, while the exit still looks right.
+            Scene(name: "04g-overview-no-proxy", store: {
+                let store = running()
+                store.systemProxyOn = false
+                return store
+            }, view: AnyView(MainView())),
+            Scene(name: "04h-overview-lan", store: { running(lan: true) }, view: AnyView(MainView())),
+            // Stopped with the proxy remembered, and with LAN on: neither is in effect yet.
+            Scene(name: "04i-overview-stopped", store: {
+                let store = running(lan: true)
+                store.phase = .stopped
+                store.systemProxyOn = false
+                store.exit = nil
+                store.systemProxyRemembered = true
+                return store
+            }, view: AnyView(MainView())),
+            // The address's narrowest place, beside the Agent panel in the smallest window.
+            Scene(name: "24e-panel-narrow-lan", size: CGSize(width: 860, height: 640), store: { running(panel: true, lan: true) }, view: AnyView(MainView())),
             Scene(name: "04f-overview-starting", store: {
                 let store = running()
                 store.phase = .starting
@@ -200,6 +218,12 @@ enum SnapshotRunner {
                 store.logs = sampleLogs()
                 return store
             }, view: AnyView(MainView())),
+            // A level with no entries, which must keep the way back to the others.
+            Scene(name: "09l-logs-empty-level", store: {
+                let store = running(page: .logs)
+                store.logs = sampleLogs()
+                return store
+            }, view: AnyView(LogsView(level: .debug).background(Color.surface))),
             Scene(name: "10-import", size: CGSize(width: 560, height: 360), store: {
                 let store = sample()
                 store.importText = "https://sub.example.invalid/api/v1/client/subscribe?token=demo"
@@ -368,11 +392,12 @@ enum SnapshotRunner {
         return ProxyStore(paths: paths, systemProxy: SystemProxy(runner: { _ in "" }), binary: nil, defaults: defaults)
     }
 
-    static func running(page: Page = .overview, tun: Bool = false, panel: Bool = false) -> ProxyStore {
+    static func running(page: Page = .overview, tun: Bool = false, panel: Bool = false, lan: Bool = false) -> ProxyStore {
         let store = sample()
         store.agentPanel = panel
         // Before the phase: turning TUN on in a running store restarts the core.
         store.settings.tun = tun
+        store.settings.allowLAN = lan
         store.tunActive = tun
         store.page = page
         store.phase = .running

@@ -134,7 +134,7 @@ final class ProxyStore {
     /// Close open connections after a profile switch, a routing change or a node switch, so they
     /// reconnect the new way instead of staying on the old route.
     var reconnectAfterChanges: Bool { didSet { defaults.set(reconnectAfterChanges, forKey: "reconnectAfterChanges") } }
-    @ObservationIgnored private var systemProxyBusy = false
+    @ObservationIgnored private let systemProxyWork = SerialWork()
     /// Groups folded on the Proxies page, by name; remembered across launches.
     var collapsedGroups: Set<String> { didSet { defaults.set(Array(collapsedGroups), forKey: "collapsedGroups") } }
     /// The active profile with its "my routing" layer applied, as the core last loaded it.
@@ -519,16 +519,23 @@ final class ProxyStore {
         }
     }
 
+    /// Whether the system proxy comes on with the core.
+    var systemProxyRemembered: Bool {
+        get { state.systemProxy }
+        set { state.systemProxy = newValue }
+    }
+
     /// Starts the core and turns the system proxy on once it runs, as onboarding's one switch does.
     func startWithSystemProxy() {
         state.systemProxy = true
         start()
     }
 
-    /// The user stopping the core; the next launch stays stopped.
+    /// The user stopping the core; the next launch stays stopped. The system proxy goes off with it
+    /// and comes back with the next start: stopping says nothing about wanting it off.
     func stop() {
         state.running = false
-        if systemProxyOn { setSystemProxy(false) }
+        if systemProxyOn { setSystemProxy(false, remember: false) }
         tearDownCore()
         phase = .stopped
     }
@@ -643,18 +650,20 @@ final class ProxyStore {
         }
     }
 
-    /// The user turning the system proxy on or off; remembered for the next launch.
+    /// The user turning the system proxy on or off; remembered for the next start unless `remember` is false.
     /// `networksetup` runs once per service and setting, which takes long enough to stall the
-    /// switch; it runs in the background while the switch already shows the new state.
-    func setSystemProxy(_ on: Bool) {
+    /// switch; it runs in the background while the switch already shows the new state. One change at
+    /// a time and none dropped: a stop during a turn-on that skipped its restore would leave the Mac's
+    /// proxy pointing at a core that has gone.
+    func setSystemProxy(_ on: Bool, remember: Bool = true) {
         notice = nil
-        guard !on || isRunning, !systemProxyBusy else { return }
-        systemProxyBusy = true
+        guard !on || isRunning else { return }
         systemProxyOn = on
-        state.systemProxy = on
-        let proxy = systemProxy, port = proxyPort, snapshot = state.snapshot
-        Task {
-            defer { systemProxyBusy = false }
+        if remember { state.systemProxy = on }
+        let proxy = systemProxy, port = proxyPort
+        systemProxyWork.add { [self] in
+            // Read now: the change before this one may have just recorded it.
+            let snapshot = state.snapshot
             do {
                 if on {
                     // Record what each service had first, so turning off puts it back.
@@ -673,7 +682,7 @@ final class ProxyStore {
                 }
             } catch {
                 systemProxyOn = !on
-                state.systemProxy = !on
+                if remember { state.systemProxy = !on }
                 notice = message(for: error)
             }
         }

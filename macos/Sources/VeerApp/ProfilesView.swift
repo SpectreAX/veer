@@ -290,6 +290,7 @@ private struct EditRow: View {
     let conflicts: [String]
     let setEnabled: (Bool) -> Void
     let delete: () -> Void
+    @State private var confirmingDelete = false
 
     var body: some View {
         HStack(alignment: .top, spacing: Spacing.md) {
@@ -303,11 +304,19 @@ private struct EditRow: View {
                 ForEach(conflicts, id: \.self) { StatusBadge(kind: .warning, text: $0, compact: true) }
             }
             Spacer(minLength: 0)
-            Button(role: .destructive, action: delete) { Image(systemName: "trash") }
+            Button(role: .destructive) { confirmingDelete = true } label: { Image(systemName: "trash") }
                 .buttonStyle(.borderless)
                 .help("删除这项修改")
+                .accessibilityLabel(String(localized: "删除这项修改"))
         }
         .opacity(edit.enabled ? 1 : 0.6)
+        // Asked each time: it can't be undone, and unchecking the box is there to set one aside.
+        .alert("删除这项修改？", isPresented: $confirmingDelete) {
+            Button("删除", role: .destructive, action: delete)
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("这项修改会从“我的分流”里删除，无法撤销。只想暂时不用的话，取消勾选就可以。")
+        }
     }
 }
 
