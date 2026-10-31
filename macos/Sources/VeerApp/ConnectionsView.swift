@@ -26,7 +26,7 @@ struct ConnectionsView: View {
     var body: some View {
         content
             .pageToolbar(.connections) { toolbar } content: {
-                ToolbarSearchField(text: $query, prompt: Text("搜索主机、进程、规则或节点"))
+                ToolbarSearchField(text: $query, prompt: Text("搜索连接"), help: String(localized: "搜索主机、进程、规则或节点"))
             }
             .onAppear { store.watchConnections(true) }
             .onDisappear { store.watchConnections(false) }

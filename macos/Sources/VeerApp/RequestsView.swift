@@ -29,7 +29,7 @@ struct RequestsView: View {
                     .help("清空请求记录")
                     .disabled(store.requests.isEmpty)
             } content: {
-                ToolbarSearchField(text: $query, prompt: Text("搜索主机、进程、规则或节点"))
+                ToolbarSearchField(text: $query, prompt: Text("搜索请求"), help: String(localized: "搜索主机、进程、规则或节点"))
             }
             .sheet(item: $addingRule) { AddRuleSheet(row: $0) }
     }

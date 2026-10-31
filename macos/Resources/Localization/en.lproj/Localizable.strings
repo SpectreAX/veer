@@ -882,7 +882,7 @@
 "设置" = "Settings";
 
 /* Connections */
-"搜索主机、进程、规则或节点" = "Search hosts or nodes";
+"搜索主机、进程、规则或节点" = "Search hosts, processes, rules or nodes";
 "关闭全部连接？" = "Close all connections?";
 "关闭全部" = "Close All";
 "正在进行的下载和通话会中断，应用会按当前规则重新连接。" = "Downloads and calls in progress are interrupted; apps reconnect by the current rules.";
@@ -1228,3 +1228,5 @@
 "TUN 的后台服务已经安装，但还没有获得允许。" = "TUN's background service is installed but not allowed yet.";
 "在系统设置的“登录项”中允许 Veer 后，TUN 才能生效。" = "TUN works once you allow Veer in Login Items in System Settings.";
 "稍后" = "Later";
+"搜索连接" = "Search connections";
+"搜索请求" = "Search requests";

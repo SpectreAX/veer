@@ -352,7 +352,7 @@ private struct OverviewToolbar: View {
                       isOn: store.settings.tun && !tunWithoutEffect, help: String(localized: "TUN：\(tunStatus)"), value: tunStatus) {
             store.setTUN(!store.settings.tun)
         }
-        ToolbarToggle(title: String(localized: "允许局域网设备连接"), symbol: "wifi", isOn: store.settings.allowLAN,
+        ToolbarToggle(title: String(localized: "允许局域网设备连接"), symbol: "rectangle.connected.to.line.below", isOn: store.settings.allowLAN,
                       help: store.settings.allowLAN ? String(localized: "允许局域网设备连接") : String(localized: "仅本机可用")) {
             store.settings.allowLAN.toggle()
         }

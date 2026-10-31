@@ -23,25 +23,34 @@ enum ToolbarSearchFocus {
 /// item before removing the old, which NSToolbar answers by raising an exception that ends the app.
 struct ToolbarSearchField: View {
     @Binding var text: String
+    /// Short: the field is narrow, and a longer prompt runs out of room in English first.
     let prompt: Text
+    /// What it searches, when the prompt doesn't say.
+    var help: String?
 
     var body: some View {
         HStack(spacing: Spacing.xs) {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-            TextField(String(localized: "搜索"), text: $text, prompt: prompt)
-                .textFieldStyle(.plain)
-                .labelsHidden()
-                .onExitCommand {
-                    text = ""
-                    NSApp.keyWindow?.makeFirstResponder(nil)
-                }
+            field
             if !text.isEmpty {
                 Button { text = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
                     .buttonStyle(.plain)
+                    .help(String(localized: "清除搜索"))
                     .accessibilityLabel(String(localized: "清除搜索"))
             }
         }
         .padding(.horizontal, Spacing.sm)
         .frame(width: 190)
+    }
+
+    @ViewBuilder private var field: some View {
+        let field = TextField(String(localized: "搜索"), text: $text, prompt: prompt)
+            .textFieldStyle(.plain)
+            .labelsHidden()
+            .onExitCommand {
+                text = ""
+                NSApp.keyWindow?.makeFirstResponder(nil)
+            }
+        if let help { field.help(help) } else { field }
     }
 }
