@@ -2,7 +2,8 @@
 # Builds dist/Veer.app: the app plus the bundled Mihomo core it runs.
 set -eu
 cd "${0:A:h}/.."
-export SDKROOT="${SDKROOT:-/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk}"
+# Xcode's SDK: the Command Line Tools' 27 SDK declares @State as a macro but has no SwiftUI macro plugin.
+export SDKROOT="${SDKROOT:-/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.2.sdk}"
 # The core is not committed: scripts/build-mihomo.sh builds the pinned upstream tag that
 # THIRD_PARTY_NOTICES.md names into vendor/mihomo. VEER_MIHOMO_BIN overrides it.
 core="${VEER_MIHOMO_BIN:-$PWD/vendor/mihomo}"

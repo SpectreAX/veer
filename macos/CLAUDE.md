@@ -20,8 +20,8 @@ scripts/build-app.sh                        # dist/Veer.app, built the way it sh
 scripts/snapshots.sh                        # every screen, light and dark, zh and en
 ```
 
-This machine has Command Line Tools only, no Xcode: `xcodebuild`, Instruments, XCUITest and
-`.xcstrings` are not available. Do not suggest them as the next step.
+Builds use the macOS 27.2 SDK inside Xcode, because the Command Line Tools' 27 SDK declares `@State`
+as a macro without the SwiftUI macro plugin it needs. The project stays a SwiftPM package.
 
 ## Non-negotiable
 

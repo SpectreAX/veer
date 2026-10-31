@@ -333,7 +333,7 @@ Agent 是 Veer 的主要功能，所以除了 Agent 页，它在每一页右侧�
 - **全局快捷键：** 用 Carbon 的 `RegisterEventHotKey` 实现，不引入第三方库。录制时如果和系统快捷键冲突，提示用户。
 
 ## 9. 国际化
-- **文案存放：** 用 `.strings` 文件，放在 `Resources/Localization/zh-Hans.lproj` 和 `Resources/Localization/en.lproj`，打包时复制进应用包的 `Contents/Resources/`，运行时从主 bundle 读取。用 `.strings` 而不用 String Catalog，是因为本机只有 Command Line Tools，没有能编译 `.xcstrings` 的 `xcstringstool`。
+- **文案存放：** 用 `.strings` 文件，放在 `Resources/Localization/zh-Hans.lproj` 和 `Resources/Localization/en.lproj`，打包时复制进应用包的 `Contents/Resources/`，运行时从主 bundle 读取。用 `.strings` 而不用 String Catalog，是因为当时本机只有 Command Line Tools，没有能编译 `.xcstrings` 的 `xcstringstool`；现在已安装 Xcode，尚未决定是否迁移。
 - **键：** 用中文原文；插值写成格式说明符（字符串 `%@`，整数 `%lld`），端口这类不该加千位分隔符的数字先转成字符串。同一句中文在不同位置要不同译文时，用 `String(localized: "page.proxies", defaultValue: "代理")` 这样的独立键。
 - **中文表：** `zh-Hans.lproj/Localizable.strings` 是空的，只为让系统把简体中文列为 Veer 支持的语言；查不到键时显示的就是中文原文。
 - **测试：** `LocalizationTests` 扫描 `VeerApp`、`VeerProxy`、`VeerUI` 里的中文字面量（插值视为占位符），检查每一句在英文表里都有翻译，并检查译文的占位符数量和原文一致。
