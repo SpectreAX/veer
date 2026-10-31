@@ -304,13 +304,19 @@ private struct ProfileMenu: View {
             Button("管理配置") { store.page = .proxies }
             Button("导入配置…") { store.openImport() }
         } label: {
-            Text(verbatim: name).font(.caption).foregroundStyle(.secondary)
+            HStack(spacing: Spacing.xs) {
+                Text(verbatim: name)
+                Image(systemName: "chevron.down").font(.caption2.weight(.semibold))
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
+        // Not the borderless style, which insets its label and so can't line up with the title above.
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
         .fixedSize()
-        .neutralControl()
-        // A borderless menu insets its label; this one lines up with the title above it.
-        .padding(.leading, -Spacing.xxs)
         .help(String(localized: "当前配置：\(store.activeProfile?.name ?? "—")"))
         .accessibilityLabel(String(localized: "使用的配置"))
         .accessibilityValue(store.activeProfile?.name ?? "")
