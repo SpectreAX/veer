@@ -12,7 +12,6 @@ struct ConnectionsView: View {
     @State private var policy: String?
     @State private var selection: Set<ConnectionRow.ID>
     @State private var addingRule: ConnectionRow?
-    @State private var confirmingCloseAll = false
 
     init(selection: Set<ConnectionRow.ID> = []) {
         _selection = State(initialValue: selection)
@@ -35,7 +34,8 @@ struct ConnectionsView: View {
             .onAppear { store.watchConnections(true) }
             .onDisappear { store.watchConnections(false) }
             .sheet(item: $addingRule) { AddRuleSheet(row: $0) }
-            .confirmationDialog("关闭全部连接？", isPresented: $confirmingCloseAll) {
+            .confirmationDialog("关闭全部连接？", isPresented: Binding(get: { store.confirmingCloseAllConnections },
+                                                               set: { store.confirmingCloseAllConnections = $0 })) {
                 Button("关闭全部", role: .destructive) { store.closeAllConnections() }
             } message: {
                 Text("正在进行的下载和通话会中断，应用会按当前规则重新连接。")
@@ -67,25 +67,36 @@ struct ConnectionsView: View {
         }
     }
 
+    /// With labels and the count while they fit; beside the Agent panel in a small window, the pickers alone.
     private var filterBar: some View {
-        HStack(spacing: Spacing.md) {
-            Picker("进程", selection: $process) {
-                Text("全部进程").tag(String?.none)
-                ForEach(Set(store.connections.compactMap(\.process)).sorted(), id: \.self) { Text($0).tag(Optional($0)) }
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: Spacing.md) {
+                filterPickers
+                Spacer()
+                Text("\(shown.count) 个连接").font(.callout).foregroundStyle(.secondary).monospacedDigit().lineLimit(1).fixedSize()
             }
-            .fixedSize()
-            .neutralControl()
-            Picker("策略组", selection: $policy) {
-                Text("全部策略组").tag(String?.none)
-                ForEach(Set(store.connections.map(\.policy)).filter { !$0.isEmpty }.sorted(), id: \.self) { Text($0).tag(Optional($0)) }
+            HStack(spacing: Spacing.sm) {
+                filterPickers.labelsHidden()
+                Spacer(minLength: 0)
             }
-            .fixedSize()
-            .neutralControl()
-            Spacer()
-            Text("\(shown.count) 个连接").font(.callout).foregroundStyle(.secondary).monospacedDigit().lineLimit(1).fixedSize()
         }
         .padding(.horizontal, Spacing.lg)
         .padding(.vertical, Spacing.sm)
+    }
+
+    @ViewBuilder private var filterPickers: some View {
+        Picker("进程", selection: $process) {
+            Text("全部进程").tag(String?.none)
+            ForEach(Set(store.connections.compactMap(\.process)).sorted(), id: \.self) { Text($0).tag(Optional($0)) }
+        }
+        .fixedSize()
+        .neutralControl()
+        Picker("策略组", selection: $policy) {
+            Text("全部策略组").tag(String?.none)
+            ForEach(Set(store.connections.map(\.policy)).filter { !$0.isEmpty }.sorted(), id: \.self) { Text($0).tag(Optional($0)) }
+        }
+        .fixedSize()
+        .neutralControl()
     }
 
     private var table: some View {
@@ -96,26 +107,29 @@ struct ConnectionsView: View {
                     if row.network == "udp" { Text(verbatim: "UDP").font(.caption2).foregroundStyle(.secondary) }
                 }
             }
-            .width(min: 120, ideal: 180)
-            TableColumn("进程") { row in Text(row.process ?? "—").lineLimit(1).foregroundStyle(row.process == nil ? .secondary : .primary) }
-                .width(min: 60, ideal: 90)
+            .width(min: 100, ideal: 130)
+            TableColumn("进程") { row in
+                Text(row.process ?? "—").lineLimit(1).foregroundStyle(row.process == nil ? .secondary : .primary)
+                    .help(row.process ?? "")
+            }
+                .width(min: 50, ideal: 70)
             TableColumn("规则") { row in Text(row.rule).lineLimit(1).help(row.rule) }
-                .width(min: 80, ideal: 120)
+                .width(min: 60, ideal: 80)
             TableColumn("代理链") { row in Text(row.chain.joined(separator: " → ")).lineLimit(1).truncationMode(.middle).help(row.chain.joined(separator: " → ")) }
-                .width(min: 120, ideal: 190)
+                .width(min: 90, ideal: 120)
             TableColumn("流量") { row in
                 Text(verbatim: "↑\(Format.bytes(row.upload)) ↓\(Format.bytes(row.download))").font(Typography.codeSmall).foregroundStyle(.secondary)
             }
-            .width(min: 110, ideal: 120)
+            .width(min: 100, ideal: 105)
             TableColumn("速率") { row in
                 Text(verbatim: Format.rate(row.downloadRate + row.uploadRate)).font(Typography.codeSmall)
                     .foregroundStyle(row.downloadRate + row.uploadRate > 0 ? .primary : .secondary)
             }
-            .width(min: 60, ideal: 70)
+            .width(min: 56, ideal: 60)
             TableColumn("时长") { row in
                 Text(verbatim: row.start.map { Format.duration(since: $0) } ?? "—").font(Typography.codeSmall).foregroundStyle(.secondary)
             }
-            .width(min: 64, ideal: 72)
+            .width(min: 64, ideal: 64)
         }
         .contextMenu(forSelectionType: ConnectionRow.ID.self) { ids in
             if let row = rows(ids).first {
@@ -141,7 +155,7 @@ struct ConnectionsView: View {
         }
         .help(store.connectionsPaused ? String(localized: "继续实时刷新") : String(localized: "暂停实时刷新，方便查看"))
         .disabled(!store.isRunning)
-        Button { confirmingCloseAll = true } label: { Label("关闭全部连接", systemImage: "xmark.circle") }
+        Button { store.confirmingCloseAllConnections = true } label: { Label("关闭全部连接", systemImage: "xmark.circle") }
             .help("关闭全部连接")
             .disabled(store.connections.isEmpty)
     }

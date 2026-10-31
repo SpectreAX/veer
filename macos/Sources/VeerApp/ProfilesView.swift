@@ -14,15 +14,17 @@ struct ProfileBar: View {
 
     private static let tileWidth: CGFloat = 320
     private static let stackedHeight: CGFloat = 220
+    private static let stackedImportHeight: CGFloat = 32
+    private static let rowImportWidth: CGFloat = 44
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: Spacing.sm) {
                     tiles(width: Self.tileWidth)
-                    importButton
+                    importButton.frame(width: Self.rowImportWidth)
                 }
-                HStack(alignment: .top, spacing: Spacing.sm) {
+                VStack(spacing: Spacing.sm) {
                     ScrollViewReader { reader in
                         ScrollView {
                             VStack(spacing: Spacing.sm) { tiles(width: nil) }
@@ -31,7 +33,8 @@ struct ProfileBar: View {
                         .onChange(of: store.activeProfileID) { _, active in if let active { reader.scrollTo(active) } }
                     }
                     .frame(maxHeight: Self.stackedHeight)
-                    importButton
+                    // Under the cards, whose text needs the width beside the Agent panel.
+                    importButton.frame(height: Self.stackedImportHeight)
                 }
             }
             // Cards as tall as each other, and the stack as tall as it needs up to its limit.
@@ -67,8 +70,7 @@ struct ProfileBar: View {
     private var importButton: some View {
         Button { store.openImport() } label: {
             Image(systemName: "plus")
-                .frame(width: 44)
-                .frame(maxHeight: .infinity)
+                .frame(minWidth: 44, maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
                 .overlay(RoundedRectangle(cornerRadius: Radius.medium, style: .continuous).strokeBorder(Color.separatorLine))
         }
@@ -117,7 +119,13 @@ private struct ProfileTile: View {
     let delete: () -> Void
     @State private var hovering = false
 
+    private static let nameBesideTag: CGFloat = 96
+
     private var updating: Bool { store.updatingProfiles.contains(profile.id) }
+
+    private var name: some View {
+        Text(profile.name).font(.headline).lineLimit(1).truncationMode(.middle).help(profile.name)
+    }
 
     var body: some View {
         HStack(spacing: Spacing.xs) {
@@ -161,9 +169,13 @@ private struct ProfileTile: View {
             Image(systemName: active ? "checkmark.circle.fill" : "circle")
                 .foregroundStyle(active ? Color.veerAccent : Color.secondary)
             VStack(alignment: .leading, spacing: Spacing.xxs) {
-                HStack(spacing: Spacing.xs) {
-                    Text(profile.name).font(.headline).lineLimit(1).truncationMode(.middle)
-                    Tag(text: profile.isSubscription ? String(localized: "订阅") : String(localized: "本地"))
+                // The tag gives way to the name when there is no room for both.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: Spacing.xs) {
+                        name.frame(minWidth: Self.nameBesideTag, alignment: .leading)
+                        Tag(text: profile.isSubscription ? String(localized: "订阅") : String(localized: "本地")).fixedSize()
+                    }
+                    name
                 }
                 if let error = profile.updateError {
                     StatusBadge(kind: .warning, text: String(localized: "自动更新失败：\(error)"), compact: true).lineLimit(2)

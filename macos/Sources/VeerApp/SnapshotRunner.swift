@@ -204,6 +204,19 @@ enum SnapshotRunner {
                 sampleThread(agent, status: .written)
             }),
             // In full screen the system moves the toolbar to a window of its own, over this one.
+            // Each page's narrowest place: the smallest window, with the Agent panel open.
+            Scene(name: "24f-narrow-logs", size: CGSize(width: 860, height: 560), store: {
+                let store = running(page: .logs, panel: true)
+                store.logs = sampleLogs()
+                return store
+            }, view: AnyView(MainView())),
+            Scene(name: "24g-narrow-connections", size: CGSize(width: 860, height: 560), store: {
+                let store = running(page: .connections, panel: true)
+                store.connections = sampleConnections()
+                return store
+            }, view: AnyView(MainView())),
+            Scene(name: "24h-narrow-tools", size: CGSize(width: 860, height: 560), store: { running(page: .tools, panel: true) }, view: AnyView(MainView())),
+            Scene(name: "24i-narrow-dns", size: CGSize(width: 860, height: 560), store: { running(page: .dns, panel: true) }, view: AnyView(MainView())),
             Scene(name: "25-fullscreen-connections-panel", store: {
                 let store = sample()
                 store.page = .connections
@@ -225,7 +238,7 @@ enum SnapshotRunner {
             Scene(name: "09g-route-map", size: CGSize(width: 260, height: 620), store: { running(page: .connections) },
                   view: AnyView(RouteMap(row: sampleConnections()[0]) { RouteActions(row: sampleConnections()[0], addRule: {}, close: {}) })),
             // One selected row: its route and actions beside the table.
-            Scene(name: "09m-connections-selected", store: {
+            Scene(name: "09m-connections-selected", size: CGSize(width: 880, height: 720), store: {
                 let store = running(page: .connections)
                 store.connectionsPaused = true
                 store.connections = sampleConnections()
@@ -287,7 +300,7 @@ enum SnapshotRunner {
             }, view: AnyView(NodeMapView().frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.surface))),
             // The whole window with the map chosen, on throwaway defaults, for the toolbar's switch.
             Scene(name: "18f-proxies-map-window", store: { running(page: .proxies) }, view: AnyView(MainView().defaultAppStorage(mapDefaults()))),
-            Scene(name: "18g-proxies-map-window-smallest", size: CGSize(width: 960, height: 640), store: {
+            Scene(name: "18g-proxies-map-window-smallest", size: CGSize(width: 860, height: 560), store: {
                 let store = running(page: .proxies)
                 store.agentPanel = true
                 return store

@@ -1247,3 +1247,15 @@
 "标记“%@”的地区" = "Mark Region for “%@”";
 "Agent 正在处理，完成后再试。" = "The Agent is busy. Try again when it finishes.";
 "这项修改已经从“我的分流”里删除。" = "This change has been deleted from My Routing.";
+"关闭全部连接…" = "Close All Connections…";
+"menu.expandGroups" = "Expand All Groups";
+"menu.collapseGroups" = "Collapse All Groups";
+"menu.resumeConnections" = "Resume Connection Updates";
+"menu.pauseConnections" = "Pause Connection Updates";
+"menu.clearRequests" = "Clear Requests";
+"menu.resumeLogs" = "Resume Logging";
+"menu.pauseLogs" = "Pause Logging";
+"menu.clearLogs" = "Clear Logs";
+"继续刷新连接" = "Resume connection updates";
+"暂停刷新连接" = "Pause connection updates";
+"overview.groups" = "Groups";

@@ -25,8 +25,8 @@ nonisolated public enum Metrics {
     public static let readingWidth: CGFloat = 760
     public static let sidebarWidth: CGFloat = 240
     public static let inspectorWidth: CGFloat = 360
-    public static let minWindow = CGSize(width: 960, height: 640)
-    public static let defaultWindow = CGSize(width: 1320, height: 860)
+    public static let minWindow = CGSize(width: 860, height: 560)
+    public static let defaultWindow = CGSize(width: 1080, height: 720)
     public static let compactBreakpoint: CGFloat = 1100
 }
 

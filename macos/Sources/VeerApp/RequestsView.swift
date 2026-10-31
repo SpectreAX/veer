@@ -65,30 +65,31 @@ struct RequestsView: View {
             TableColumn("结束于") { request in
                 Text(request.closedAt.formatted(date: .omitted, time: .standard)).font(Typography.codeSmall).foregroundStyle(.secondary)
             }
-            .width(min: 64, ideal: 72)
+            .width(min: 60, ideal: 64)
             TableColumn("主机") { request in Text(request.row.host).lineLimit(1).truncationMode(.middle).help(request.row.host) }
-                .width(min: 120, ideal: 180)
+                .width(min: 100, ideal: 130)
             TableColumn("进程") { request in
                 Text(request.row.process ?? "—").lineLimit(1).foregroundStyle(request.row.process == nil ? .secondary : .primary)
+                    .help(request.row.process ?? "")
             }
-            .width(min: 60, ideal: 90)
+            .width(min: 50, ideal: 70)
             TableColumn("规则") { request in Text(request.row.rule).lineLimit(1).help(request.row.rule) }
-                .width(min: 80, ideal: 120)
+                .width(min: 60, ideal: 80)
             TableColumn("代理链") { request in
                 Text(request.row.chain.joined(separator: " → ")).lineLimit(1).truncationMode(.middle).help(request.row.chain.joined(separator: " → "))
             }
-            .width(min: 120, ideal: 190)
+            .width(min: 90, ideal: 120)
             TableColumn("流量") { request in
                 Text(verbatim: request.fromLog ? "—" : "↑\(Format.bytes(request.row.upload)) ↓\(Format.bytes(request.row.download))")
                     .font(Typography.codeSmall).foregroundStyle(.secondary)
                     .help(request.fromLog ? String(localized: "这个连接不到一秒就结束了，只在日志里有记录，没有流量数据。") : "")
             }
-            .width(min: 110, ideal: 120)
+            .width(min: 100, ideal: 105)
             TableColumn("时长") { request in
                 Text(verbatim: request.fromLog ? "< 1s" : request.row.start.map { Format.duration(since: $0, now: request.closedAt) } ?? "—")
                     .font(Typography.codeSmall).foregroundStyle(.secondary)
             }
-            .width(min: 64, ideal: 72)
+            .width(min: 64, ideal: 64)
         }
         .contextMenu(forSelectionType: ClosedRequest.ID.self) { ids in
             if let request = store.requests.first(where: { ids.contains($0.id) }) {
@@ -121,6 +122,20 @@ struct DNSView: View {
     @State private var asking = false
 
     static let types = ["A", "AAAA", "CNAME", "HTTPS", "TXT", "MX"]
+    private static let domainFieldWidth: CGFloat = 220
+
+    private var domainField: some View {
+        TextField("域名", text: $name, prompt: Text(verbatim: "www.example.com"))
+            .textFieldStyle(.roundedBorder)
+            .onSubmit(ask)
+    }
+
+    @ViewBuilder private var lookupControls: some View {
+        Picker("类型", selection: $type) { ForEach(Self.types, id: \.self) { Text(verbatim: $0).tag($0) } }
+            .labelsHidden().fixedSize().neutralControl()
+        Button("查询", action: ask).primaryAction(.regular).keyboardShortcut(.defaultAction)
+            .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || asking)
+    }
 
     var body: some View {
         if !store.isRunning {
@@ -128,14 +143,16 @@ struct DNSView: View {
         } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: Spacing.lg) {
-                    HStack(spacing: Spacing.sm) {
-                        TextField("域名", text: $name, prompt: Text(verbatim: "www.example.com"))
-                            .textFieldStyle(.roundedBorder)
-                            .onSubmit(ask)
-                        Picker("类型", selection: $type) { ForEach(Self.types, id: \.self) { Text(verbatim: $0).tag($0) } }
-                            .labelsHidden().fixedSize().neutralControl()
-                        Button("查询", action: ask).primaryAction(.regular).keyboardShortcut(.defaultAction)
-                            .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || asking)
+                    // The field on a line of its own when it would be too short to read a domain in.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: Spacing.sm) {
+                            domainField.frame(minWidth: Self.domainFieldWidth)
+                            lookupControls
+                        }
+                        VStack(alignment: .trailing, spacing: Spacing.sm) {
+                            domainField
+                            HStack(spacing: Spacing.sm) { lookupControls }
+                        }
                     }
                     Text("用内核的 DNS 设置解析，结果和规则、节点看到的一致。fake-ip 模式下会得到 198.18 开头的虚拟地址。")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)

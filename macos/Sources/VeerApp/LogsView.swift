@@ -59,9 +59,18 @@ struct LogsView: View {
             VStack(spacing: 0) {
                 // Above the empty state too: a level with no entries must not take away the way back.
                 HStack {
-                    SegmentedControl(label: String(localized: "级别"), selection: $level,
-                                     options: Level.allCases.map { .init(value: $0, title: $0.title) })
+                    // A menu when the segments don't fit, beside the Agent panel in a small window.
+                    ViewThatFits(in: .horizontal) {
+                        SegmentedControl(label: String(localized: "级别"), selection: $level,
+                                         options: Level.allCases.map { .init(value: $0, title: $0.title) })
+                            .fixedSize()
+                        Picker(String(localized: "级别"), selection: $level) {
+                            ForEach(Level.allCases) { Text($0.title).tag($0) }
+                        }
+                        .labelsHidden()
                         .fixedSize()
+                        .neutralControl()
+                    }
                     Spacer()
                     Text("\(shown.count) 条").font(.callout).foregroundStyle(.secondary).monospacedDigit()
                 }
@@ -87,7 +96,7 @@ struct LogsView: View {
             ScrollViewReader { proxy in
                 List(shown, selection: $selection) { entry in
                     HStack(alignment: .firstTextBaseline, spacing: Spacing.sm) {
-                        Text(entry.time.formatted(date: .omitted, time: .standard)).foregroundStyle(.tertiary)
+                        Text(entry.time.formatted(date: .omitted, time: .standard)).foregroundStyle(.secondary)
                         Text(verbatim: entry.level.uppercased()).foregroundStyle(color(entry.level)).frame(width: 56, alignment: .leading)
                         Text(entry.message).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                     }
@@ -96,6 +105,11 @@ struct LogsView: View {
                 }
                 .contextMenu(forSelectionType: LogEntry.ID.self) { ids in
                     Button("复制") { copy(shown.filter { ids.contains($0.id) }) }
+                }
+                // Edit → Copy, as the toolbar's: what is selected, or everything shown.
+                .onCopyCommand {
+                    let selected = shown.filter { selection.contains($0.id) }
+                    return [NSItemProvider(object: text(of: selected.isEmpty ? shown : selected) as NSString)]
                 }
                 .onChange(of: store.logs.last?.id) { _, last in
                     if !store.logsPaused, let last { proxy.scrollTo(last, anchor: .bottom) }
@@ -114,8 +128,11 @@ struct LogsView: View {
     }
 
     private func copy(_ entries: [LogEntry]) {
-        let text = entries.map { "\($0.time.formatted(date: .omitted, time: .standard)) \($0.level.uppercased()) \($0.message)" }.joined(separator: "\n")
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
+        NSPasteboard.general.setString(text(of: entries), forType: .string)
+    }
+
+    private func text(of entries: [LogEntry]) -> String {
+        entries.map { "\($0.time.formatted(date: .omitted, time: .standard)) \($0.level.uppercased()) \($0.message)" }.joined(separator: "\n")
     }
 }

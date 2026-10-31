@@ -8,6 +8,13 @@ enum Page: String, CaseIterable, Identifiable, Hashable {
     /// What the sidebar lists, in order, for ⌘1 onward. The rest are subpages of Tools.
     static let sidebarPages: [Page] = [.overview, .proxies, .connections, .tools, .agent]
 
+    var hasSearch: Bool {
+        switch self {
+        case .proxies, .connections, .requests, .logs: true
+        default: false
+        }
+    }
+
     /// The page a subpage goes back to.
     var parent: Page? {
         switch self {
@@ -214,7 +221,7 @@ struct MainView: View {
     /// has it in full.
     private var profileName: String {
         let name = store.activeProfile?.name ?? ""
-        return name.count > 18 ? name.prefix(17) + "…" : name
+        return name.count > 16 ? name.prefix(15) + "…" : name
     }
 
     private var sidebarAndPage: some View {
@@ -223,7 +230,15 @@ struct MainView: View {
                 ForEach(Page.Section.allCases, id: \.self) { section in
                     Section(section.title) {
                         ForEach(Page.sidebarPages.filter { $0.section == section }) { page in
-                            Label(page.title, systemImage: page.symbol).tag(page)
+                            Label(page.title, systemImage: page.symbol)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                                // The list reports no change for the row already selected, which
+                                // a subpage's parent is, and a click there should go back to it.
+                                .simultaneousGesture(TapGesture().onEnded {
+                                    if store.page.parent == page { store.page = page }
+                                })
+                                .tag(page)
                         }
                     }
                 }

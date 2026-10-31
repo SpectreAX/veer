@@ -26,7 +26,7 @@ launching the real app.
 | Scenario | Required |
 |---|---|
 | Standard window | Yes |
-| Narrow window, down to the 960 × 640 minimum | Yes |
+| Narrow window, down to the 860 × 560 minimum | Yes |
 | Wide window | Yes |
 | Light and dark | Yes |
 | zh-Hans and en | Yes |

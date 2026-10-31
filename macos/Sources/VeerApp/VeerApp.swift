@@ -13,11 +13,11 @@ struct VeerApp: App {
                 .environment(store)
                 .environment(agent)
                 .tint(.veerAccent)
-                .frame(minWidth: 860, minHeight: 560)
+                .frame(minWidth: Metrics.minWindow.width, minHeight: Metrics.minWindow.height)
         }
         // The window's title is `MainView`'s own, in the row with its other controls.
         .windowStyle(.hiddenTitleBar)
-        .defaultSize(width: 1080, height: 720)
+        .defaultSize(Metrics.defaultWindow)
         .commands { VeerCommands(store: store, agent: agent) }
 
         MenuBarExtra {
@@ -106,6 +106,8 @@ struct VeerCommands: Commands {
     @AppStorage("proxiesShowMap") private var proxiesShowMap = false
 
     var body: some Commands {
+        // Show and Hide Sidebar, as the row's button has no other way in from the keyboard.
+        SidebarCommands()
         CommandGroup(after: .appInfo) {
             Button("检查更新…") { Updater.shared.checkForUpdates() }
         }
@@ -128,6 +130,7 @@ struct VeerCommands: Commands {
         CommandGroup(replacing: .textEditing) {
             Button("查找") { ToolbarSearchFocus.focus() }
                 .keyboardShortcut("f")
+                .disabled(!store.page.hasSearch)
         }
         CommandGroup(after: .sidebar) {
             ForEach(Array(Page.sidebarPages.enumerated()), id: \.element) { index, page in
@@ -172,6 +175,32 @@ struct VeerCommands: Commands {
                 ForEach(ProxyStore.Mode.allCases) { Text($0.title).tag($0) }
             }
             .disabled(!store.isRunning)
+            Divider()
+            pageCommands
         }
+    }
+
+    /// The toolbar's buttons for each page, which macOS expects in the menu bar too. Disabled, not
+    /// hidden, away from their page: a menu keeps its shape.
+    @ViewBuilder private var pageCommands: some View {
+        let groups = store.groups, allCollapsed = !groups.isEmpty && groups.allSatisfy { store.collapsedGroups.contains($0.name) }
+        Button(allCollapsed ? String(localized: "menu.expandGroups", defaultValue: "展开全部策略组")
+                            : String(localized: "menu.collapseGroups", defaultValue: "收起全部策略组")) { store.setAllCollapsed(!allCollapsed) }
+            .disabled(store.page != .proxies || groups.isEmpty || proxiesShowMap)
+        Divider()
+        Button(store.connectionsPaused ? String(localized: "menu.resumeConnections", defaultValue: "继续刷新连接")
+                                       : String(localized: "menu.pauseConnections", defaultValue: "暂停刷新连接")) { store.connectionsPaused.toggle() }
+            .disabled(store.page != .connections || !store.isRunning)
+        Button("关闭全部连接…") { store.confirmingCloseAllConnections = true }
+            .disabled(store.page != .connections || store.connections.isEmpty)
+        Divider()
+        Button(String(localized: "menu.clearRequests", defaultValue: "清空请求记录")) { store.clearRequests() }
+            .disabled(store.page != .requests || store.requests.isEmpty)
+        Divider()
+        Button(store.logsPaused ? String(localized: "menu.resumeLogs", defaultValue: "继续记录日志")
+                                : String(localized: "menu.pauseLogs", defaultValue: "暂停记录日志")) { store.logsPaused.toggle() }
+            .disabled(store.page != .logs)
+        Button(String(localized: "menu.clearLogs", defaultValue: "清空日志")) { store.clearLogs() }
+            .disabled(store.page != .logs || store.logs.isEmpty)
     }
 }

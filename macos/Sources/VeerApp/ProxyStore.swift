@@ -192,6 +192,8 @@ final class ProxyStore {
     /// Live connections, newest first, while the connections page is open.
     var connections: [ConnectionRow] = []
     var connectionsPaused = false
+    /// Here rather than on the page, as the menu bar asks too.
+    var confirmingCloseAllConnections = false
     /// Found on this Mac from logs, connections and delay tests; shown on the overview and Agent pages.
     var suggestions: [Suggestion] = []
     @ObservationIgnored private lazy var detector = SuggestionDetector(ignoredHosts: Set(defaults.stringArray(forKey: "ignoredSuggestionHosts") ?? []))

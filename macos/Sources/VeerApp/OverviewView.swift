@@ -218,7 +218,7 @@ private struct StatusCard: View {
 
     private var network: some View {
         LabeledValue(String(localized: "网络")) {
-            Text(store.exit?.organization ?? "—").lineLimit(1).truncationMode(.tail)
+            Text(store.exit?.organization ?? "—").lineLimit(1).truncationMode(.tail).help(store.exit?.organization ?? "")
         }
     }
 
@@ -439,7 +439,13 @@ private struct ServicesCard: View {
             Grid(alignment: .leading, horizontalSpacing: Spacing.md, verticalSpacing: Spacing.xs) {
                 ForEach(ProxyStore.services, id: \.name) { service in
                     GridRow {
-                        Label(service.name, systemImage: service.symbol).font(.callout).lineLimit(1)
+                        // The symbols differ in width, which would leave the names out of line.
+                        Label {
+                            Text(service.name)
+                        } icon: {
+                            Image(systemName: service.symbol).frame(width: Spacing.lg + Spacing.xs)
+                        }
+                        .font(.callout).lineLimit(1)
                         delay(store.serviceDelays[service.name])
                     }
                 }
@@ -483,7 +489,7 @@ private struct GroupsCard: View {
     private let columns = [GridItem(.adaptive(minimum: 240), spacing: Spacing.md)]
 
     var body: some View {
-        Card(String(localized: "策略组"), symbol: "square.stack.3d.up") {
+        Card(String(localized: "overview.groups", defaultValue: "策略组"), symbol: "square.stack.3d.up") {
             Button { store.page = .proxies } label: { Image(systemName: "chevron.right") }
                 .buttonStyle(.borderless)
                 .help("打开代理页")

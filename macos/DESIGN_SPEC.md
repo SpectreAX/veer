@@ -17,7 +17,7 @@ Brand expression must not damage native usability.
 ## Window
 
 - Standard window controls, resizing and full screen.
-- Minimum 960 × 640, default 1320 × 860 (`Metrics`). Below 1100 wide the layout goes compact.
+- Minimum 860 × 560, default 1080 × 720 (`Metrics`). Below 1100 wide the layout goes compact.
 - The empty space in the top row moves the window; a double click follows the system setting.
 - Full screen is the system's. The top row stays, and the sidebar button moves into the place of the
   window buttons, which the system shows with the menu bar when the pointer reaches the top.
