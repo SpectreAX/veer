@@ -41,6 +41,17 @@ enum SnapshotRunner {
                     }
                     window.orderOut(nil)
                 }
+                // Laid out and shown, never run: nothing here can register the helper.
+                for (consent, suffix) in [(HelperState.TUNConsent.install, "install"), (.approve, "approve")] {
+                    let alert = HelperPrompt.alert(for: consent)
+                    alert.window.appearance = NSAppearance(named: name)
+                    alert.layout()
+                    alert.window.makeKeyAndOrderFront(nil)
+                    NSApp.activate()
+                    try? await Task.sleep(for: .milliseconds(900))
+                    capture(alert.window, to: directory.appendingPathComponent("33-tun-\(suffix)-\(appearance).png"))
+                    alert.window.orderOut(nil)
+                }
             }
             NSApp.terminate(nil)
         }
@@ -79,7 +90,18 @@ enum SnapshotRunner {
             }, view: AnyView(MainView())),
             Scene(name: "04-overview-running", store: { running() }, view: AnyView(MainView())),
             Scene(name: "05-proxies", store: { running(page: .proxies) }, view: AnyView(MainView())),
-            Scene(name: "06-profiles", store: { running(page: .profiles) }, view: AnyView(MainView())),
+            Scene(name: "06-profiles", store: { running(page: .proxies) }, view: AnyView(MainView())),
+            Scene(name: "06b-tools", store: { running(page: .tools) }, view: AnyView(MainView())),
+            Scene(name: "04d-overview-detecting", store: {
+                let store = running()
+                store.exit = nil
+                return store
+            }, view: AnyView(MainView())),
+            Scene(name: "04e-overview-no-exit", store: {
+                let store = running()
+                store.exit = .unknown
+                return store
+            }, view: AnyView(MainView())),
             Scene(name: "07-failed", store: {
                 let store = sample()
                 store.phase = .failed(String(localized: "端口 \(String(7890)) 已被其他程序占用。退出占用它的代理软件，或在设置中换一个端口。"), log: [
@@ -210,7 +232,7 @@ enum SnapshotRunner {
                 return store
             }, view: AnyView(MainView().defaultAppStorage(mapDefaults()))),
             Scene(name: "19-profiles-update-failed", store: {
-                let store = running(page: .profiles)
+                let store = running(page: .proxies)
                 if var first = store.profiles.first {
                     first.updateError = String(localized: "无法下载订阅：网络错误或超时。")
                     first.usage?.expire = .now.addingTimeInterval(2 * 86_400)
@@ -349,6 +371,8 @@ enum SnapshotRunner {
         store.page = page
         store.phase = .running
         store.systemProxyOn = true
+        store.exit = ExitInfo(ip: "203.0.113.7", country: "Japan", countryCode: "JP", organization: "DATAWAVE GLOBAL LLC")
+        store.runningSince = .now.addingTimeInterval(-600)
         store.uploadRate = 42 << 10
         store.downloadRate = 3 << 20
         typealias Member = ProxyStore.Group.Member

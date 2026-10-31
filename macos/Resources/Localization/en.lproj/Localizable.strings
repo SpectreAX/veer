@@ -1199,3 +1199,32 @@
 "1 到 2 个节点" = "1 to 2 nodes";
 "3 到 9 个节点" = "3 to 9 nodes";
 "10 个以上" = "10 or more";
+
+/* Overview toolbar, Tools page, TUN helper prompt */
+"工具" = "Tools";
+"后退" = "Back";
+"返回“%@”" = "Back to “%@”";
+"返回“%@”（⌘[）" = "Back to “%@” (⌘[)";
+"诊断" = "Diagnostics";
+"数据" = "Data";
+"更多" = "More";
+"DNS 查询" = "DNS Lookup";
+"最近结束的连接，可以搜索和添加规则" = "Connections that just ended, to search and add rules from";
+"用内核的 DNS 设置解析域名" = "Resolve a domain with the core's DNS settings";
+"内核的实时日志" = "The core's live log";
+"合并“我的分流”后的 mihomo YAML" = "mihomo YAML with My Routing merged in";
+"把配置、我的分流、Agent 对话和设置存成一个文件" = "Save profiles, My Routing, Agent conversations and settings to one file";
+"替换现在的配置和设置，完成后 Veer 会重新打开" = "Replaces your current profiles and settings, then reopens Veer";
+"语言、代理、DNS、TUN 和快捷键" = "Language, proxy, DNS, TUN and shortcuts";
+"已打开" = "On";
+"管理配置" = "Manage Profiles";
+"系统代理：%@" = "System Proxy: %@";
+"TUN：%@" = "TUN: %@";
+"%@，%@" = "%1$@, %2$@";
+"需要安装后台服务" = "Background Service Required";
+"Veer 需要一个以管理员权限运行的后台服务，才能用 TUN 管理网络路由并运行内核。" = "Veer needs a background service with administrator privileges to manage network routing and run the core for TUN.";
+"安装后，在系统设置的“登录项”中允许 Veer，即可完成设置。" = "After installing, allow Veer in Login Items in System Settings to finish setting up.";
+"需要在系统设置中允许" = "Allow Veer in System Settings";
+"TUN 的后台服务已经安装，但还没有获得允许。" = "TUN's background service is installed but not allowed yet.";
+"在系统设置的“登录项”中允许 Veer 后，TUN 才能生效。" = "TUN works once you allow Veer in Login Items in System Settings.";
+"稍后" = "Later";

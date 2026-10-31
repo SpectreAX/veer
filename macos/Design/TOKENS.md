@@ -27,6 +27,7 @@ only fade.
 | Token | Use |
 |---|---|
 | `veerAccent` | Small areas: primary actions, the node in use, written state |
+| `onAccent` | A glyph on `veerAccent`, such as a toolbar toggle that is on |
 | `userBubble` | The user's message bubble |
 | `statusSuccess`, `statusWarning`, `statusFailure`, `statusInfo` | Status, always with an icon and text through `StatusKind` |
 | `surface`, `surfaceRaised`, `surfaceSunken` | Window, raised and recessed backgrounds |

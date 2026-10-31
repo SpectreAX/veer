@@ -2,7 +2,7 @@ import SwiftUI
 import VeerCore
 import VeerProxy
 
-/// Policy groups and their members: pick a node for a select group, test delays.
+/// The profiles, then policy groups and their members: pick a node for a select group, test delays.
 struct ProxiesView: View {
     @Environment(ProxyStore.self) private var store
     @State private var query = ""
@@ -20,7 +20,10 @@ struct ProxiesView: View {
     }
 
     var body: some View {
-        content
+        VStack(spacing: 0) {
+            if !store.profiles.isEmpty { ProfileBar() }
+            content.frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
             .pageToolbar(.proxies) {
                 GlassSwitch(label: String(localized: "显示方式"), selection: $showMap, options: [
                     .init(value: false, title: String(localized: "网格"), symbol: "square.grid.2x2"),
@@ -39,7 +42,11 @@ struct ProxiesView: View {
     }
 
     @ViewBuilder private var content: some View {
-        if !store.isRunning {
+        if store.profiles.isEmpty {
+            StateView(symbol: "tray.and.arrow.down", title: String(localized: "还没有配置"),
+                      message: String(localized: "支持订阅链接、Mihomo / Clash 配置文件、Base64 订阅内容和节点分享链接。"),
+                      actionTitle: String(localized: "导入配置…")) { store.openImport() }
+        } else if !store.isRunning {
             StateView(symbol: "point.3.connected.trianglepath.dotted",
                       title: store.phase == .starting ? String(localized: "内核正在启动…") : String(localized: "内核没有运行"),
                       message: store.activeProfile == nil ? String(localized: "先导入一个配置。") : String(localized: "启动后可以在这里切换节点和测试延迟。"),
@@ -58,7 +65,6 @@ struct ProxiesView: View {
                         .frame(minHeight: 320)
                 }
                 LazyVStack(alignment: .leading, spacing: Spacing.lg) {
-                    if let notice = store.notice { StatusBadge(kind: .warning, text: notice) }
                     ForEach(shownGroups) { GroupSection(group: $0) }
                 }
                 .padding(Spacing.xl)

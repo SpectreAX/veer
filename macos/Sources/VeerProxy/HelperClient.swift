@@ -24,6 +24,19 @@ public enum HelperState: Equatable, Sendable {
     /// Installed, but an older version than this Veer expects.
     case outdated
     case unavailable(String)
+
+    /// What the person has to agree to before TUN can use the helper.
+    public enum TUNConsent: Equatable, Sendable {
+        case install, approve
+    }
+
+    public var tunConsent: TUNConsent? {
+        switch self {
+        case .notInstalled: .install
+        case .needsApproval: .approve
+        case .ready, .outdated, .unavailable: nil
+        }
+    }
 }
 
 /// Talks to the privileged helper: registers it with SMAppService (or installs it by hand when

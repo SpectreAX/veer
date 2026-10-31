@@ -3,7 +3,18 @@ import SwiftUI
 import VeerProxy
 
 enum Page: String, CaseIterable, Identifiable, Hashable {
-    case overview, proxies, profiles, connections, requests, logs, dns, agent
+    case overview, proxies, connections, tools, requests, logs, dns, agent
+
+    /// What the sidebar lists, in order, for ⌘1 onward. The rest are subpages of Tools.
+    static let sidebarPages: [Page] = [.overview, .proxies, .connections, .tools, .agent]
+
+    /// The page a subpage goes back to.
+    var parent: Page? {
+        switch self {
+        case .requests, .logs, .dns: .tools
+        default: nil
+        }
+    }
 
     enum Section: CaseIterable {
         case proxy, ai
@@ -22,8 +33,8 @@ enum Page: String, CaseIterable, Identifiable, Hashable {
         case .overview: String(localized: "概览")
         // "代理" also names the sidebar section; the page needs its own key.
         case .proxies: String(localized: "page.proxies", defaultValue: "代理")
-        case .profiles: String(localized: "配置")
         case .connections: String(localized: "连接")
+        case .tools: String(localized: "工具")
         case .requests: String(localized: "请求")
         case .logs: String(localized: "日志")
         case .dns: String(localized: "DNS")
@@ -34,8 +45,8 @@ enum Page: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .overview: "gauge.with.dots.needle.33percent"
         case .proxies: "point.3.connected.trianglepath.dotted"
-        case .profiles: "doc.text"
         case .connections: "arrow.left.arrow.right"
+        case .tools: "wrench.and.screwdriver"
         case .requests: "clock.arrow.circlepath"
         case .logs: "text.alignleft"
         case .dns: "globe"
@@ -51,9 +62,11 @@ struct MainView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var sidebarVisibility = NavigationSplitViewVisibility.all
     @State private var isFullScreen = false
+    @State private var detailLeading: CGFloat = 0
 
     /// The window's top row, which the sidebar button, the title and the capsule float in.
     static let topRowHeight: CGFloat = 52
+    private static let topRowInset: CGFloat = 6
 
     var body: some View {
         @Bindable var store = store
@@ -116,6 +129,16 @@ struct MainView: View {
                 .padding(.leading, sidebarButtonLeading)
                 .ignoresSafeArea(.container, edges: .top)
         }
+        // Up here, over the drag area, where the page's own title cannot take a click.
+        .overlay(alignment: .topLeading) {
+            if let parent = store.page.parent {
+                backButton(to: parent)
+                    .padding(.top, Self.topRowInset)
+                    .padding(.leading, titleLeading)
+                    .ignoresSafeArea(.container, edges: .top)
+            }
+        }
+        .coordinateSpace(.named(Self.windowSpace))
         .overlayPreferenceValue(PageToolbarKey.self) { content in
             // Hidden until there is a profile: without one they do nothing.
             if !store.profiles.isEmpty {
@@ -136,6 +159,22 @@ struct MainView: View {
     private var sidebarButtonLeading: CGFloat { isFullScreen ? Spacing.sm : 88 }
 
     private var sidebarHidden: Bool { sidebarVisibility == .detailOnly }
+
+    private static let windowSpace = "window"
+
+    /// Where the title starts in the window, clear of the sidebar button when there is no sidebar.
+    private var titleLeading: CGFloat { sidebarHidden ? sidebarButtonLeading + 52 : detailLeading + Spacing.lg }
+
+    private func backButton(to parent: Page) -> some View {
+        Button { store.page = parent } label: {
+            Label(String(localized: "返回“\(parent.title)”"), systemImage: "chevron.left")
+        }
+        .buttonStyle(ToolbarCapsuleButtonStyle())
+        .labelStyle(.iconOnly)
+        .help(String(localized: "返回“\(parent.title)”（⌘[）"))
+        .padding(Spacing.xs)
+        .glassSurface(in: Circle())
+    }
 
     private var sidebarButton: some View {
         Button {
@@ -161,7 +200,7 @@ struct MainView: View {
         }
         .lineLimit(1)
         .frame(height: Self.topRowHeight)
-        .padding(.leading, sidebarHidden ? sidebarButtonLeading + 52 : Spacing.lg)
+        .padding(.leading, (sidebarHidden ? sidebarButtonLeading + 52 : Spacing.lg) + (store.page.parent == nil ? 0 : 48))
         .animation(reduceMotion ? nil : Motion.standard, value: sidebarHidden)
         .allowsHitTesting(false)
     }
@@ -175,10 +214,10 @@ struct MainView: View {
 
     private var sidebarAndPage: some View {
         NavigationSplitView(columnVisibility: $sidebarVisibility) {
-            List(selection: Binding<Page?>(get: { store.page }, set: { if let page = $0 { store.page = page } })) {
+            List(selection: Binding<Page?>(get: { store.page.parent ?? store.page }, set: { if let page = $0 { store.page = page } })) {
                 ForEach(Page.Section.allCases, id: \.self) { section in
                     Section(section.title) {
-                        ForEach(Page.allCases.filter { $0.section == section }) { page in
+                        ForEach(Page.sidebarPages.filter { $0.section == section }) { page in
                             Label(page.title, systemImage: page.symbol).tag(page)
                         }
                     }
@@ -193,8 +232,8 @@ struct MainView: View {
                 switch store.page {
                 case .overview: OverviewView()
                 case .proxies: ProxiesView()
-                case .profiles: ProfilesView()
                 case .connections: ConnectionsView()
+                case .tools: ToolsView()
                 case .requests: RequestsView()
                 case .logs: LogsView()
                 case .dns: DNSView()
@@ -202,6 +241,7 @@ struct MainView: View {
                 }
             }
             .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(Self.windowSpace)).minX } action: { detailLeading = $0 }
             // The toolbar has no band, so nothing may scroll under the title and window buttons.
             .clipped()
             .padding(.top, fullScreenTopInset)
@@ -215,12 +255,12 @@ struct MainView: View {
         .navigationTitle(store.page.title)
     }
 
-    /// The profile in use, at the foot of the sidebar (a click opens the profiles page), and the
+    /// The profile in use, at the foot of the sidebar (a click opens the proxies page, which lists them), and the
     /// way into Settings.
     private var profileFooter: some View {
         HStack(spacing: Spacing.sm) {
             if let profile = store.activeProfile {
-                Button { store.page = .profiles } label: {
+                Button { store.page = .proxies } label: {
                     HStack(spacing: Spacing.sm) {
                         Image(systemName: profile.isSubscription ? "antenna.radiowaves.left.and.right" : "doc")
                             .foregroundStyle(.secondary)

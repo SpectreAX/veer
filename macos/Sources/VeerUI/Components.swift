@@ -291,6 +291,26 @@ public extension View {
     }
 }
 
+/// Neighbouring glass shapes: `GlassEffectContainer` on macOS 26, its content before it. Shapes
+/// closer than `spacing` blend.
+public struct GlassGroup<Content: View>: View {
+    public init(spacing: CGFloat, @ViewBuilder content: () -> Content) {
+        self.spacing = spacing
+        self.content = content()
+    }
+
+    let spacing: CGFloat
+    let content: Content
+
+    public var body: some View {
+        if #available(macOS 26, *) {
+            GlassEffectContainer(spacing: spacing) { content }
+        } else {
+            content
+        }
+    }
+}
+
 public extension View {
     /// The system's own look for selection controls and secondary buttons, rather than Veer's
     /// green, which is kept for the one primary action of a view so it stays easy to find.
@@ -341,8 +361,7 @@ public struct SegmentedControl<Value: Hashable>: View {
     }
 }
 
-/// A switch between views that stands alone in the window's top row, in a glass capsule of its own.
-/// Custom because the system's segmented picker draws its own track there, and only takes on glass
+/// A switch that stands alone in the window's top row, on glass that the toolbar gives it. Custom because the system's segmented picker draws its own track there, and only takes on glass
 /// inside a real toolbar, which Veer leaves empty (see DESIGN_SPEC). Selection is a shape, not a
 /// color, and buttons keep it reachable from the keyboard and VoiceOver.
 public struct GlassSwitch<Value: Hashable>: View {
@@ -353,7 +372,7 @@ public struct GlassSwitch<Value: Hashable>: View {
     }
 
     public struct Option {
-        public init(value: Value, title: String, symbol: String) {
+        public init(value: Value, title: String, symbol: String? = nil) {
             self.value = value
             self.title = title
             self.symbol = symbol
@@ -361,7 +380,7 @@ public struct GlassSwitch<Value: Hashable>: View {
 
         public let value: Value
         public let title: String
-        public let symbol: String
+        public let symbol: String?
     }
 
     public let label: String
@@ -375,7 +394,11 @@ public struct GlassSwitch<Value: Hashable>: View {
             ForEach(Array(options.enumerated()), id: \.offset) { _, option in
                 let isSelected = option.value == selection
                 Button { selection = option.value } label: {
-                    Label(option.title, systemImage: option.symbol).labelStyle(.iconOnly)
+                    if let symbol = option.symbol {
+                        Label(option.title, systemImage: symbol).labelStyle(.iconOnly).font(.title3)
+                    } else {
+                        Text(option.title).font(.callout.weight(.medium)).padding(.horizontal, Spacing.md)
+                    }
                 }
                 .buttonStyle(GlassSwitchButtonStyle())
                 .background {
@@ -383,13 +406,12 @@ public struct GlassSwitch<Value: Hashable>: View {
                         Capsule().fill(Color.primary.opacity(0.14)).matchedGeometryEffect(id: "selection", in: indicator)
                     }
                 }
-                .help(option.title)
+                // A word says it already; a symbol needs the tooltip.
+                .help(option.symbol == nil ? "" : option.title)
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
         .padding(Spacing.xs)
-        .frame(height: 40)
-        .glassSurface(in: Capsule())
         .animation(reduceMotion ? nil : Motion.standard, value: selection)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(label)
@@ -398,16 +420,17 @@ public struct GlassSwitch<Value: Hashable>: View {
 
 /// A segment of `GlassSwitch`: a soft highlight on hover and press, under the selection's own.
 private struct GlassSwitchButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
     @State private var hovering = false
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.title3)
             .foregroundStyle(Color.primary)
-            .frame(width: 44, height: 32)
+            .opacity(isEnabled ? 1 : 0.35)
+            .frame(minWidth: 44, minHeight: 32)
             .background(Color.primary.opacity(configuration.isPressed ? 0.12 : hovering ? 0.06 : 0), in: Capsule())
             .contentShape(Capsule())
-            .onHover { hovering = $0 }
+            .onHover { hovering = $0 && isEnabled }
             .animation(Motion.quick, value: configuration.isPressed)
             .animation(Motion.quick, value: hovering)
     }

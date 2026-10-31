@@ -35,11 +35,14 @@ Use the native control first, then a `VeerUI` component, then a new one. Shared 
 | `StateView` | Empty, loading and error states |
 | `ExitLabel` | Exit node and country |
 | `SegmentedControl` | Standard segmented picker in the system's colors, for symbols or text |
-| `GlassSwitch` | A switch between views in its own glass capsule, for the window's top row. The system's segmented picker draws its own track outside a real toolbar. Native alternative: `SegmentedControl`, anywhere else |
+| `GlassSwitch` | A switch in its own glass capsule, for the window's top row, in symbols or text. The system's segmented picker draws its own track outside a real toolbar. Native alternative: `SegmentedControl`, anywhere else. Segments are buttons: keyboard and VoiceOver through them, with an `.isSelected` trait |
+| `GlassGroup`, `glassSurface` | Glass on macOS 26, the regular material before it |
+| `ToolbarToggle` | A switch in the toolbar's capsule: a button that fills when on, since the capsule's controls are round icon buttons. Keyboard and VoiceOver as a button with the toggle trait and its state as the value. Light and dark through `veerAccent` and `onAccent`; same on macOS 14 |
+| `ProfileTile`, `ToolRow` | A row of plain buttons with secondary actions beside them, on `ProxiesView` and `ToolsView`. Plain buttons, so keyboard and VoiceOver work as for any button |
 | `KeyCap`, `ShortcutHint` | Keyboard shortcut display |
 | `ChoiceRow` | A row in a choice list |
 
-Toolbar pieces are in `VeerApp`: `ToolbarCapsule`, `ToolbarSearchField` and `pageToolbar`.
+Toolbar pieces are in `VeerApp`: `ToolbarCapsule`, `ToolbarToggle`, `ToolbarSearchField` and `pageToolbar`.
 
 ## Adding a custom component
 

@@ -25,13 +25,17 @@ Brand expression must not damage native usability.
 ## Navigation
 
 - `NavigationSplitView` sidebar in two groups: Proxy and AI.
-- `⌘1`–`⌘8` switch pages. Important commands are also in the menu bar.
+- `⌘1`–`⌘5` switch the sidebar's pages. Tools has subpages with a back button and `⌘[`. Important
+  commands are also in the menu bar.
 - The Agent panel is a plain column beside the page.
 
 ## Toolbar
 
 - Icon-only buttons have accessibility labels and tooltips.
 - A page's own buttons sit on the left. The Agent toggle and start/stop stay fixed on the right.
+- A page's switch stands in its own glass capsule, left of the others, and grows out of them on the
+  same spring rather than appearing on its own.
+- A toggle in the toolbar fills when on, and says its state to VoiceOver.
 - Search is `⌘F`; Esc clears it and leaves the field.
 
 ## Typography
@@ -77,6 +81,8 @@ as a violation unless its reason no longer holds. Anything not listed here is no
 | The system toolbar stays empty and the controls float above it | With items in `NSToolbar`, opening the sidebar pushes them into the `»` overflow, and they jump instead of animating between pages | SPEC 5, `PageToolbar`, `ToolbarCapsule` |
 | The window has no toolbar at all in full screen | AppKit moves a toolbar to a window of its own in front of the content, which covers the floating controls, and entering full screen shows it again if it is hidden | SPEC 5, `EmptyWindowToolbar` |
 | Own glass switch instead of a segmented picker in the top row | Outside a real toolbar, which Veer leaves empty, the system's picker draws its own track instead of glass. The selection is a neutral shape, so it does not use the system accent | SPEC 5, `GlassSwitch` |
+| Back button floats in the top row instead of `NavigationStack` | A stack's back button belongs to the system toolbar, which Veer leaves empty | SPEC 5, `MainView` |
+| "Later" instead of "Cancel" in the TUN helper alert | It puts the install off rather than calling anything off, and Esc still works. The wording is the product owner's | SPEC 4.1, `HelperPrompt` |
 | Own search field instead of `.searchable` | Several `.searchable` pages crash `NSToolbar` with a duplicate identifier on page switch (1.0.3 crash) | SPEC 5, `ToolbarSearchField` |
 | Plain Agent column instead of `.inspector` | `NSSplitViewController` throws if the inspector changes mid-animation (crash on 2026-10-30) | `AgentPanelColumn` |
 | Veer green tint instead of the system accent color | Brand color, used only on small areas. Custom accent colors are out of scope for v1 | `Color.veerAccent` |

@@ -405,7 +405,7 @@ final class ProxyStore {
                 startTraffic()
                 startLogs()
                 trackConnections()
-                checkExit()
+                recheckExit()
                 testEverythingOnce()
                 if let tunFailure {
                     // After the switch, which clears notices.
@@ -450,9 +450,11 @@ final class ProxyStore {
     func setTUN(_ on: Bool) {
         notice = nil
         Task {
-            if on, !HelperClient.shared.isInstalledManually, await HelperClient.shared.state() == .notInstalled {
+            if on, let consent = await HelperClient.shared.state().tunConsent {
+                // Nothing is registered, and TUN stays off, until the person agrees.
+                guard HelperPrompt.ask(consent) else { return await refreshHelperState() }
                 do {
-                    try HelperClient.shared.register()
+                    if consent == .install { try HelperClient.shared.register() }
                     if await HelperClient.shared.state() == .needsApproval { HelperClient.shared.openApprovalSettings() }
                 } catch {
                     notice = message(for: error)
@@ -833,17 +835,33 @@ final class ProxyStore {
 
     // MARK: Exit IP
 
-    /// Asks a public IP service, through Veer's own port, where traffic leaves; a second service
-    /// answers when the first fails. Runs again after a node or mode switch.
+    /// Asks public IP services, through Veer's own port, where traffic leaves, until one answers or
+    /// `ExitProbe` runs out of time. Runs again after a node or mode switch.
     func checkExit(after delay: Duration = .zero) {
         exitCheck?.cancel()
-        guard showExitIP, isRunning else { exit = nil; return }
+        guard showExitIP, isRunning else { exit = nil; exitCheck = nil; return }
+        // A failure is not the answer to a new question; what is known stays until it is replaced.
+        if exit == .unknown { exit = nil }
         let port = proxyPort
         exitCheck = Task {
             if delay > .zero { try? await Task.sleep(for: delay) }
             guard !Task.isCancelled else { return }
-            exit = await ExitInfo.lookUp(throughPort: port) ?? ExitInfo.unknown
+            let found = await ExitProbe.run { await ExitInfo.lookUp(throughPort: port) }
+            guard !Task.isCancelled else { return }
+            exit = found ?? ExitInfo.unknown
+            exitCheck = nil
         }
+    }
+
+    /// The person asked: back to detecting, so the page shows that something is happening.
+    func recheckExit() {
+        exit = nil
+        checkExit()
+    }
+
+    /// Opening the dashboard must not start the time over on a check already under way.
+    func checkExitIfNeeded() {
+        if exit == nil, exitCheck == nil { checkExit() }
     }
 
     // MARK: Connections and logs

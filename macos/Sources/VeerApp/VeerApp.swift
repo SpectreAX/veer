@@ -130,9 +130,17 @@ struct VeerCommands: Commands {
                 .keyboardShortcut("f")
         }
         CommandGroup(after: .sidebar) {
-            ForEach(Array(Page.allCases.enumerated()), id: \.element) { index, page in
+            ForEach(Array(Page.sidebarPages.enumerated()), id: \.element) { index, page in
                 Button(page.title) { store.page = page }.keyboardShortcut(KeyEquivalent(Character(String(index + 1))))
             }
+            Menu(Page.tools.title) {
+                ForEach(Page.allCases.filter { $0.parent == .tools }) { page in
+                    Button(page.title) { store.page = page }
+                }
+            }
+            Button("后退") { if let parent = store.page.parent { store.page = parent } }
+                .keyboardShortcut("[")
+                .disabled(store.page.parent == nil)
             Divider()
             Toggle("Agent 面板", isOn: Binding(get: { store.agentPanel }, set: { store.agentPanel = $0 }))
                 .keyboardShortcut("i", modifiers: [.command, .option])
@@ -150,6 +158,15 @@ struct VeerCommands: Commands {
             Toggle("系统代理", isOn: Binding(get: { store.systemProxyOn }, set: { store.setSystemProxy($0) }))
                 .keyboardShortcut("p", modifiers: [.command, .shift])
                 .disabled(!store.isRunning)
+            Toggle("TUN", isOn: Binding(get: { store.settings.tun }, set: { store.setTUN($0) }))
+            Toggle("允许局域网设备连接", isOn: Binding(get: { store.settings.allowLAN }, set: { store.settings.allowLAN = $0 }))
+            Divider()
+            Picker("使用的配置", selection: Binding(get: { store.activeProfileID }, set: { if let id = $0 { store.activate(id) } })) {
+                ForEach(store.profiles) { Text($0.name).tag(Optional($0.id)) }
+            }
+            .disabled(store.profiles.isEmpty)
+            Button("更新订阅") { if let profile = store.activeProfile { store.update(profile.id) } }
+                .disabled(store.activeProfile?.isSubscription != true || store.activeProfile.map { store.updatingProfiles.contains($0.id) } == true)
             Divider()
             Picker("模式", selection: Binding(get: { store.mode }, set: { store.setMode($0) })) {
                 ForEach(ProxyStore.Mode.allCases) { Text($0.title).tag($0) }

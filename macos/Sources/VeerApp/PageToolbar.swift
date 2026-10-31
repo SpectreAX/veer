@@ -40,30 +40,42 @@ struct ToolbarCapsule: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let content: PageToolbarContent?
 
+    private var swap: AnyTransition { reduceMotion ? .opacity : AnyTransition(.blurReplace) }
+
     var body: some View {
-        HStack(spacing: Spacing.sm) {
-            if let content, let standalone = content.standalone {
-                standalone
-                    .id(content.page)
-                    .transition(reduceMotion ? AnyTransition.opacity : AnyTransition(.blurReplace))
-            }
-            HStack(spacing: Spacing.xs) {
-                if let content {
-                    HStack(spacing: Spacing.xs) { content.view }
-                        .id(content.page)
-                        .transition(reduceMotion ? AnyTransition.opacity : AnyTransition(.blurReplace))
+        // One group, as neighbouring glass should be: each samples what is behind it, not the other.
+        GlassGroup(spacing: Spacing.sm) {
+            HStack(spacing: Spacing.sm) {
+                // Always there, at no width without a control: its edge then moves with the capsule
+                // on the same spring, where a view that fades in sits at its final place and waits.
+                RevealLayout(progress: content?.standalone == nil ? 0 : 1) {
+                    if let content, let standalone = content.standalone {
+                        standalone
+                            .id(content.page)
+                            .transition(swap)
+                    }
                 }
-                if store.page != .agent {
-                    panelToggle.transition(reduceMotion ? AnyTransition.opacity : AnyTransition(.blurReplace))
+                .clipped()
+                .frame(height: 40)
+                .glassSurface(in: Capsule())
+                HStack(spacing: Spacing.xs) {
+                    if let content {
+                        HStack(spacing: Spacing.xs) { content.view }
+                            .id(content.page)
+                            .transition(swap)
+                    }
+                    if store.page != .agent {
+                        panelToggle.transition(swap)
+                    }
+                    StartStopButton()
                 }
-                StartStopButton()
+                .buttonStyle(ToolbarCapsuleButtonStyle())
+                .labelStyle(.iconOnly)
+                .labelsHidden()
+                .padding(.horizontal, Spacing.xs)
+                .frame(height: 40)
+                .glassSurface(in: Capsule())
             }
-            .buttonStyle(ToolbarCapsuleButtonStyle())
-            .labelStyle(.iconOnly)
-            .labelsHidden()
-            .padding(.horizontal, Spacing.xs)
-            .frame(height: 40)
-            .glassSurface(in: Capsule())
         }
         .animation(reduceMotion ? nil : .spring(duration: 0.38, bounce: 0.14), value: content?.page)
         .animation(reduceMotion ? nil : .spring(duration: 0.38, bounce: 0.14), value: store.page)
@@ -76,6 +88,48 @@ struct ToolbarCapsule: View {
     }
 }
 
+/// Its content at its own size against the trailing edge, in `progress` of that width.
+private struct RevealLayout: Layout {
+    var progress: CGFloat
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        return CGSize(width: (sizes.map(\.width).max() ?? 0) * progress, height: sizes.map(\.height).max() ?? 0)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            subview.place(at: CGPoint(x: bounds.maxX - size.width, y: bounds.midY - size.height / 2), proposal: ProposedViewSize(size))
+        }
+    }
+}
+
+/// A switch in the capsule, filled when on. Its state is in the fill and for VoiceOver; `help` adds
+/// the detail that a card used to show.
+struct ToolbarToggle: View {
+    let title: String
+    let symbol: String
+    let isOn: Bool
+    let help: String
+    /// In place of on or off, when that is not the whole story.
+    var value: String?
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) { Label(title, systemImage: symbol) }
+            .buttonStyle(ToolbarCapsuleButtonStyle(isOn: isOn))
+            .help(help)
+            .accessibilityValue(value ?? (isOn ? String(localized: "已打开") : String(localized: "已关闭")))
+            .accessibilityAddTraits(.isToggle)
+    }
+}
+
 /// A round icon button in the capsule: a soft highlight on hover and press, filled when on.
 struct ToolbarCapsuleButtonStyle: ButtonStyle {
     var isOn = false
@@ -85,7 +139,7 @@ struct ToolbarCapsuleButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.title3)
-            .foregroundStyle(isOn ? Color.white : Color.primary)
+            .foregroundStyle(isOn ? Color.onAccent : Color.primary)
             .opacity(isEnabled ? 1 : 0.35)
             .frame(width: 32, height: 32)
             .background(background(pressed: configuration.isPressed), in: Circle())

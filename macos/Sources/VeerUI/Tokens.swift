@@ -44,6 +44,11 @@ public extension Color {
     })
     /// User message bubble: a light wash of the accent with normal text, so the solid accent is
     /// left for primary actions.
+    /// A glyph on `veerAccent`: the dark appearance's accent is too light for white.
+    static let onAccent = Color(nsColor: NSColor(name: "VeerOnAccent") { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? .black : .white
+    })
+
     static let userBubble = Color(nsColor: NSColor(name: "VeerBubble") { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             ? NSColor(srgbRed: 0.16, green: 0.27, blue: 0.20, alpha: 1)
