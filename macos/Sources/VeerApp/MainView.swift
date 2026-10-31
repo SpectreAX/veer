@@ -62,7 +62,6 @@ struct MainView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var sidebarVisibility = NavigationSplitViewVisibility.all
     @State private var isFullScreen = false
-    @State private var detailLeading: CGFloat = 0
 
     /// The window's top row, which the sidebar button, the title and the capsule float in.
     static let topRowHeight: CGFloat = 52
@@ -101,6 +100,7 @@ struct MainView: View {
                 AgentPanelColumn()
                     .padding(.top, fullScreenTopInset)
                     .background(Color.surface)
+                    .overlay(alignment: .top) { dragRow }
                     .transition(.move(edge: .trailing))
             }
         }
@@ -113,33 +113,12 @@ struct MainView: View {
         // width, and any item it holds lands in an overflow button that throws the rest aside. An
         // item's content also snaps to a new page rather than animating.
         .background(EmptyWindowToolbar(isFullScreen: $isFullScreen))
-        // Over the pages, which scroll under the row: a click here is the window's, not theirs.
-        // A full-screen window does not move.
-        .overlay(alignment: .top) {
-            if !isFullScreen {
-                WindowDragArea()
-                    .frame(height: Self.topRowHeight)
-                    .ignoresSafeArea(.container, edges: .top)
-            }
-        }
         .overlay(alignment: .topLeading) {
             sidebarButton
                 .padding(.top, 6)
                 .padding(.leading, sidebarButtonLeading)
                 .ignoresSafeArea(.container, edges: .top)
         }
-        // Up here, over the drag area, as the back button and the profile menu take clicks.
-        .overlay(alignment: .topLeading) {
-            HStack(spacing: Spacing.sm) {
-                if let parent = store.page.parent { backButton(to: parent) }
-                pageTitle
-            }
-            .frame(height: Self.topRowHeight)
-            .padding(.leading, titleLeading)
-            .animation(reduceMotion ? nil : Motion.standard, value: sidebarHidden)
-            .ignoresSafeArea(.container, edges: .top)
-        }
-        .coordinateSpace(.named(Self.windowSpace))
         .overlayPreferenceValue(PageToolbarKey.self) { content in
             // Hidden until there is a profile: without one they do nothing.
             if !store.profiles.isEmpty {
@@ -161,10 +140,30 @@ struct MainView: View {
 
     private var sidebarHidden: Bool { sidebarVisibility == .detailOnly }
 
-    private static let windowSpace = "window"
+    /// Over a column, which scrolls under the row: a click here is the window's, not the column's.
+    /// In each column rather than over them all, so that the page's title can sit above it and take
+    /// clicks on its menu. A full-screen window does not move.
+    @ViewBuilder private var dragRow: some View {
+        if !isFullScreen {
+            WindowDragArea()
+                .frame(height: Self.topRowHeight)
+                .ignoresSafeArea(.container, edges: .top)
+        }
+    }
 
-    /// Where the title starts in the window, clear of the sidebar button when there is no sidebar.
-    private var titleLeading: CGFloat { sidebarHidden ? sidebarButtonLeading + 52 : detailLeading + Spacing.sm }
+    /// The back button, page and profile, in the page's column and so moving with it as the sidebar
+    /// opens and closes: its position can't be measured from outside, as a split view reports wild
+    /// values for the column while it animates. Clear of the sidebar button when there is no sidebar.
+    private var titleRow: some View {
+        HStack(spacing: Spacing.sm) {
+            if let parent = store.page.parent { backButton(to: parent) }
+            pageTitle
+        }
+        .frame(height: Self.topRowHeight)
+        .padding(.leading, sidebarHidden ? sidebarButtonLeading + 52 : Spacing.sm)
+        .animation(reduceMotion ? nil : Motion.standard, value: sidebarHidden)
+        .ignoresSafeArea(.container, edges: .top)
+    }
 
     private func backButton(to parent: Page) -> some View {
         Button { store.page = parent } label: {
@@ -219,6 +218,7 @@ struct MainView: View {
             }
             .safeAreaInset(edge: .bottom) { profileFooter }
             .safeAreaPadding(.top, fullScreenTopInset)
+            .overlay(alignment: .top) { dragRow }
             .toolbar(removing: .sidebarToggle)
             .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 260)
         } detail: {
@@ -235,11 +235,12 @@ struct MainView: View {
                 }
             }
             .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(Self.windowSpace)).minX } action: { detailLeading = $0 }
             // The toolbar has no band, so nothing may scroll under the title and window buttons.
             .clipped()
             .padding(.top, fullScreenTopInset)
             .background(Color.surface)
+            .overlay(alignment: .top) { dragRow }
+            .overlay(alignment: .topLeading) { titleRow }
         }
         .agentPresentations(agent)
         // For the window's name elsewhere, such as the Window menu; `pageTitle` shows it here.
