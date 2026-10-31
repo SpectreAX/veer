@@ -6,6 +6,8 @@ import VeerUI
 struct PageToolbarContent {
     let page: Page
     let view: AnyView
+    /// Stands apart from the capsule, on its left, in glass of its own.
+    var standalone: AnyView?
 }
 
 struct PageToolbarKey: PreferenceKey {
@@ -21,6 +23,13 @@ extension View {
     func pageToolbar<Content: View>(_ page: Page, @ViewBuilder content: () -> Content) -> some View {
         preference(key: PageToolbarKey.self, value: PageToolbarContent(page: page, view: AnyView(content())))
     }
+
+    /// The same, with a control that stands apart from the capsule, such as a switch between views.
+    func pageToolbar<Standalone: View, Content: View>(_ page: Page, @ViewBuilder standalone: () -> Standalone,
+                                                      @ViewBuilder content: () -> Content) -> some View {
+        preference(key: PageToolbarKey.self,
+                   value: PageToolbarContent(page: page, view: AnyView(content()), standalone: AnyView(standalone())))
+    }
 }
 
 /// A glass capsule in the window's top corner, whose width springs from page to page while the
@@ -32,23 +41,30 @@ struct ToolbarCapsule: View {
     let content: PageToolbarContent?
 
     var body: some View {
-        HStack(spacing: Spacing.xs) {
-            if let content {
-                HStack(spacing: Spacing.xs) { content.view }
+        HStack(spacing: Spacing.sm) {
+            if let content, let standalone = content.standalone {
+                standalone
                     .id(content.page)
                     .transition(reduceMotion ? AnyTransition.opacity : AnyTransition(.blurReplace))
             }
-            if store.page != .agent {
-                panelToggle.transition(reduceMotion ? AnyTransition.opacity : AnyTransition(.blurReplace))
+            HStack(spacing: Spacing.xs) {
+                if let content {
+                    HStack(spacing: Spacing.xs) { content.view }
+                        .id(content.page)
+                        .transition(reduceMotion ? AnyTransition.opacity : AnyTransition(.blurReplace))
+                }
+                if store.page != .agent {
+                    panelToggle.transition(reduceMotion ? AnyTransition.opacity : AnyTransition(.blurReplace))
+                }
+                StartStopButton()
             }
-            StartStopButton()
+            .buttonStyle(ToolbarCapsuleButtonStyle())
+            .labelStyle(.iconOnly)
+            .labelsHidden()
+            .padding(.horizontal, Spacing.xs)
+            .frame(height: 40)
+            .glassSurface(in: Capsule())
         }
-        .buttonStyle(ToolbarCapsuleButtonStyle())
-        .labelStyle(.iconOnly)
-        .labelsHidden()
-        .padding(.horizontal, Spacing.xs)
-        .frame(height: 40)
-        .glassSurface(in: Capsule())
         .animation(reduceMotion ? nil : .spring(duration: 0.38, bounce: 0.14), value: content?.page)
         .animation(reduceMotion ? nil : .spring(duration: 0.38, bounce: 0.14), value: store.page)
     }

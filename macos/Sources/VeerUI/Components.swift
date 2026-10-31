@@ -341,6 +341,78 @@ public struct SegmentedControl<Value: Hashable>: View {
     }
 }
 
+/// A switch between views that stands alone in the window's top row, in a glass capsule of its own.
+/// Custom because the system's segmented picker draws its own track there, and only takes on glass
+/// inside a real toolbar, which Veer leaves empty (see DESIGN_SPEC). Selection is a shape, not a
+/// color, and buttons keep it reachable from the keyboard and VoiceOver.
+public struct GlassSwitch<Value: Hashable>: View {
+    public init(label: String, selection: Binding<Value>, options: [Option]) {
+        self.label = label
+        _selection = selection
+        self.options = options
+    }
+
+    public struct Option {
+        public init(value: Value, title: String, symbol: String) {
+            self.value = value
+            self.title = title
+            self.symbol = symbol
+        }
+
+        public let value: Value
+        public let title: String
+        public let symbol: String
+    }
+
+    public let label: String
+    @Binding public var selection: Value
+    public let options: [Option]
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var indicator
+
+    public var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(options.enumerated()), id: \.offset) { _, option in
+                let isSelected = option.value == selection
+                Button { selection = option.value } label: {
+                    Label(option.title, systemImage: option.symbol).labelStyle(.iconOnly)
+                }
+                .buttonStyle(GlassSwitchButtonStyle())
+                .background {
+                    if isSelected {
+                        Capsule().fill(Color.primary.opacity(0.14)).matchedGeometryEffect(id: "selection", in: indicator)
+                    }
+                }
+                .help(option.title)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            }
+        }
+        .padding(Spacing.xs)
+        .frame(height: 40)
+        .glassSurface(in: Capsule())
+        .animation(reduceMotion ? nil : Motion.standard, value: selection)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(label)
+    }
+}
+
+/// A segment of `GlassSwitch`: a soft highlight on hover and press, under the selection's own.
+private struct GlassSwitchButtonStyle: ButtonStyle {
+    @State private var hovering = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.title3)
+            .foregroundStyle(Color.primary)
+            .frame(width: 44, height: 32)
+            .background(Color.primary.opacity(configuration.isPressed ? 0.12 : hovering ? 0.06 : 0), in: Capsule())
+            .contentShape(Capsule())
+            .onHover { hovering = $0 }
+            .animation(Motion.quick, value: configuration.isPressed)
+            .animation(Motion.quick, value: hovering)
+    }
+}
+
 /// A key or key combination shown as a keycap, e.g. "⇧↩" or "1": one surface step up with a
 /// hairline edge, no gradient or shadow. Decorative for VoiceOver; the action's label says it.
 public struct KeyCap: View {

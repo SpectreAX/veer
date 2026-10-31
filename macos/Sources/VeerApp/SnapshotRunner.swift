@@ -46,6 +46,12 @@ enum SnapshotRunner {
         }
     }
 
+    private static func mapDefaults() -> UserDefaults {
+        let defaults = UserDefaults(suiteName: "veer-snapshot-\(UUID().uuidString)")!
+        defaults.set(true, forKey: "proxiesShowMap")
+        return defaults
+    }
+
     struct Scene {
         let name: String
         var size = CGSize(width: 1080, height: 720)
@@ -196,6 +202,13 @@ enum SnapshotRunner {
                 store.groups = [.init(name: "节点选择", type: "Selector", now: "🇺🇸 美国 1", members: members)]
                 return store
             }, view: AnyView(NodeMapView().frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.surface))),
+            // The whole window with the map chosen, on throwaway defaults, for the toolbar's switch.
+            Scene(name: "18f-proxies-map-window", store: { running(page: .proxies) }, view: AnyView(MainView().defaultAppStorage(mapDefaults()))),
+            Scene(name: "18g-proxies-map-window-smallest", size: CGSize(width: 960, height: 640), store: {
+                let store = running(page: .proxies)
+                store.agentPanel = true
+                return store
+            }, view: AnyView(MainView().defaultAppStorage(mapDefaults()))),
             Scene(name: "19-profiles-update-failed", store: {
                 let store = running(page: .profiles)
                 if var first = store.profiles.first {

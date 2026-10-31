@@ -35,6 +35,7 @@ Use the native control first, then a `VeerUI` component, then a new one. Shared 
 | `StateView` | Empty, loading and error states |
 | `ExitLabel` | Exit node and country |
 | `SegmentedControl` | Standard segmented picker in the system's colors, for symbols or text |
+| `GlassSwitch` | A switch between views in its own glass capsule, for the window's top row. The system's segmented picker draws its own track outside a real toolbar. Native alternative: `SegmentedControl`, anywhere else |
 | `KeyCap`, `ShortcutHint` | Keyboard shortcut display |
 | `ChoiceRow` | A row in a choice list |
 

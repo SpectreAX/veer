@@ -103,6 +103,7 @@ enum DockPresence {
 struct VeerCommands: Commands {
     let store: ProxyStore
     let agent: AgentStore
+    @AppStorage("proxiesShowMap") private var proxiesShowMap = false
 
     var body: some Commands {
         CommandGroup(after: .appInfo) {
@@ -135,6 +136,11 @@ struct VeerCommands: Commands {
             Divider()
             Toggle("Agent 面板", isOn: Binding(get: { store.agentPanel }, set: { store.agentPanel = $0 }))
                 .keyboardShortcut("i", modifiers: [.command, .option])
+            Divider()
+            // The top row's `GlassSwitch`, for anyone who cannot or does not Tab to it. Choosing one
+            // goes to the page, so it never changes a view that isn't showing.
+            Toggle("网格", isOn: Binding(get: { !proxiesShowMap }, set: { _ in proxiesShowMap = false; store.page = .proxies }))
+            Toggle("地图", isOn: Binding(get: { proxiesShowMap }, set: { _ in proxiesShowMap = true; store.page = .proxies }))
             Divider()
         }
         CommandMenu("代理") {

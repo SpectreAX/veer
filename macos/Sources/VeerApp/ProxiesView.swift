@@ -22,12 +22,11 @@ struct ProxiesView: View {
     var body: some View {
         content
             .pageToolbar(.proxies) {
-                // The system's control and its selection, as in Finder's view switcher. Each segment
-                // has its own tooltip.
-                SegmentedControl(label: String(localized: "显示方式"), selection: $showMap, options: [
+                GlassSwitch(label: String(localized: "显示方式"), selection: $showMap, options: [
                     .init(value: false, title: String(localized: "网格"), symbol: "square.grid.2x2"),
                     .init(value: true, title: String(localized: "地图"), symbol: "map"),
                 ])
+            } content: {
                 let allCollapsed = !store.groups.isEmpty && store.groups.allSatisfy { store.collapsedGroups.contains($0.name) }
                 Button { store.setAllCollapsed(!allCollapsed) } label: {
                     allCollapsed ? Label("全部展开", systemImage: "rectangle.expand.vertical")
