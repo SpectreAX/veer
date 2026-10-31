@@ -42,6 +42,6 @@ struct ToolbarSearchField: View {
             }
         }
         .padding(.horizontal, Spacing.sm)
-        .frame(width: 210)
+        .frame(width: 190)
     }
 }

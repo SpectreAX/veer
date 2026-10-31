@@ -66,7 +66,6 @@ struct MainView: View {
 
     /// The window's top row, which the sidebar button, the title and the capsule float in.
     static let topRowHeight: CGFloat = 52
-    private static let topRowInset: CGFloat = 6
 
     var body: some View {
         @Bindable var store = store
@@ -129,14 +128,16 @@ struct MainView: View {
                 .padding(.leading, sidebarButtonLeading)
                 .ignoresSafeArea(.container, edges: .top)
         }
-        // Up here, over the drag area, where the page's own title cannot take a click.
+        // Up here, over the drag area, as the back button and the profile menu take clicks.
         .overlay(alignment: .topLeading) {
-            if let parent = store.page.parent {
-                backButton(to: parent)
-                    .padding(.top, Self.topRowInset)
-                    .padding(.leading, titleLeading)
-                    .ignoresSafeArea(.container, edges: .top)
+            HStack(spacing: Spacing.sm) {
+                if let parent = store.page.parent { backButton(to: parent) }
+                pageTitle
             }
+            .frame(height: Self.topRowHeight)
+            .padding(.leading, titleLeading)
+            .animation(reduceMotion ? nil : Motion.standard, value: sidebarHidden)
+            .ignoresSafeArea(.container, edges: .top)
         }
         .coordinateSpace(.named(Self.windowSpace))
         .overlayPreferenceValue(PageToolbarKey.self) { content in
@@ -189,20 +190,13 @@ struct MainView: View {
         .glassSurface(in: Circle())
     }
 
-    /// The page and profile, over the toolbar at the top of the page, clear of the sidebar button
-    /// when there is no sidebar.
+    /// The page, which a click on goes through to the window, and the profile's menu.
     private var pageTitle: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(store.page.title).font(.headline)
-            if !profileName.isEmpty {
-                Text(profileName).font(.caption).foregroundStyle(.secondary)
-            }
+            Text(store.page.title).font(.headline).allowsHitTesting(false)
+            if !profileName.isEmpty { ProfileMenu(name: profileName) }
         }
         .lineLimit(1)
-        .frame(height: Self.topRowHeight)
-        .padding(.leading, (sidebarHidden ? sidebarButtonLeading + 52 : Spacing.lg) + (store.page.parent == nil ? 0 : 48))
-        .animation(reduceMotion ? nil : Motion.standard, value: sidebarHidden)
-        .allowsHitTesting(false)
     }
 
     /// Short enough to stay clear of the capsule in the narrowest window; the foot of the sidebar
@@ -246,9 +240,6 @@ struct MainView: View {
             .clipped()
             .padding(.top, fullScreenTopInset)
             .background(Color.surface)
-            .overlay(alignment: .topLeading) {
-                pageTitle.ignoresSafeArea(.container, edges: .top)
-            }
         }
         .agentPresentations(agent)
         // For the window's name elsewhere, such as the Window menu; `pageTitle` shows it here.
@@ -286,6 +277,51 @@ struct MainView: View {
         .font(.callout)
         .padding(.horizontal, Spacing.lg)
         .padding(.vertical, Spacing.md)
+    }
+}
+
+/// The profile in use, under the page's title on every page, where the HIG keeps a document's menu:
+/// how much of it is left, every profile to switch to, and the way to manage them.
+private struct ProfileMenu: View {
+    @Environment(ProxyStore.self) private var store
+    let name: String
+
+    var body: some View {
+        Menu {
+            if let usage {
+                Text(usage)
+                Divider()
+            }
+            Picker(String(localized: "使用的配置"), selection: Binding(get: { store.activeProfileID }, set: { if let id = $0 { store.activate(id) } })) {
+                ForEach(store.profiles) { Text($0.name).tag(Optional($0.id)) }
+            }
+            .pickerStyle(.inline)
+            Divider()
+            if let profile = store.activeProfile, profile.isSubscription {
+                Button("更新订阅") { store.update(profile.id) }
+                    .disabled(store.updatingProfiles.contains(profile.id))
+            }
+            Button("管理配置") { store.page = .proxies }
+            Button("导入配置…") { store.openImport() }
+        } label: {
+            Text(verbatim: name).font(.caption).foregroundStyle(.secondary)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .neutralControl()
+        // A borderless menu insets its label; this one lines up with the title above it.
+        .padding(.leading, -Spacing.xxs)
+        .help(String(localized: "当前配置：\(store.activeProfile?.name ?? "—")"))
+        .accessibilityLabel(String(localized: "使用的配置"))
+        .accessibilityValue(store.activeProfile?.name ?? "")
+    }
+
+    private var usage: String? {
+        guard let usage = store.activeProfile?.usage, let total = usage.total, total > 0 else { return nil }
+        let used = String(localized: "已用 \(Format.bytes(usage.used ?? 0)) / \(Format.bytes(total))")
+        guard let expire = usage.expire else { return used }
+        let days = max(0, Calendar.current.dateComponents([.day], from: .now, to: expire).day ?? 0)
+        return [used, String(localized: "剩 \(days) 天")].joined(separator: " · ")
     }
 }
 

@@ -43,6 +43,7 @@ struct LogsView: View {
                 Button { store.clearLogs() } label: { Label("清空", systemImage: "trash") }
                     .help("清空日志")
                     .disabled(store.logs.isEmpty)
+            } content: {
                 ToolbarSearchField(text: $query, prompt: Text("搜索日志"))
             }
     }

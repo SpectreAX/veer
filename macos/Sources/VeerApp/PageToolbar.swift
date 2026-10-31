@@ -2,12 +2,11 @@ import SwiftUI
 import VeerProxy
 import VeerUI
 
-/// What a page puts in the capsule at the top of the window.
+/// What a page puts at the top of the window: controls grouped by what they do, each group in glass
+/// of its own.
 struct PageToolbarContent {
     let page: Page
-    let view: AnyView
-    /// Stands apart from the capsule, on its left, in glass of its own.
-    var standalone: AnyView?
+    let groups: [AnyView]
 }
 
 struct PageToolbarKey: PreferenceKey {
@@ -18,67 +17,80 @@ struct PageToolbarKey: PreferenceKey {
 }
 
 extension View {
-    /// Buttons and a search field for the capsule, in place of `.toolbar`, whose items appear and
+    /// Buttons and a search field for the top row, in place of `.toolbar`, whose items appear and
     /// vanish at once (and whose search item crashed the app; see `ToolbarSearchField`).
     func pageToolbar<Content: View>(_ page: Page, @ViewBuilder content: () -> Content) -> some View {
-        preference(key: PageToolbarKey.self, value: PageToolbarContent(page: page, view: AnyView(content())))
+        preference(key: PageToolbarKey.self, value: PageToolbarContent(page: page, groups: [AnyView(content())]))
     }
 
-    /// The same, with a control that stands apart from the capsule, such as a switch between views.
-    func pageToolbar<Standalone: View, Content: View>(_ page: Page, @ViewBuilder standalone: () -> Standalone,
-                                                      @ViewBuilder content: () -> Content) -> some View {
-        preference(key: PageToolbarKey.self,
-                   value: PageToolbarContent(page: page, view: AnyView(content()), standalone: AnyView(standalone())))
+    /// Two groups, the most a page has, so that the row keeps to three with the window's own.
+    func pageToolbar<First: View, Content: View>(_ page: Page, @ViewBuilder first: () -> First,
+                                                 @ViewBuilder content: () -> Content) -> some View {
+        preference(key: PageToolbarKey.self, value: PageToolbarContent(page: page, groups: [AnyView(first()), AnyView(content())]))
     }
 }
 
-/// A glass capsule in the window's top corner, whose width springs from page to page while the
-/// page's controls blur in and out. Start and stop and the Agent panel sit at its far end, so they
-/// stay where they are as the rest changes.
+/// The window's top corner: the page's groups, then the window's own, each in glass of its own. The
+/// HIG says to group toolbar items by function and to aim for at most three groups, so a page has two
+/// and the Agent panel and start and stop, which are always there, share the last at the far end. It
+/// stays where it is, and the page's groups spring to their new widths while their controls blur.
 struct ToolbarCapsule: View {
     @Environment(ProxyStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let content: PageToolbarContent?
 
+    private static let pageSlots = 2
+
     private var swap: AnyTransition { reduceMotion ? .opacity : AnyTransition(.blurReplace) }
 
+    /// Filled from the edge inward, so that a page's last group always sits in the same place.
+    private func group(inSlot slot: Int) -> AnyView? {
+        guard let groups = content?.groups else { return nil }
+        let index = slot - (Self.pageSlots - groups.count)
+        return groups.indices.contains(index) ? groups[index] : nil
+    }
+
     var body: some View {
-        // One group, as neighbouring glass should be: each samples what is behind it, not the other.
+        // One container, as neighbouring glass should be: each samples what is behind it, not the other.
         GlassGroup(spacing: Spacing.sm) {
             HStack(spacing: Spacing.sm) {
-                // Always there, at no width without a control: its edge then moves with the capsule
-                // on the same spring, where a view that fades in sits at its final place and waits.
-                RevealLayout(progress: content?.standalone == nil ? 0 : 1) {
-                    if let content, let standalone = content.standalone {
-                        standalone
-                            .id(content.page)
-                            .transition(swap)
-                    }
+                ForEach(0..<Self.pageSlots, id: \.self) { slot in
+                    pageGroup(group(inSlot: slot))
                 }
-                .clipped()
-                .frame(height: 40)
-                .glassSurface(in: Capsule())
                 HStack(spacing: Spacing.xs) {
-                    if let content {
-                        HStack(spacing: Spacing.xs) { content.view }
-                            .id(content.page)
-                            .transition(swap)
-                    }
                     if store.page != .agent {
                         panelToggle.transition(swap)
                     }
                     StartStopButton()
                 }
-                .buttonStyle(ToolbarCapsuleButtonStyle())
-                .labelStyle(.iconOnly)
-                .labelsHidden()
                 .padding(.horizontal, Spacing.xs)
                 .frame(height: 40)
                 .glassSurface(in: Capsule())
             }
+            .buttonStyle(ToolbarCapsuleButtonStyle())
+            .labelStyle(.iconOnly)
+            .labelsHidden()
         }
         .animation(reduceMotion ? nil : .spring(duration: 0.38, bounce: 0.14), value: content?.page)
         .animation(reduceMotion ? nil : .spring(duration: 0.38, bounce: 0.14), value: store.page)
+    }
+
+    /// Always there, at no width without controls: its edge then moves with its neighbour on the
+    /// same spring, where a view that fades in sits at its final place and waits.
+    private func pageGroup(_ group: AnyView?) -> some View {
+        RevealLayout(progress: group == nil ? 0 : 1) {
+            if let group, let content {
+                HStack(spacing: Spacing.xs) { group }
+                    .padding(.horizontal, Spacing.xs)
+                    .id(content.page)
+                    .transition(swap)
+            }
+        }
+        .frame(height: 40)
+        .clipShape(Capsule())
+        .glassSurface(in: Capsule())
+        // A hairline otherwise: the material before macOS 26 strokes its edge at any width.
+        .opacity(group == nil ? 0 : 1)
     }
 
     private var panelToggle: some View {
@@ -110,7 +122,7 @@ private struct RevealLayout: Layout {
     }
 }
 
-/// A switch in the capsule, filled when on. Its state is in the fill and for VoiceOver; `help` adds
+/// A switch in a toolbar group, filled when on. Its state is in the fill and for VoiceOver; `help` adds
 /// the detail that a card used to show.
 struct ToolbarToggle: View {
     let title: String
@@ -130,7 +142,7 @@ struct ToolbarToggle: View {
     }
 }
 
-/// A round icon button in the capsule: a soft highlight on hover and press, filled when on.
+/// A round icon button in a toolbar group: a soft highlight on hover and press, filled when on.
 struct ToolbarCapsuleButtonStyle: ButtonStyle {
     var isOn = false
     @Environment(\.isEnabled) private var isEnabled

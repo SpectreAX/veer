@@ -32,9 +32,11 @@ Brand expression must not damage native usability.
 ## Toolbar
 
 - Icon-only buttons have accessibility labels and tooltips.
-- A page's own buttons sit on the left. The Agent toggle and start/stop stay fixed on the right.
-- A page's switch stands in its own glass capsule, left of the others, and grows out of them on the
-  same spring rather than appearing on its own.
+- Controls are grouped by what they do, each group in its own glass, and at most three groups: up to
+  two for the page, with search on its own, then the Agent toggle and start/stop together.
+- The last group stays fixed. A group grows out of its neighbour on the same spring rather than
+  appearing on its own.
+- The profile's name under the title is the profile menu, as the HIG places a document menu.
 - A toggle in the toolbar fills when on, and says its state to VoiceOver.
 - Search is `⌘F`; Esc clears it and leaves the field.
 
@@ -58,6 +60,8 @@ System fonts and semantic text styles. Code and logs use `Typography.code` and `
 ## Motion
 
 `Motion.quick` and `Motion.standard`, or a documented spring. With Reduce Motion on, only fade.
+`CoreStateRing` around the Overview's start button turns once in 1.1 s while the core starts, and its
+ripple takes 0.6 s: state feedback, not a transition, with a steady ring and no ripple under Reduce Motion.
 
 ## Components and interaction
 

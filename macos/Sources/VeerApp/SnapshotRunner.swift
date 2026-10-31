@@ -97,6 +97,12 @@ enum SnapshotRunner {
                 store.exit = nil
                 return store
             }, view: AnyView(MainView())),
+            Scene(name: "04f-overview-starting", store: {
+                let store = running()
+                store.phase = .starting
+                return store
+            }, view: AnyView(MainView())),
+            Scene(name: "05b-proxies-smallest", size: CGSize(width: 860, height: 560), store: { running(page: .proxies) }, view: AnyView(MainView())),
             Scene(name: "04e-overview-no-exit", store: {
                 let store = running()
                 store.exit = .unknown

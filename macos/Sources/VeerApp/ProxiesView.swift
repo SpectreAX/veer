@@ -29,7 +29,6 @@ struct ProxiesView: View {
                     .init(value: false, title: String(localized: "网格"), symbol: "square.grid.2x2"),
                     .init(value: true, title: String(localized: "地图"), symbol: "map"),
                 ])
-            } content: {
                 let allCollapsed = !store.groups.isEmpty && store.groups.allSatisfy { store.collapsedGroups.contains($0.name) }
                 Button { store.setAllCollapsed(!allCollapsed) } label: {
                     allCollapsed ? Label("全部展开", systemImage: "rectangle.expand.vertical")
@@ -37,6 +36,7 @@ struct ProxiesView: View {
                 }
                 .help(allCollapsed ? String(localized: "展开全部策略组") : String(localized: "收起全部策略组"))
                 .disabled(store.groups.isEmpty || showMap)
+            } content: {
                 ToolbarSearchField(text: $query, prompt: Text("搜索节点或策略组"))
             }
     }

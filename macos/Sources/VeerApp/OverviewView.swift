@@ -232,12 +232,72 @@ private struct StatusCard: View {
             Image(systemName: store.isRunning ? "stop.fill" : "play.fill")
                 .font(.title.weight(.semibold))
                 .frame(width: 64, height: 64)
+                .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                .animation(reduceMotion ? nil : Motion.standard, value: store.isRunning)
         }
         .buttonBorderShape(.circle)
         .primaryAction()
+        .overlay { CoreStateRing(phase: store.phase) }
         .disabled(store.phase == .starting || store.activeProfile == nil)
         .help(store.isRunning ? String(localized: "停止内核（⌘R）") : String(localized: "启动内核（⌘R）"))
-        .accessibilityLabel(store.isRunning ? String(localized: "停止") : String(localized: "启动"))
+        .accessibilityLabel(store.phase == .starting ? String(localized: "正在启动") : store.isRunning ? String(localized: "停止") : String(localized: "启动"))
+    }
+}
+
+/// Around the big button, what the core is doing: a ring that turns while it starts, and one ripple
+/// when it has started or stopped. With Reduce Motion, a steady ring and no ripple; either way the
+/// status above says it in words, and VoiceOver hears it on this page.
+private struct CoreStateRing: View {
+    let phase: ProxyStore.Phase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var ripples = 0
+    @State private var rippleColor = Color.veerAccent
+
+    private static let lineWidth: CGFloat = 3
+    private static let turn: TimeInterval = 1.1
+
+    private enum Ripple: CaseIterable {
+        case idle, shown, gone
+
+        var opacity: Double { self == .shown ? 0.7 : 0 }
+        var scale: CGFloat { self == .gone ? 1.4 : 1 }
+    }
+
+    var body: some View {
+        ZStack {
+            if phase == .starting { startingRing.padding(-Spacing.xs) }
+            if !reduceMotion {
+                Circle()
+                    .stroke(rippleColor, lineWidth: Self.lineWidth)
+                    .phaseAnimator(Ripple.allCases, trigger: ripples) { circle, ripple in
+                        circle.scaleEffect(ripple.scale).opacity(ripple.opacity)
+                    } animation: { ripple in
+                        ripple == .gone ? .easeOut(duration: 0.6) : .linear(duration: 0.01)
+                    }
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+        .onChange(of: phase) { old, new in
+            AccessibilityNotification.Announcement(new.title).post()
+            // Not when a failure ends a start: the panel above the cards says so.
+            guard new == .running || (new == .stopped && old == .running) else { return }
+            rippleColor = new == .running ? Color.veerAccent : Color.secondary
+            ripples += 1
+        }
+    }
+
+    @ViewBuilder private var startingRing: some View {
+        if reduceMotion {
+            Circle().stroke(Color.veerAccent.opacity(0.5), lineWidth: Self.lineWidth)
+        } else {
+            TimelineView(.animation) { context in
+                Circle()
+                    .trim(from: 0, to: 0.28)
+                    .stroke(Color.veerAccent, style: StrokeStyle(lineWidth: Self.lineWidth, lineCap: .round))
+                    .rotationEffect(.degrees(context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: Self.turn) / Self.turn * 360))
+            }
+        }
     }
 }
 
@@ -278,8 +338,7 @@ private struct TrafficCard: View {
     }
 }
 
-/// The system proxy, TUN and local network switches, and which profile runs. The mode beside them is
-/// in its own glass.
+/// The system proxy, TUN and local network switches: what the proxy reaches, together in one group.
 private struct OverviewToolbar: View {
     @Environment(ProxyStore.self) private var store
 
@@ -297,7 +356,6 @@ private struct OverviewToolbar: View {
                       help: store.settings.allowLAN ? String(localized: "允许局域网设备连接") : String(localized: "仅本机可用")) {
             store.settings.allowLAN.toggle()
         }
-        ProfileMenu()
     }
 
     private var proxyStatus: String {
@@ -310,44 +368,6 @@ private struct OverviewToolbar: View {
         if store.tunActive { return String(localized: "运行中") }
         if !store.settings.tun { return String(localized: "已关闭") }
         return store.isRunning ? String(localized: "未生效，已改用系统代理") : String(localized: "启动后生效")
-    }
-}
-
-/// How much of the subscription is left, every profile to switch to, and the way to manage them.
-private struct ProfileMenu: View {
-    @Environment(ProxyStore.self) private var store
-
-    var body: some View {
-        Menu {
-            if let usage {
-                Text(usage)
-                Divider()
-            }
-            Picker(String(localized: "使用的配置"), selection: Binding(get: { store.activeProfileID }, set: { if let id = $0 { store.activate(id) } })) {
-                ForEach(store.profiles) { Text($0.name).tag(Optional($0.id)) }
-            }
-            .pickerStyle(.inline)
-            Divider()
-            if let profile = store.activeProfile, profile.isSubscription {
-                Button("更新订阅") { store.update(profile.id) }
-                    .disabled(store.updatingProfiles.contains(profile.id))
-            }
-            Button("管理配置") { store.page = .proxies }
-            Button("导入配置…") { store.openImport() }
-        } label: {
-            Label(String(localized: "配置"), systemImage: "doc.text")
-        }
-        .menuStyle(.button)
-        .menuIndicator(.hidden)
-        .help(String(localized: "当前配置：\(store.activeProfile?.name ?? "—")"))
-    }
-
-    private var usage: String? {
-        guard let usage = store.activeProfile?.usage, let total = usage.total, total > 0 else { return nil }
-        let used = String(localized: "已用 \(Format.bytes(usage.used ?? 0)) / \(Format.bytes(total))")
-        guard let expire = usage.expire else { return used }
-        let days = max(0, Calendar.current.dateComponents([.day], from: .now, to: expire).day ?? 0)
-        return [used, String(localized: "剩 \(days) 天")].joined(separator: " · ")
     }
 }
 

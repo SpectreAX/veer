@@ -411,7 +411,6 @@ public struct GlassSwitch<Value: Hashable>: View {
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
-        .padding(Spacing.xs)
         .animation(reduceMotion ? nil : Motion.standard, value: selection)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(label)

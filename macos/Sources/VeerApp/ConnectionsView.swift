@@ -25,7 +25,9 @@ struct ConnectionsView: View {
 
     var body: some View {
         content
-            .pageToolbar(.connections) { toolbar }
+            .pageToolbar(.connections) { toolbar } content: {
+                ToolbarSearchField(text: $query, prompt: Text("搜索主机、进程、规则或节点"))
+            }
             .onAppear { store.watchConnections(true) }
             .onDisappear { store.watchConnections(false) }
             .sheet(item: $addingRule) { AddRuleSheet(row: $0) }
@@ -133,7 +135,6 @@ struct ConnectionsView: View {
         Button { confirmingCloseAll = true } label: { Label("关闭全部连接", systemImage: "xmark.circle") }
             .help("关闭全部连接")
             .disabled(store.connections.isEmpty)
-        ToolbarSearchField(text: $query, prompt: Text("搜索主机、进程、规则或节点"))
     }
 
     private func rows(_ ids: Set<ConnectionRow.ID>) -> [ConnectionRow] { store.connections.filter { ids.contains($0.id) } }
