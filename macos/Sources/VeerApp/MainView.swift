@@ -164,7 +164,7 @@ struct MainView: View {
     private static let windowSpace = "window"
 
     /// Where the title starts in the window, clear of the sidebar button when there is no sidebar.
-    private var titleLeading: CGFloat { sidebarHidden ? sidebarButtonLeading + 52 : detailLeading + Spacing.lg }
+    private var titleLeading: CGFloat { sidebarHidden ? sidebarButtonLeading + 52 : detailLeading + Spacing.sm }
 
     private func backButton(to parent: Page) -> some View {
         Button { store.page = parent } label: {
