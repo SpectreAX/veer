@@ -223,19 +223,29 @@ private struct NodeTile: View {
 
 /// Sets where a node exits when its name does not say, or goes back to reading the name.
 private struct RegionMarkMenu: View {
+    let node: String
+
+    var body: some View {
+        Menu("标记地区") { RegionMarkItems(node: node) }
+    }
+}
+
+struct RegionMarkItems: View {
     @Environment(ProxyStore.self) private var store
     let node: String
 
     var body: some View {
         let marked = store.regionMarks[node]
-        Menu("标记地区") {
-            Button { store.markRegion(node, code: nil) } label: {
-                if marked == nil { Label("按名称识别", systemImage: "checkmark") } else { Text("按名称识别") }
-            }
-            Divider()
-            ForEach(NodeLocator.places.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) { place in
-                Button { store.markRegion(node, code: place.code) } label: {
-                    if marked == place.code { Label("\(place.flag) \(place.name)", systemImage: "checkmark") } else { Text(verbatim: "\(place.flag) \(place.name)") }
+        Button { store.markRegion(node, code: nil) } label: {
+            if marked == nil { Label("按名称识别", systemImage: "checkmark") } else { Text("按名称识别") }
+        }
+        Divider()
+        ForEach(NodeLocator.places.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) { place in
+            Button { store.markRegion(node, code: place.code) } label: {
+                if marked == place.code {
+                    Label("\(place.flag) \(place.name)", systemImage: "checkmark")
+                } else {
+                    Text(verbatim: "\(place.flag) \(place.name)")
                 }
             }
         }

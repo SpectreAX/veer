@@ -84,18 +84,24 @@ private struct EffectiveWarnings: View {
 
     var body: some View {
         if effective.conflictCount > 0 {
-            StatusBadge(kind: .warning, text: String(localized: "“我的分流”里有 \(effective.conflictCount) 项修改未能用到更新后的订阅上，打开“节点与分流”查看原因。"))
+            let text = String(localized: "“我的分流”里有 \(effective.conflictCount) 项修改未能用到更新后的订阅上，打开“节点与分流”查看原因。")
+            StatusBadge(kind: .warning, text: text)
                 .lineLimit(3)
+                .help(text)
         }
         if !effective.emptiedGroups.isEmpty {
             let groups = effective.emptiedGroups.formatted(.list(type: .and))
-            StatusBadge(kind: .warning, text: String(localized: "取消勾选节点后，这些策略组没有节点了，暂时改为直连：\(groups)"))
+            let text = String(localized: "取消勾选节点后，这些策略组没有节点了，暂时改为直连：\(groups)")
+            StatusBadge(kind: .warning, text: text)
                 .lineLimit(3)
+                .help(text)
         }
         if !effective.keptNodes.isEmpty {
             let nodes = effective.keptNodes.formatted(.list(type: .and))
-            StatusBadge(kind: .info, text: String(localized: "有规则直接使用这些节点，所以它们没有被去掉：\(nodes)"))
+            let text = String(localized: "有规则直接使用这些节点，所以它们没有被去掉：\(nodes)")
+            StatusBadge(kind: .info, text: text)
                 .lineLimit(3)
+                .help(text)
         }
     }
 }
@@ -250,13 +256,26 @@ struct ProfileDetailSheet: View {
                 StateView(symbol: "circle.dashed", title: String(localized: "这个配置里没有节点"))
             } else {
                 List(shownNodes, id: \.self) { name in
-                    Toggle(isOn: Binding(get: { !layer.excludedNodes.contains(name) }, set: { included in
-                        store.setNode(name, included: included, in: profile.id)
-                        reload()
-                    })) {
-                        Text(name).lineLimit(1).truncationMode(.middle)
+                    HStack(spacing: Spacing.sm) {
+                        Toggle(isOn: Binding(get: { !layer.excludedNodes.contains(name) }, set: { included in
+                            store.setNode(name, included: included, in: profile.id)
+                            reload()
+                        })) {
+                            Text(name).lineLimit(1).truncationMode(.middle)
+                        }
+                        .accentCheckbox()
+                        Spacer(minLength: 0)
+                        // Marks belong to the profile in use, the one whose nodes it can locate.
+                        if profile.id == store.activeProfileID, !NodeMapView.builtins.contains(name), !NodeCleanup.isInfoNode(name) {
+                            Menu { RegionMarkItems(node: name) } label: {
+                                Image(systemName: store.regionMarks[name] == nil ? "mappin" : "mappin.circle.fill")
+                            }
+                            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().neutralControl()
+                            .help("标记地区")
+                            .accessibilityLabel(String(localized: "标记“\(name)”的地区"))
+                            .accessibilityValue(store.regionMarks[name].flatMap(NodeLocator.place)?.name ?? "")
+                        }
                     }
-                    .accentCheckbox()
                 }
                 .listStyle(.bordered)
             }

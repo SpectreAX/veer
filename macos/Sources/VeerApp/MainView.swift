@@ -60,6 +60,7 @@ struct MainView: View {
     @Environment(AgentStore.self) private var agent
     @Environment(\.openSettings) private var openSettings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.undoManager) private var undoManager
     @State private var sidebarVisibility = NavigationSplitViewVisibility.all
     @State private var isFullScreen = false
 
@@ -83,6 +84,7 @@ struct MainView: View {
             return true
         }
         .onAppear { DockPresence.windowOpened() }
+        .onChange(of: undoManager, initial: true) { _, manager in agent.changes.manager = manager }
         .onDisappear { DockPresence.windowClosed() }
     }
 
@@ -119,6 +121,15 @@ struct MainView: View {
                 .padding(.leading, sidebarButtonLeading)
                 .ignoresSafeArea(.container, edges: .top)
         }
+        // The Agent shows these itself. Elsewhere Edit → Undo would otherwise change routing with no sign.
+        .overlay(alignment: .bottom) {
+            if store.page != .agent, !store.agentPanel, let toast = agent.toast {
+                ToastView(toast: toast) { agent.undo() }
+                    .padding(.bottom, Spacing.xl)
+                    .transition(reduceMotion ? AnyTransition.opacity : .move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(reduceMotion ? nil : Motion.standard, value: agent.toast)
         .overlayPreferenceValue(PageToolbarKey.self) { content in
             // Hidden until there is a profile: without one they do nothing.
             if !store.profiles.isEmpty {

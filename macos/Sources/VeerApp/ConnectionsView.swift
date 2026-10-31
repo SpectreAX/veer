@@ -10,9 +10,13 @@ struct ConnectionsView: View {
     @State private var query = ""
     @State private var process: String?
     @State private var policy: String?
-    @State private var selection = Set<ConnectionRow.ID>()
+    @State private var selection: Set<ConnectionRow.ID>
     @State private var addingRule: ConnectionRow?
     @State private var confirmingCloseAll = false
+
+    init(selection: Set<ConnectionRow.ID> = []) {
+        _selection = State(initialValue: selection)
+    }
 
     private var shown: [ConnectionRow] {
         let text = query.trimmingCharacters(in: .whitespaces).lowercased()
@@ -51,9 +55,12 @@ struct ConnectionsView: View {
                 HStack(spacing: 0) {
                     table
                     // One selected connection: its route, rule to node.
-                    if selection.count == 1, let row = store.connections.first(where: { selection.contains($0.id) }) {
+                    if selection.count == 1, let row = shown.first(where: { selection.contains($0.id) }) {
                         Divider()
-                        RouteMap(row: row).frame(width: 240)
+                        RouteMap(row: row) {
+                            RouteActions(row: row, addRule: { addingRule = row }, close: { store.closeConnection(row.id) })
+                        }
+                        .frame(width: 240)
                     }
                 }
             }
@@ -108,7 +115,7 @@ struct ConnectionsView: View {
             TableColumn("时长") { row in
                 Text(verbatim: row.start.map { Format.duration(since: $0) } ?? "—").font(Typography.codeSmall).foregroundStyle(.secondary)
             }
-            .width(min: 44, ideal: 52)
+            .width(min: 64, ideal: 72)
         }
         .contextMenu(forSelectionType: ConnectionRow.ID.self) { ids in
             if let row = rows(ids).first {
@@ -122,6 +129,10 @@ struct ConnectionsView: View {
             }
         }
         .onDeleteCommand { for id in selection { store.closeConnection(id) } }
+        // Nil with nothing selected, which leaves the clipboard and the menu item alone.
+        .onCopyCommand(perform: selection.isEmpty ? nil : {
+            [NSItemProvider(object: rows(selection).map(\.host).joined(separator: "\n") as NSString)]
+        })
     }
 
     @ViewBuilder private var toolbar: some View {
@@ -229,8 +240,9 @@ struct AddRuleSheet: View {
 
 /// How one connection was routed, top to bottom: the host, the rule that matched it, each
 /// group it passed through and the node it left by.
-struct RouteMap: View {
+struct RouteMap<Actions: View>: View {
     let row: ConnectionRow
+    @ViewBuilder var actions: () -> Actions
 
     private struct Step: Identifiable {
         let id: Int
@@ -268,10 +280,45 @@ struct RouteMap: View {
                         }
                     }
                 }
+                .accessibilityElement(children: .combine)
+                actions().padding(.top, Spacing.lg)
             }
             .padding(Spacing.lg)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .accessibilityElement(children: .combine)
+    }
+}
+
+extension RouteMap where Actions == EmptyView {
+    init(row: ConnectionRow) {
+        self.init(row: row) { EmptyView() }
+    }
+}
+
+/// What the right-click menu offers for one connection or request, in view for the selected row.
+struct RouteActions: View {
+    @Environment(AgentStore.self) private var agent
+    let row: ConnectionRow
+    let addRule: () -> Void
+    /// Only for one still open.
+    var close: (() -> Void)?
+
+    var body: some View {
+        VStack(spacing: Spacing.sm) {
+            action(String(localized: "问 AI：为什么这样走？")) { agent.open(asking: String(localized: "为什么 \(row.host) 走了“\(row.policy)”？")) }
+            action(String(localized: "为这个主机添加规则…"), perform: addRule)
+            action(String(localized: "复制主机")) {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(row.host, forType: .string)
+            }
+            if let close { action(String(localized: "关闭连接"), perform: close) }
+        }
+    }
+
+    private func action(_ title: String, perform: @escaping () -> Void) -> some View {
+        Button(action: perform) {
+            Text(title).lineLimit(2).multilineTextAlignment(.center).frame(maxWidth: .infinity)
+        }
+        .secondaryAction()
     }
 }

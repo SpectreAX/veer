@@ -9,8 +9,12 @@ struct RequestsView: View {
     @Environment(ProxyStore.self) private var store
     @Environment(AgentStore.self) private var agent
     @State private var query = ""
-    @State private var selection = Set<ClosedRequest.ID>()
+    @State private var selection: Set<ClosedRequest.ID>
     @State private var addingRule: ConnectionRow?
+
+    init(selection: Set<ClosedRequest.ID> = []) {
+        _selection = State(initialValue: selection)
+    }
 
     private var shown: [ClosedRequest] {
         let text = query.trimmingCharacters(in: .whitespaces).lowercased()
@@ -42,7 +46,17 @@ struct RequestsView: View {
             StateView(symbol: Page.requests.symbol, title: String(localized: "还没有结束的连接"),
                       message: String(localized: "连接结束后会出现在这里，最多保留 1000 条，退出 Veer 后清空。不到一秒的连接从日志里补上，需要日志级别为 info 或 debug。"))
         } else {
-            table
+            HStack(spacing: 0) {
+                table
+                // One selected request: where it went, as on the connections page.
+                if selection.count == 1, let row = shown.first(where: { selection.contains($0.id) })?.row {
+                    Divider()
+                    RouteMap(row: row) {
+                        RouteActions(row: row, addRule: { addingRule = row })
+                    }
+                    .frame(width: 240)
+                }
+            }
         }
     }
 
@@ -74,7 +88,7 @@ struct RequestsView: View {
                 Text(verbatim: request.fromLog ? "< 1s" : request.row.start.map { Format.duration(since: $0, now: request.closedAt) } ?? "—")
                     .font(Typography.codeSmall).foregroundStyle(.secondary)
             }
-            .width(min: 44, ideal: 52)
+            .width(min: 64, ideal: 72)
         }
         .contextMenu(forSelectionType: ClosedRequest.ID.self) { ids in
             if let request = store.requests.first(where: { ids.contains($0.id) }) {
@@ -89,6 +103,9 @@ struct RequestsView: View {
                 }
             }
         }
+        .onCopyCommand(perform: selection.isEmpty ? nil : {
+            [NSItemProvider(object: store.requests.filter { selection.contains($0.id) }.map(\.row.host).joined(separator: "\n") as NSString)]
+        })
     }
 }
 

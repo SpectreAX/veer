@@ -222,8 +222,16 @@ enum SnapshotRunner {
             }, view: AnyView(MainView())),
             Scene(name: "09k-add-rule", size: CGSize(width: 480, height: 420), store: { running(page: .connections) },
                   view: AnyView(AddRuleSheet(row: sampleConnections()[0]))),
-            Scene(name: "09g-route-map", size: CGSize(width: 260, height: 460), store: { running(page: .connections) },
-                  view: AnyView(RouteMap(row: sampleConnections()[0]))),
+            Scene(name: "09g-route-map", size: CGSize(width: 260, height: 620), store: { running(page: .connections) },
+                  view: AnyView(RouteMap(row: sampleConnections()[0]) { RouteActions(row: sampleConnections()[0], addRule: {}, close: {}) })),
+            // One selected row: its route and actions beside the table.
+            Scene(name: "09m-connections-selected", store: {
+                let store = running(page: .connections)
+                store.connectionsPaused = true
+                store.connections = sampleConnections()
+                return store
+            }, view: AnyView(ConnectionsView(selection: [sampleSelectedConnection])
+                    .frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.surface))),
             Scene(name: "09h-requests", store: {
                 let store = running(page: .requests)
                 store.requests = sampleConnections().enumerated().map { ClosedRequest(row: $1, closedAt: .now.addingTimeInterval(-Double($0) * 7)) }
@@ -338,6 +346,8 @@ enum SnapshotRunner {
             return ConnectionRow(connection, uploadRate: row.7 / 20, downloadRate: row.7)
         }
     }
+
+    static var sampleSelectedConnection: ConnectionRow.ID { sampleConnections()[0].id }
 
     static func sampleLogs() -> [LogEntry] {
         [

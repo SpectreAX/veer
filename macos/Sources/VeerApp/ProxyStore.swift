@@ -144,6 +144,8 @@ final class ProxyStore {
     /// reconnect the new way instead of staying on the old route.
     var reconnectAfterChanges: Bool { didSet { defaults.set(reconnectAfterChanges, forKey: "reconnectAfterChanges") } }
     @ObservationIgnored private let systemProxyWork = SerialWork()
+    /// Changes gone from "my routing", for the Agent, whose conversations can still undo them.
+    @ObservationIgnored var editsRemoved: (([UUID]) -> Void)?
     /// On only because TUN could not start, not because anyone asked for it.
     @ObservationIgnored private var systemProxyIsFallback = false
     /// Groups folded on the Proxies page, by name; remembered across launches.
@@ -1322,11 +1324,13 @@ final class ProxyStore {
         _ = try? await effectiveTextInBackground(of: id)
     }
 
-    func setEdit(_ editID: UUID, enabled: Bool, in id: UUID) {
+    /// False when the change has gone.
+    @discardableResult func setEdit(_ editID: UUID, enabled: Bool, in id: UUID) -> Bool {
         var layer = routingStore.load(id)
-        guard let index = layer.edits.firstIndex(where: { $0.id == editID }) else { return }
+        guard let index = layer.edits.firstIndex(where: { $0.id == editID }) else { return false }
         layer.edits[index].enabled = enabled
         saveLayer(layer, for: id)
+        return true
     }
 
     /// Uses a built-in rule template for a profile, or with nil goes back to its own rules.
@@ -1341,6 +1345,7 @@ final class ProxyStore {
         var layer = routingStore.load(id)
         layer.edits.removeAll { $0.id == editID }
         saveLayer(layer, for: id)
+        editsRemoved?([editID])
     }
 
     @discardableResult private func saveLayer(_ layer: RoutingLayer, for id: UUID) -> Bool {
@@ -1390,9 +1395,11 @@ final class ProxyStore {
             stop()
             activeProfileID = profiles.first { $0.id != id }?.id
         }
+        let edits = routingStore.load(id).edits.map(\.id)
         profileStore.delete(id)
         routingStore.delete(id)
         forgetEffective(id)
+        editsRemoved?(edits)
         profiles = profileStore.loadAll()
         if profiles.isEmpty { onboarding = .addProfile }
     }

@@ -29,6 +29,9 @@ struct AgentView: View {
             Button { agent.newThread() } label: { Label(String(localized: "新对话"), systemImage: "square.and.pencil") }
                 .help(String(localized: "新对话（⌘N）"))
                 .disabled(proxy.activeProfile == nil)
+            Button { agent.pendingDeletion = agent.current } label: { Label(String(localized: "删除对话…"), systemImage: "trash") }
+                .help(String(localized: "删除对话…"))
+                .disabled(agent.current == nil)
         }
     }
 }
@@ -149,6 +152,7 @@ private struct ThreadList: View {
                 }
             }
         }
+        .onDeleteCommand(perform: agent.current == nil ? nil : { agent.pendingDeletion = agent.current })
         .overlay {
             if agent.sessions.isEmpty {
                 Text(String(localized: "还没有对话")).font(.callout).foregroundStyle(.secondary)
