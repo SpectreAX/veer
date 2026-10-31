@@ -54,7 +54,7 @@ struct LogsView: View {
 
     @ViewBuilder private var content: some View {
         if !store.isRunning && store.logs.isEmpty {
-            StateView(symbol: Page.logs.symbol, title: String(localized: "内核没有运行"), message: String(localized: "启动后，内核的日志会实时显示在这里。"))
+            CoreNotRunningView(symbol: Page.logs.symbol, message: String(localized: "启动后，内核的日志会实时显示在这里。"))
         } else {
             VStack(spacing: 0) {
                 // Above the empty state too: a level with no entries must not take away the way back.

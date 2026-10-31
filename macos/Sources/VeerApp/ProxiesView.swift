@@ -47,10 +47,7 @@ struct ProxiesView: View {
                       message: String(localized: "支持订阅链接、Mihomo / Clash 配置文件、Base64 订阅内容和节点分享链接。"),
                       actionTitle: String(localized: "导入配置…")) { store.openImport() }
         } else if !store.isRunning {
-            StateView(symbol: "point.3.connected.trianglepath.dotted",
-                      title: store.phase == .starting ? String(localized: "内核正在启动…") : String(localized: "内核没有运行"),
-                      message: store.activeProfile == nil ? String(localized: "先导入一个配置。") : String(localized: "启动后可以在这里切换节点和测试延迟。"),
-                      actionTitle: store.activeProfile == nil || store.phase == .starting ? nil : String(localized: "启动")) { store.start() }
+            CoreNotRunningView(symbol: "point.3.connected.trianglepath.dotted", message: String(localized: "启动后可以在这里切换节点和测试延迟。"))
         } else if store.groups.isEmpty {
             StateView(symbol: "square.stack.3d.up.slash", title: String(localized: "这个配置没有策略组"),
                       message: String(localized: "所有流量按规则直接发往节点或直连。"))

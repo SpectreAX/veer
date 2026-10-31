@@ -126,6 +126,23 @@ enum SnapshotRunner {
                 store.exit = .unknown
                 return store
             }, view: AnyView(MainView())),
+            // A failed start is explained wherever it was started from.
+            Scene(name: "07b-failed-proxies", store: { failed(page: .proxies) }, view: AnyView(MainView())),
+            Scene(name: "07c-failed-connections", store: { failed(page: .connections) }, view: AnyView(MainView())),
+            Scene(name: "07d-failed-dns", store: { failed(page: .dns) }, view: AnyView(MainView())),
+            Scene(name: "07e-failed-logs", store: { failed(page: .logs) }, view: AnyView(MainView())),
+            Scene(name: "07f-failed-requests", store: { failed(page: .requests) }, view: AnyView(MainView())),
+            // Onboarding has no scroll, so this has to fit the smallest window.
+            Scene(name: "03c-onboarding-failed-smallest", size: CGSize(width: 860, height: 560), store: {
+                let store = failed(page: .overview)
+                store.onboarding = .start
+                return store
+            }, view: AnyView(MainView())),
+            Scene(name: "03b-onboarding-failed", store: {
+                let store = failed(page: .overview)
+                store.onboarding = .start
+                return store
+            }, view: AnyView(MainView())),
             Scene(name: "07-failed", store: {
                 let store = sample()
                 store.phase = .failed(String(localized: "端口 \(String(7890)) 已被其他程序占用。退出占用它的代理软件，或在设置中换一个端口。"), log: [
@@ -390,6 +407,16 @@ enum SnapshotRunner {
             }
         }
         return ProxyStore(paths: paths, systemProxy: SystemProxy(runner: { _ in "" }), binary: nil, defaults: defaults)
+    }
+
+    static func failed(page: Page) -> ProxyStore {
+        let store = sample()
+        store.page = page
+        store.phase = .failed(String(localized: "端口 \(String(7890)) 已被其他程序占用。退出占用它的代理软件，或在设置中换一个端口。"), log: [
+            "time=\"2026-10-29T10:00:00+08:00\" level=info msg=\"Start initial configuration in progress\"",
+            "level=error msg=\"Start Mixed(http+socks) server error: listen tcp 127.0.0.1:7890: bind: address already in use\"",
+        ])
+        return store
     }
 
     static func running(page: Page = .overview, tun: Bool = false, panel: Bool = false, lan: Bool = false) -> ProxyStore {

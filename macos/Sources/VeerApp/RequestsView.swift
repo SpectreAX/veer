@@ -35,8 +35,11 @@ struct RequestsView: View {
     }
 
     @ViewBuilder private var content: some View {
-        if store.requests.isEmpty {
-            StateView(symbol: Page.requests.symbol, title: store.isRunning ? String(localized: "还没有结束的连接") : String(localized: "内核没有运行"),
+        if store.requests.isEmpty, !store.isRunning {
+            CoreNotRunningView(symbol: Page.requests.symbol,
+                               message: String(localized: "连接结束后会出现在这里，最多保留 1000 条，退出 Veer 后清空。不到一秒的连接从日志里补上，需要日志级别为 info 或 debug。"))
+        } else if store.requests.isEmpty {
+            StateView(symbol: Page.requests.symbol, title: String(localized: "还没有结束的连接"),
                       message: String(localized: "连接结束后会出现在这里，最多保留 1000 条，退出 Veer 后清空。不到一秒的连接从日志里补上，需要日志级别为 info 或 debug。"))
         } else {
             table
@@ -104,9 +107,7 @@ struct DNSView: View {
 
     var body: some View {
         if !store.isRunning {
-            StateView(symbol: Page.dns.symbol, title: String(localized: "内核没有运行"),
-                      message: String(localized: "启动后可以用内核的 DNS 查询域名。"),
-                      actionTitle: store.activeProfile == nil ? nil : String(localized: "启动")) { store.start() }
+            CoreNotRunningView(symbol: Page.dns.symbol, message: String(localized: "启动后可以用内核的 DNS 查询域名。"))
         } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: Spacing.lg) {

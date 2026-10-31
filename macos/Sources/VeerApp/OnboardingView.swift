@@ -157,14 +157,23 @@ private struct StartStep: View {
                 .disabled(store.phase == .starting)
             }
             .panel()
-            if case .failed(let message, _) = store.phase {
-                StatusBadge(kind: .failure, text: message).fixedSize(horizontal: false, vertical: true)
+            // With a way forward: another proxy app holding the port is likely at this point. The
+            // notice is why the switch went back off when the core did start.
+            if case .failed(let message, let log) = store.phase {
+                // Short, as this step has no scroll of its own for the smallest window.
+                FailurePanel(message: message, log: log, logHeight: 72, retryIsDefault: true)
             }
+            if let notice = store.notice { StatusBadge(kind: .warning, text: notice).fixedSize(horizontal: false, vertical: true) }
             Text("可以随时在菜单栏关闭。").font(.caption).foregroundStyle(.secondary)
             HStack {
                 Button("返回") { store.onboarding = .routing }.neutralControl()
                 Spacer()
-                Button("完成") { store.onboarding = nil }.keyboardShortcut(.defaultAction).primaryAction()
+                // Done is still there after a failure, but trying again is what comes next.
+                if case .failed = store.phase {
+                    Button("完成") { store.onboarding = nil }.neutralControl()
+                } else {
+                    Button("完成") { store.onboarding = nil }.keyboardShortcut(.defaultAction).primaryAction()
+                }
             }
         }
     }

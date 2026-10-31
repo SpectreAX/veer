@@ -511,34 +511,3 @@ private struct GroupsCard: View {
         }
     }
 }
-
-/// Why the core could not start, its last lines, and the way back.
-private struct FailurePanel: View {
-    @Environment(ProxyStore.self) private var store
-    let message: String
-    let log: [String]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Spacing.md) {
-            StatusBadge(kind: .failure, text: message).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
-            if !log.isEmpty {
-                ScrollView {
-                    Text(log.suffix(12).joined(separator: "\n"))
-                        .font(Typography.codeSmall)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .frame(maxHeight: 180)
-                .padding(Spacing.sm)
-                .background(Color.codeBackground, in: RoundedRectangle(cornerRadius: Radius.small))
-            }
-            HStack {
-                SettingsLink { Text("打开设置…") }.neutralControl()
-                Spacer()
-                Button("重试") { store.start() }.primaryAction(.regular)
-            }
-        }
-        .panel()
-    }
-}

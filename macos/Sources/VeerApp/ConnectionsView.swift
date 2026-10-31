@@ -40,9 +40,7 @@ struct ConnectionsView: View {
 
     @ViewBuilder private var content: some View {
         if !store.isRunning {
-            StateView(symbol: Page.connections.symbol, title: String(localized: "内核没有运行"),
-                      message: String(localized: "启动后可以在这里实时查看连接。"),
-                      actionTitle: store.activeProfile == nil ? nil : String(localized: "启动")) { store.start() }
+            CoreNotRunningView(symbol: Page.connections.symbol, message: String(localized: "启动后可以在这里实时查看连接。"))
         } else if store.connections.isEmpty {
             StateView(symbol: Page.connections.symbol, title: String(localized: "现在没有连接"),
                       message: String(localized: "开启系统代理，或让应用使用 127.0.0.1:\(String(store.proxyPort)) 作为代理后，连接会出现在这里。"))

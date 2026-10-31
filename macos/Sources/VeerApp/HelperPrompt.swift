@@ -12,13 +12,14 @@ enum HelperPrompt {
             alert.informativeText = [
                 String(localized: "Veer 需要一个以管理员权限运行的后台服务，才能用 TUN 管理网络路由并运行内核。"),
                 String(localized: "安装后，在系统设置的“登录项”中允许 Veer，即可完成设置。"),
+                String(localized: "在允许之前，Veer 会先用系统代理。"),
             ].joined(separator: "\n\n")
             alert.addButton(withTitle: String(localized: "安装"))
         case .approve:
             alert.messageText = String(localized: "需要在系统设置中允许")
             alert.informativeText = [
-                String(localized: "TUN 的后台服务已经安装，但还没有获得允许。"),
                 String(localized: "在系统设置的“登录项”中允许 Veer 后，TUN 才能生效。"),
+                String(localized: "在允许之前，Veer 会先用系统代理。"),
             ].joined(separator: "\n\n")
             alert.addButton(withTitle: String(localized: "打开系统设置"))
         }

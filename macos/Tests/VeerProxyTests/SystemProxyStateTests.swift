@@ -30,3 +30,24 @@ import Testing
         #expect(reach() == .bypassed)
     }
 }
+
+struct TUNApprovalTests {
+    private func finished(from previous: HelperState?, to current: HelperState = .ready, tun: Bool = true,
+                          active: Bool = false, running: Bool = true) -> Bool {
+        current.finishesTUNSetup(from: previous, tunEnabled: tun, tunActive: active, running: running)
+    }
+
+    @Test func approvalTakesEffectOnce() {
+        #expect(finished(from: .needsApproval))
+        #expect(finished(from: .notInstalled))
+        #expect(!finished(from: .ready), "a helper that was already ready and failed must not restart the core on every activation")
+    }
+
+    @Test func nothingElseRestartsTheCore() {
+        #expect(!finished(from: nil))
+        #expect(!finished(from: .needsApproval, to: .needsApproval))
+        #expect(!finished(from: .needsApproval, tun: false))
+        #expect(!finished(from: .needsApproval, active: true))
+        #expect(!finished(from: .needsApproval, running: false))
+    }
+}

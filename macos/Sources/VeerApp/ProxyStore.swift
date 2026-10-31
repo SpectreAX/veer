@@ -57,7 +57,16 @@ final class ProxyStore {
     var agentPanel: Bool { didSet { defaults.set(agentPanel, forKey: "agentPanel") } }
     /// Its width, which the user drags.
     var agentPanelWidth: Double { didSet { defaults.set(agentPanelWidth, forKey: "agentPanelWidth") } }
-    var phase: Phase = .stopped
+    var phase: Phase = .stopped {
+        didSet {
+            // The proxy must not point at a core that failed: every app would lose the network. A
+            // restart on its own can get here, with no one watching. It comes back with the next start.
+            if case .failed = phase, systemProxyOn {
+                setSystemProxy(false, remember: false)
+                systemProxyIsFallback = false
+            }
+        }
+    }
     var profiles: [Profile] = []
     var activeProfileID: UUID? {
         didSet {
@@ -135,6 +144,8 @@ final class ProxyStore {
     /// reconnect the new way instead of staying on the old route.
     var reconnectAfterChanges: Bool { didSet { defaults.set(reconnectAfterChanges, forKey: "reconnectAfterChanges") } }
     @ObservationIgnored private let systemProxyWork = SerialWork()
+    /// On only because TUN could not start, not because anyone asked for it.
+    @ObservationIgnored private var systemProxyIsFallback = false
     /// Groups folded on the Proxies page, by name; remembered across launches.
     var collapsedGroups: Set<String> { didSet { defaults.set(Array(collapsedGroups), forKey: "collapsedGroups") } }
     /// The active profile with its "my routing" layer applied, as the core last loaded it.
@@ -312,6 +323,12 @@ final class ProxyStore {
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { _ in
             Task { @MainActor in self.coverNewServices() }
         }
+        // Coming back from System Settings, with the helper TUN was waiting for allowed.
+        NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
+            Task { @MainActor in
+                if self.settings.tun, !self.tunActive { await self.refreshHelperState() }
+            }
+        }
     }
 
     private func coverNewServices() {
@@ -409,16 +426,32 @@ final class ProxyStore {
                 testEverythingOnce()
                 if let tunFailure {
                     // After the switch, which clears notices.
-                    if !systemProxyOn { setSystemProxy(true) }
+                    if !systemProxyOn { fallBackToSystemProxy() }
                     notice = String(localized: "TUN 未能启动，已改用系统代理。\(tunFailure)")
-                } else if state.systemProxy, !systemProxyOn {
-                    setSystemProxy(true)
+                } else if systemProxyIsFallback || (state.systemProxy && !systemProxyOn) {
+                    settleSystemProxy()
                 }
             } catch {
                 core?.stop()
                 tunActive = false
                 phase = .failed(message(for: error), log: core?.tail ?? [])
             }
+        }
+    }
+
+    /// Standing in for TUN, which is what was asked for, so not remembered as a choice of its own.
+    private func fallBackToSystemProxy() {
+        systemProxyIsFallback = !state.systemProxy
+        setSystemProxy(true, remember: false)
+    }
+
+    /// Once the core runs without trouble: what stood in for TUN goes, what was chosen comes back.
+    private func settleSystemProxy() {
+        if systemProxyIsFallback {
+            setSystemProxy(false, remember: false)
+            systemProxyIsFallback = false
+        } else {
+            setSystemProxy(true)
         }
     }
 
@@ -466,7 +499,13 @@ final class ProxyStore {
     }
 
     func refreshHelperState() async {
-        helperState = await helperProbe()
+        let previous = helperState
+        let current = await helperProbe()
+        helperState = current
+        if current.finishesTUNSetup(from: previous, tunEnabled: settings.tun, tunActive: tunActive, running: isRunning) {
+            notice = nil
+            restart()
+        }
     }
 
     /// Settings' TUN page: register with SMAppService, install by hand, or remove the helper.
@@ -535,6 +574,7 @@ final class ProxyStore {
     /// and comes back with the next start: stopping says nothing about wanting it off.
     func stop() {
         state.running = false
+        systemProxyIsFallback = false
         if systemProxyOn { setSystemProxy(false, remember: false) }
         tearDownCore()
         phase = .stopped
@@ -659,7 +699,10 @@ final class ProxyStore {
         notice = nil
         guard !on || isRunning else { return }
         systemProxyOn = on
-        if remember { state.systemProxy = on }
+        if remember {
+            state.systemProxy = on
+            systemProxyIsFallback = false
+        }
         let proxy = systemProxy, port = proxyPort
         systemProxyWork.add { [self] in
             // Read now: the change before this one may have just recorded it.

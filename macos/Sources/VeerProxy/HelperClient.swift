@@ -30,6 +30,13 @@ public enum HelperState: Equatable, Sendable {
         case install, approve
     }
 
+    /// Whether this state is the helper becoming usable while TUN waits for it, so that the running
+    /// core should start again through it. Only on the change: a ready helper that failed would
+    /// otherwise restart the core every time this is asked.
+    public func finishesTUNSetup(from previous: HelperState?, tunEnabled: Bool, tunActive: Bool, running: Bool) -> Bool {
+        self == .ready && previous != nil && previous != .ready && tunEnabled && !tunActive && running
+    }
+
     public var tunConsent: TUNConsent? {
         switch self {
         case .notInstalled: .install
