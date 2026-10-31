@@ -48,6 +48,9 @@ System fonts and semantic text styles. Code and logs use `Typography.code` and `
 
 - Semantic system colors and `VeerUI` tokens only. Check light and dark.
 - Never carry meaning by color alone: `StatusKind` is always icon plus text.
+- Colors Veer chooses are at least 4.5:1 for text, measured from real renders where glass is involved, as it lightens what it
+  is tinted with. Green behind a label or check is `accentFill` with `onAccent`; green as text or a
+  glyph on the page is `veerAccent`. They differ in dark, as no one green does both.
 - Green is for small areas: primary actions, the node in use, written state. System controls such
   as segmented pickers keep the system's own colors.
 

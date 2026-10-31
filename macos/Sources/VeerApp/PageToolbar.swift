@@ -164,7 +164,7 @@ struct ToolbarCapsuleButtonStyle: ButtonStyle {
     }
 
     private func background(pressed: Bool) -> Color {
-        if isOn { return .veerAccent }
+        if isOn { return .accentFill }
         return pressed ? Color.primary.opacity(0.16) : hovering ? Color.primary.opacity(0.08) : .clear
     }
 }

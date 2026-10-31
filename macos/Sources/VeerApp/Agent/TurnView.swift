@@ -344,7 +344,7 @@ struct ChangeRow: View {
                     .buttonStyle(.borderless).font(.callout).help(String(localized: "修改名称、类型和成员"))
             }
             Toggle(String(localized: "接受"), isOn: Binding(get: { accepted }, set: { toggle($0) }))
-                .toggleStyle(.checkbox).labelsHidden().tint(.veerAccent)
+                .accentCheckbox().labelsHidden()
                 .help(accepted ? String(localized: "已接受，取消勾选则不写入这一项") : String(localized: "勾选以接受这一项"))
                 .disabled(!editable)
                 .accessibilityLabel((accepted ? String(localized: "\(accessibilityText)，已接受") : String(localized: "\(accessibilityText)，已拒绝")))

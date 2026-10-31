@@ -242,7 +242,7 @@ public struct PrimaryActionStyle: ViewModifier {
                 content.buttonStyle(.borderedProminent)
             }
         }
-        .tint(.veerAccent)
+        .tint(.accentFill)
         .controlSize(size)
     }
 }
@@ -315,6 +315,10 @@ public extension View {
     /// The system's own look for selection controls and secondary buttons, rather than Veer's
     /// green, which is kept for the one primary action of a view so it stays easy to find.
     func neutralControl() -> some View { tint(nil) }
+
+    /// A checkbox whose white check reads in dark too, as it doesn't on the accent everything else
+    /// inherits. Not by changing that tint: the text caret takes it, and would be dark green on dark.
+    func accentCheckbox() -> some View { toggleStyle(.checkbox).tint(.accentFill) }
 }
 
 /// The standard SwiftUI segmented picker, with the selected segment in the system's own color (the

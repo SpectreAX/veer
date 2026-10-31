@@ -171,6 +171,7 @@ struct GroupEditorSheet: View {
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
+                .tint(.accentFill)
                 .disabled(existing == nil
                     ? members.isEmpty || name.trimmingCharacters(in: .whitespaces).isEmpty || name.contains(",")
                     : members == group?.members || (members.isEmpty && group?.members.isEmpty == false))

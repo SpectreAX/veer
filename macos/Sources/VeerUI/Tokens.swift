@@ -35,28 +35,48 @@ nonisolated public enum Motion {
     public static let standard = Animation.easeInOut(duration: 0.22)
 }
 
+private func rgb(_ red: CGFloat, _ green: CGFloat, _ blue: CGFloat) -> NSColor {
+    NSColor(srgbRed: red, green: green, blue: blue, alpha: 1)
+}
+
+/// One color for each of the appearances people can choose, including Increase Contrast.
+private func adaptive(_ name: String, light: NSColor, dark: NSColor, highContrastLight: NSColor, highContrastDark: NSColor) -> Color {
+    Color(nsColor: NSColor(name: name) { appearance in
+        switch appearance.bestMatch(from: [.aqua, .darkAqua, .accessibilityHighContrastAqua, .accessibilityHighContrastDarkAqua]) {
+        case .darkAqua: dark
+        case .accessibilityHighContrastAqua: highContrastLight
+        case .accessibilityHighContrastDarkAqua: highContrastDark
+        default: light
+        }
+    })
+}
+
 public extension Color {
     /// Veer green: small-area emphasis only (primary actions, selection, written state).
-    static let veerAccent = Color(nsColor: NSColor(name: "VeerAccent") { appearance in
-        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? NSColor(srgbRed: 0.24, green: 0.80, blue: 0.50, alpha: 1)
-            : NSColor(srgbRed: 0.12, green: 0.62, blue: 0.33, alpha: 1)
-    })
+    static let veerAccent = adaptive("VeerAccent", light: rgb(0.075, 0.46, 0.22), dark: rgb(0.24, 0.80, 0.50),
+                                     highContrastLight: rgb(0.039, 0.33, 0.145), highContrastDark: rgb(0.42, 0.91, 0.64))
+    /// Veer green behind a label or mark, in primary actions, toolbar toggles and checkboxes. Darker than the accent in
+    /// dark, where the accent has to read as text on the window and is too light for a white label.
+    /// Darker than it needs on paper: Liquid Glass lightens what it is tinted with.
+    static let accentFill = adaptive("VeerAccentFill", light: rgb(0.075, 0.46, 0.22), dark: rgb(0.067, 0.42, 0.196),
+                                     highContrastLight: rgb(0.039, 0.33, 0.145), highContrastDark: rgb(0.05, 0.36, 0.16))
+    /// A label or glyph on `accentFill`.
+    static let onAccent = Color.white
+
     /// User message bubble: a light wash of the accent with normal text, so the solid accent is
     /// left for primary actions.
-    /// A glyph on `veerAccent`: the dark appearance's accent is too light for white.
-    static let onAccent = Color(nsColor: NSColor(name: "VeerOnAccent") { appearance in
-        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? .black : .white
-    })
-
     static let userBubble = Color(nsColor: NSColor(name: "VeerBubble") { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             ? NSColor(srgbRed: 0.16, green: 0.27, blue: 0.20, alpha: 1)
             : NSColor(srgbRed: 0.88, green: 0.95, blue: 0.90, alpha: 1)
     })
     static let statusSuccess = Color.veerAccent
-    static let statusWarning = Color(nsColor: .systemOrange)
-    static let statusFailure = Color(nsColor: .systemRed)
+    /// Not the system's: these are small text, such as a node's delay, on white and on a selected
+    /// tile's wash of the accent, where the system's are too faint.
+    static let statusWarning = adaptive("VeerWarning", light: rgb(0.659, 0.294, 0.027), dark: .systemOrange,
+                                        highContrastLight: rgb(0.58, 0.25, 0.02), highContrastDark: .systemOrange)
+    static let statusFailure = adaptive("VeerFailure", light: rgb(0.776, 0.157, 0.157), dark: rgb(1, 0.518, 0.518),
+                                        highContrastLight: rgb(0.63, 0.1, 0.1), highContrastDark: rgb(1, 0.62, 0.62))
     static let statusInfo = Color(nsColor: .systemBlue)
 
     static let surface = Color(nsColor: .windowBackgroundColor)

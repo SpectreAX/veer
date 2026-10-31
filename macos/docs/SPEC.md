@@ -362,7 +362,7 @@ Agent 是 Veer 的主要功能，所以除了 Agent 页，它在每一页右侧�
   - `secondaryAction()`：内容旁的次要操作（更新、测速、使用）。26 上是 `.glass`，之前是 `.bordered`，不着色。
   - `floatingPanel()`：浮在窗口上的面板，比如首次引导。26 上是 `glassEffect`，之前是 `.regularMaterial` 加描边。
 - **内容区：** 内容面板（`panel()`）保持实色，不用玻璃，这是 Apple 的建议：玻璃只用在控件和导航层。
-- **颜色：** 沿用现有的设计令牌，浅色和深色都要检查。延迟颜色：小于 200ms 为好，200 到 500ms 为一般，大于 500ms 为差，超时用红色。
+- **颜色：** 沿用现有的设计令牌，浅色和深色都要检查。Veer 自己选的文字颜色对比度至少 4.5:1，包括选中卡片的浅绿底上；玻璃上的按钮以实际渲染为准（玻璃会提亮底色）。绿色放在文字或勾选标记后面用 `accentFill` 配白色，作为页面上的文字或小图标用 `veerAccent`，两者在深色下不同。系统设置了“提高对比度”时用更强的一组。延迟颜色：小于 200ms 为好，200 到 500ms 为一般，大于 500ms 为差，超时用红色。
 
 ## 11. 更新、备份与诊断
 - **Sparkle 2：** 用 SPM 依赖。`SUFeedURL` 是 `https://github.com/SpectreAX/veer-releases/releases/latest/download/appcast.xml`；`SUPublicEDKey` 写在 Info.plist 里。每天检查一次，有更新时先问用户再安装。

@@ -233,7 +233,7 @@ struct ProfileDetailSheet: View {
                     })) {
                         Text(name).lineLimit(1).truncationMode(.middle)
                     }
-                    .toggleStyle(.checkbox)
+                    .accentCheckbox()
                 }
                 .listStyle(.bordered)
             }
@@ -294,7 +294,7 @@ private struct EditRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: Spacing.md) {
-            Toggle("启用", isOn: Binding(get: { edit.enabled }, set: setEnabled)).toggleStyle(.checkbox).labelsHidden()
+            Toggle("启用", isOn: Binding(get: { edit.enabled }, set: setEnabled)).accentCheckbox().labelsHidden()
             VStack(alignment: .leading, spacing: Spacing.xxs) {
                 Text(edit.prompt).lineLimit(2)
                 HStack(spacing: Spacing.xs) {

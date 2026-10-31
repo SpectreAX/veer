@@ -74,7 +74,7 @@ struct AISettingsPane: View {
             }
         }
         .formStyle(.grouped)
-        .toggleStyle(.checkbox)
+        .accentCheckbox()
     }
 
     @ViewBuilder private var keyRow: some View {
@@ -161,7 +161,7 @@ struct SearchSettingsSection: View {
         @Bindable var store = store
         Section {
             Toggle(String(localized: "允许 AI 联网搜索"), isOn: $store.searchSettings.enabled)
-                .toggleStyle(.checkbox)
+                .accentCheckbox()
             Picker(String(localized: "搜索服务"), selection: $store.searchSettings.provider) {
                 ForEach(SearchProvider.allCases) { Text($0.title).tag($0) }
             }
@@ -195,7 +195,7 @@ struct SearchSettingsSection: View {
                         .onSubmit(save)
                     HStack {
                         Spacer()
-                        Button(String(localized: "保存"), action: save).buttonStyle(.borderedProminent).tint(.veerAccent)
+                        Button(String(localized: "保存"), action: save).buttonStyle(.borderedProminent).tint(.accentFill)
                             .disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
                 }
@@ -241,11 +241,11 @@ struct KeyEntryRow: View {
         VStack(alignment: .leading, spacing: Spacing.xs) {
             HStack(spacing: Spacing.md) {
                 Toggle(String(localized: "记住 API Key"), isOn: $remember)
-                    .toggleStyle(.checkbox)
+                    .accentCheckbox()
                 Spacer()
                 Button(String(localized: "保存"), action: save)
                     .buttonStyle(.borderedProminent)
-                    .tint(.veerAccent)
+                    .tint(.accentFill)
                     .disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             if let error {
@@ -301,7 +301,7 @@ struct PrivacySettingsPane: View {
             }
             Section {
                 Toggle(String(localized: "发送现有规则中的具体域名和 IP"), isOn: Binding(get: { store.shareRuleLiterals }, set: { store.shareRuleLiterals = $0 }))
-                    .toggleStyle(.checkbox)
+                    .accentCheckbox()
                 Text(String(localized: "关闭时这些值显示为 <域名N>、<IPN>。打开后 AI 能看到你现有的分流目标，可能包含内网或个人常用域名。")).font(.caption).foregroundStyle(.secondary)
             }
             Section {

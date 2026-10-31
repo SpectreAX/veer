@@ -27,9 +27,10 @@ only fade.
 | Token | Use |
 |---|---|
 | `veerAccent` | Small areas: primary actions, the node in use, written state |
-| `onAccent` | A glyph on `veerAccent`, such as a toolbar toggle that is on |
+| `accentFill` | Behind a label: primary actions and toolbar toggles that are on. Darker than `veerAccent` in dark |
+| `onAccent` | A label or glyph on `accentFill` |
 | `userBubble` | The user's message bubble |
-| `statusSuccess`, `statusWarning`, `statusFailure`, `statusInfo` | Status, always with an icon and text through `StatusKind` |
+| `statusSuccess`, `statusWarning`, `statusFailure`, `statusInfo` | Status, always with an icon and text through `StatusKind`. Warning and failure are darker than the system's in light, as small text on white |
 | `surface`, `surfaceRaised`, `surfaceSunken` | Window, raised and recessed backgrounds |
 | `separatorLine` | Separators |
 | `codeBackground` | Code and diffs |
