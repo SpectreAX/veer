@@ -5,45 +5,45 @@ import VeerCore
 import VeerProxy
 
 /// The top of the proxies page: every profile as a card, a click from running. It stays there with the
-/// core stopped, and scrolls sideways rather than taking room from the nodes below.
+/// core stopped. In a row while they fit, else one above the other, scrolling past a few so that the
+/// nodes below keep the room.
 struct ProfileBar: View {
     @Environment(ProxyStore.self) private var store
     @State private var pendingDeletion: Profile?
     @State private var details: Profile?
 
+    private static let tileWidth: CGFloat = 320
+    private static let stackedHeight: CGFloat = 220
+
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
-            ScrollViewReader { reader in
-                ScrollView(.horizontal) {
-                    HStack(spacing: Spacing.sm) {
-                        ForEach(store.profiles) { profile in
-                            ProfileTile(profile: profile, active: profile.id == store.activeProfileID,
-                                        showDetails: { details = profile }, delete: { pendingDeletion = profile })
-                        }
-                        Button { store.openImport() } label: {
-                            Image(systemName: "plus")
-                                .frame(width: 44)
-                                .frame(maxHeight: .infinity)
-                                .contentShape(Rectangle())
-                                .overlay(RoundedRectangle(cornerRadius: Radius.medium, style: .continuous).strokeBorder(Color.separatorLine))
-                        }
-                        .buttonStyle(.plain)
-                        .help("导入配置（⌘O）")
-                        .accessibilityLabel(String(localized: "导入配置"))
-                    }
-                    // Cards as tall as the tallest: one with usage has a line more.
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, Spacing.xl)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: Spacing.sm) {
+                    tiles(width: Self.tileWidth)
+                    importButton
                 }
-                .onAppear { if let active = store.activeProfileID { reader.scrollTo(active) } }
-                .onChange(of: store.activeProfileID) { _, active in if let active { reader.scrollTo(active) } }
+                HStack(alignment: .top, spacing: Spacing.sm) {
+                    ScrollViewReader { reader in
+                        ScrollView {
+                            VStack(spacing: Spacing.sm) { tiles(width: nil) }
+                        }
+                        .onAppear { if let active = store.activeProfileID { reader.scrollTo(active) } }
+                        .onChange(of: store.activeProfileID) { _, active in if let active { reader.scrollTo(active) } }
+                    }
+                    .frame(maxHeight: Self.stackedHeight)
+                    importButton
+                }
             }
-            Group {
-                if let notice = store.notice { StatusBadge(kind: .warning, text: notice).fixedSize(horizontal: false, vertical: true) }
-                if let effective = store.effective { EffectiveWarnings(effective: effective) }
-            }
-            .padding(.horizontal, Spacing.xl)
+            // Cards as tall as each other, and the stack as tall as it needs up to its limit.
+            .fixedSize(horizontal: false, vertical: true)
+            // Which would otherwise center a row with room to spare.
+            .frame(maxWidth: .infinity, alignment: .leading)
+            // Held to a few lines, with the rest in a tooltip: this page has no scroll of its own up
+            // here, and wrapped text at its full height pushes the whole window out of place.
+            if let notice = store.notice { StatusBadge(kind: .warning, text: notice).lineLimit(3).help(notice) }
+            if let effective = store.effective { EffectiveWarnings(effective: effective) }
         }
+        .padding(.horizontal, Spacing.xl)
         .padding(.top, Spacing.sm)
         .sheet(item: $details) { ProfileDetailSheet(profile: $0) }
         .alert("删除配置？", isPresented: Binding(get: { pendingDeletion != nil }, set: { if !$0 { pendingDeletion = nil } })) {
@@ -55,6 +55,27 @@ struct ProfileBar: View {
                  : String(localized: "配置文件、订阅链接和“我的分流”会从本机删除。"))
         }
     }
+
+    private func tiles(width: CGFloat?) -> some View {
+        ForEach(store.profiles) { profile in
+            ProfileTile(profile: profile, active: profile.id == store.activeProfileID, width: width,
+                        showDetails: { details = profile }, delete: { pendingDeletion = profile })
+                .id(profile.id)
+        }
+    }
+
+    private var importButton: some View {
+        Button { store.openImport() } label: {
+            Image(systemName: "plus")
+                .frame(width: 44)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .overlay(RoundedRectangle(cornerRadius: Radius.medium, style: .continuous).strokeBorder(Color.separatorLine))
+        }
+        .buttonStyle(.plain)
+        .help("导入配置（⌘O）")
+        .accessibilityLabel(String(localized: "导入配置"))
+    }
 }
 
 /// What the layer could not do for the profile in use.
@@ -64,17 +85,17 @@ private struct EffectiveWarnings: View {
     var body: some View {
         if effective.conflictCount > 0 {
             StatusBadge(kind: .warning, text: String(localized: "“我的分流”里有 \(effective.conflictCount) 项修改未能用到更新后的订阅上，打开“节点与分流”查看原因。"))
-                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(3)
         }
         if !effective.emptiedGroups.isEmpty {
             let groups = effective.emptiedGroups.formatted(.list(type: .and))
             StatusBadge(kind: .warning, text: String(localized: "取消勾选节点后，这些策略组没有节点了，暂时改为直连：\(groups)"))
-                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(3)
         }
         if !effective.keptNodes.isEmpty {
             let nodes = effective.keptNodes.formatted(.list(type: .and))
             StatusBadge(kind: .info, text: String(localized: "有规则直接使用这些节点，所以它们没有被去掉：\(nodes)"))
-                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(3)
         }
     }
 }
@@ -84,6 +105,8 @@ private struct ProfileTile: View {
     @Environment(ProxyStore.self) private var store
     let profile: Profile
     let active: Bool
+    /// Fixed in a row; the whole width when stacked.
+    let width: CGFloat?
     let showDetails: () -> Void
     let delete: () -> Void
     @State private var hovering = false
@@ -117,7 +140,7 @@ private struct ProfileTile: View {
         }
         .padding(.horizontal, Spacing.md)
         .padding(.vertical, Spacing.sm)
-        .frame(width: 320)
+        .frame(minWidth: width, maxWidth: width ?? .infinity)
         .frame(maxHeight: .infinity)
         .background(active ? Color.veerAccent.opacity(0.12) : hovering ? Color.subtleFill : Color.clear,
                     in: RoundedRectangle(cornerRadius: Radius.medium, style: .continuous))

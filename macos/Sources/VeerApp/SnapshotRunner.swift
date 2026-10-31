@@ -120,6 +120,12 @@ enum SnapshotRunner {
                 store.phase = .starting
                 return store
             }, view: AnyView(MainView())),
+            // Long enough to wrap: this page has no scroll of its own up there.
+            Scene(name: "05c-proxies-notice-smallest", size: CGSize(width: 860, height: 560), store: {
+                let store = running(page: .proxies)
+                store.notice = String(localized: "TUN 未能启动，已改用系统代理。\(String(localized: "需要在系统设置的“登录项”中允许 Veer 的后台服务。"))")
+                return store
+            }, view: AnyView(MainView())),
             Scene(name: "05b-proxies-smallest", size: CGSize(width: 860, height: 560), store: { running(page: .proxies) }, view: AnyView(MainView())),
             Scene(name: "04e-overview-no-exit", store: {
                 let store = running()
