@@ -160,7 +160,8 @@ struct MainView: View {
             pageTitle
         }
         .frame(height: Self.topRowHeight)
-        .padding(.leading, sidebarHidden ? sidebarButtonLeading + 52 : Spacing.sm)
+        // In line with the page's cards, which start this far in.
+        .padding(.leading, sidebarHidden ? sidebarButtonLeading + 52 : Spacing.xl)
         .animation(reduceMotion ? nil : Motion.standard, value: sidebarHidden)
         .ignoresSafeArea(.container, edges: .top)
     }
