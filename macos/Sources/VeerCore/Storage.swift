@@ -63,8 +63,9 @@ public protocol KeyStoring: Sendable {
     func delete(for provider: String)
 }
 
-/// API keys in a JSON file readable only by the user (mode 0600) next to the sessions. Not the
-/// Keychain: the app is ad-hoc signed, so every rebuild made macOS ask again for access.
+/// API keys in a JSON file readable only by the user (mode 0600) next to the sessions. For ad-hoc
+/// signed builds: their identity changes with each rebuild, so the Keychain would ask for access
+/// again every time. Builds with a Team ID use `KeychainKeyStore`.
 public final class FileKeyStore: KeyStoring, @unchecked Sendable {
     public let url: URL
     private let lock = NSLock()
@@ -114,10 +115,18 @@ public final class FileKeyStore: KeyStoring, @unchecked Sendable {
         }
     }
 
-    public func delete(for provider: String) {
+    public func delete(for provider: String) { delete([provider]) }
+
+    func all() -> [String: String] { lock.withLock { load() } }
+
+    /// Removes them in one write, so a crash cannot leave the file half written between entries.
+    func delete(_ providers: some Sequence<String>) {
         lock.withLock {
             var keys = load()
-            keys[provider] = nil
+            let count = keys.count
+            for provider in providers { keys[provider] = nil }
+            // Nothing to remove: an unreadable file loads as empty and must not be wiped as if it were.
+            guard keys.count != count else { return }
             try? store(keys)
         }
     }

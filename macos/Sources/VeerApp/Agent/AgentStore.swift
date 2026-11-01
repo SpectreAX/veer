@@ -81,7 +81,7 @@ final class AgentStore {
     init(proxy: ProxyStore, keyStore: KeyStoring? = nil, engine: EditorEngine? = nil, defaults: UserDefaults = .standard, persist: Bool = true) {
         self.proxy = proxy
         sessionStore = SessionStore(directory: proxy.paths.threads)
-        self.keyStore = keyStore ?? FileKeyStore(url: proxy.paths.secrets)
+        self.keyStore = keyStore ?? proxy.profileStore.secrets
         let geo = GeoDataStore.shared
         self.engine = engine ?? EditorEngine(searcher: WebSearchService(geo: geo), lookup: InstructionLookup(geo: geo), checker: DomainChecker(geo: geo))
         self.defaults = defaults
