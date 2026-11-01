@@ -33,8 +33,11 @@ struct ProfileBar: View {
                         .onChange(of: store.activeProfileID) { _, active in if let active { reader.scrollTo(active) } }
                     }
                     .frame(maxHeight: Self.stackedHeight)
-                    // Under the cards, whose text needs the width beside the Agent panel.
-                    importButton.frame(height: Self.stackedImportHeight)
+                    // Under the cards, whose text needs the width beside the Agent panel. Small, as a list's
+                    // add button is: the row's full width would make it look like one more card.
+                    importButton
+                        .frame(width: Self.rowImportWidth, height: Self.stackedImportHeight)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
             // Cards as tall as each other, and the stack as tall as it needs up to its limit.
