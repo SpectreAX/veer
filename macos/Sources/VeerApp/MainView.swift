@@ -63,9 +63,11 @@ struct MainView: View {
     @Environment(\.undoManager) private var undoManager
     @State private var sidebarVisibility = NavigationSplitViewVisibility.all
     @State private var isFullScreen = false
+    @State private var windowWidth: CGFloat = 1080
 
     /// The window's top row, which the sidebar button, the title and the capsule float in.
     static let topRowHeight: CGFloat = 52
+    private static let roomyWidth: CGFloat = 960
 
     var body: some View {
         @Bindable var store = store
@@ -115,6 +117,7 @@ struct MainView: View {
         // width, and any item it holds lands in an overflow button that throws the rest aside. An
         // item's content also snaps to a new page rather than animating.
         .background(EmptyWindowToolbar(isFullScreen: $isFullScreen))
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
         .overlay(alignment: .topLeading) {
             sidebarButton
                 .padding(.top, 6)
@@ -210,11 +213,12 @@ struct MainView: View {
         .lineLimit(1)
     }
 
-    /// Short enough to stay clear of the capsule in the narrowest window. The menu it opens has it in
-    /// full.
+    /// Short enough to stay clear of the toolbar, which leaves little room in a small window. The menu
+    /// it opens has it in full.
     private var profileName: String {
         let name = store.activeProfile?.name ?? ""
-        return name.count > 16 ? name.prefix(15) + "…" : name
+        let limit = windowWidth < Self.roomyWidth ? 12 : 16
+        return name.count > limit ? name.prefix(limit - 1) + "…" : name
     }
 
     private var sidebarAndPage: some View {

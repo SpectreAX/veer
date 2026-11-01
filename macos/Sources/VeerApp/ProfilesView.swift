@@ -14,31 +14,21 @@ struct ProfileBar: View {
 
     private static let tileWidth: CGFloat = 320
     private static let stackedHeight: CGFloat = 220
-    private static let stackedImportHeight: CGFloat = 32
-    private static let rowImportWidth: CGFloat = 44
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: Spacing.sm) {
                     tiles(width: Self.tileWidth)
-                    importButton.frame(width: Self.rowImportWidth)
                 }
-                VStack(spacing: Spacing.sm) {
-                    ScrollViewReader { reader in
-                        ScrollView {
-                            VStack(spacing: Spacing.sm) { tiles(width: nil) }
-                        }
-                        .onAppear { if let active = store.activeProfileID { reader.scrollTo(active) } }
-                        .onChange(of: store.activeProfileID) { _, active in if let active { reader.scrollTo(active) } }
+                ScrollViewReader { reader in
+                    ScrollView {
+                        VStack(spacing: Spacing.sm) { tiles(width: nil) }
                     }
-                    .frame(maxHeight: Self.stackedHeight)
-                    // Under the cards, whose text needs the width beside the Agent panel. Small, as a list's
-                    // add button is: the row's full width would make it look like one more card.
-                    importButton
-                        .frame(width: Self.rowImportWidth, height: Self.stackedImportHeight)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    .onAppear { if let active = store.activeProfileID { reader.scrollTo(active) } }
+                    .onChange(of: store.activeProfileID) { _, active in if let active { reader.scrollTo(active) } }
                 }
+                .frame(maxHeight: Self.stackedHeight)
             }
             // Cards as tall as each other, and the stack as tall as it needs up to its limit.
             .fixedSize(horizontal: false, vertical: true)
@@ -68,18 +58,6 @@ struct ProfileBar: View {
                         showDetails: { details = profile }, delete: { pendingDeletion = profile })
                 .id(profile.id)
         }
-    }
-
-    private var importButton: some View {
-        Button { store.openImport() } label: {
-            Image(systemName: "plus")
-                .frame(minWidth: 44, maxWidth: .infinity, maxHeight: .infinity)
-                .contentShape(Rectangle())
-                .overlay(RoundedRectangle(cornerRadius: Radius.medium, style: .continuous).strokeBorder(Color.separatorLine))
-        }
-        .buttonStyle(.plain)
-        .help("导入配置（⌘O）")
-        .accessibilityLabel(String(localized: "导入配置"))
     }
 }
 

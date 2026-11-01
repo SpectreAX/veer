@@ -25,6 +25,7 @@ struct ProxiesView: View {
             content.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
             .pageToolbar(.proxies) {
+                Button { store.openImport() } label: { Label("导入配置", systemImage: "plus") }.help("导入配置（⌘O）")
                 GlassSwitch(label: String(localized: "显示方式"), selection: $showMap, options: [
                     .init(value: false, title: String(localized: "网格"), symbol: "square.grid.2x2"),
                     .init(value: true, title: String(localized: "地图"), symbol: "map"),
