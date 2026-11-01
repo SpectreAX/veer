@@ -9,6 +9,7 @@ Read these before changing the matching area:
 - Behavior of every page: [docs/SPEC.md](docs/SPEC.md). Requirements: [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
 - Design: [DESIGN_SPEC.md](DESIGN_SPEC.md), [Design/TOKENS.md](Design/TOKENS.md), [Design/COMPONENTS.md](Design/COMPONENTS.md).
 - Code layout and state: [ARCHITECTURE.md](ARCHITECTURE.md).
+- Module notes: a `CLAUDE.md` in `Sources/VeerProxy`, `Sources/VeerUI` and `Sources/VeerApp/Agent`. Keep each short, for what the code does not show. They are excluded in `Package.swift`, and `build-app.sh` stops if one reaches the app.
 - Coding and design rules are in `.claude/rules/` and load at the start of each session.
 
 ## Commands
