@@ -41,6 +41,7 @@ Use the native control first, then a `VeerUI` component, then a new one. Shared 
 | `ProfileTile`, `ToolRow` | A row of plain buttons with secondary actions beside them, on `ProxiesView` and `ToolsView`. Plain buttons, so keyboard and VoiceOver work as for any button |
 | `CoreStateRing` | A ring and ripple around the Overview's start button, for what the core is doing. Decorative: hidden from VoiceOver, which hears the new state as an announcement. Same in light and dark and on macOS 14; steady with Reduce Motion |
 | `selectionHighlight` | A selected row in the sidebar and conversation list, in `selectionFill` whatever has the focus, since pages move the focus to their own fields. Dimmed by the system when the window is in the background |
+| `AttachmentChip` | A file or image going with an Agent instruction, removable in the composer. A row of name, state and remove button that no system control offers. Keyboard and VoiceOver through its plain remove button; its label says what was hidden or cut. Same in light and dark through `subtleFill`, and on macOS 14 |
 | `ColumnFit` | Not a control: which table columns to hide so that the rest fit, for tables that narrow beside a panel |
 | `KeyCap`, `ShortcutHint` | Keyboard shortcut display |
 | `ChoiceRow` | A row in a choice list |

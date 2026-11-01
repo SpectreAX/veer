@@ -174,6 +174,8 @@ private struct BottomTracking: Equatable {
 /// Wrapping horizontal layout for chips.
 struct FlowLayout: Layout {
     var spacing: CGFloat
+    /// Which side each row starts from.
+    var alignment: HorizontalAlignment = .leading
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = proposal.width ?? .infinity
@@ -189,13 +191,23 @@ struct FlowLayout: Layout {
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX, y = bounds.minY, rowHeight: CGFloat = 0
+        var rows: [[(view: LayoutSubview, size: CGSize)]] = [[]]
+        var x = bounds.minX
         for view in subviews {
             let size = view.sizeThatFits(.unspecified)
-            if x > bounds.minX, x + size.width > bounds.maxX { x = bounds.minX; y += rowHeight + spacing; rowHeight = 0 }
-            view.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            if x > bounds.minX, x + size.width > bounds.maxX { x = bounds.minX; rows.append([]) }
+            rows[rows.count - 1].append((view, size))
             x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
+        }
+        var y = bounds.minY
+        for row in rows {
+            let width = row.map(\.size.width).reduce(0, +) + spacing * CGFloat(max(row.count - 1, 0))
+            var x = alignment == .trailing ? bounds.maxX - width : bounds.minX
+            for item in row {
+                item.view.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(item.size))
+                x += item.size.width + spacing
+            }
+            y += (row.map(\.size.height).max() ?? 0) + spacing
         }
     }
 }

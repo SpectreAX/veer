@@ -125,6 +125,9 @@ public enum AIProvider: String, Sendable, Codable, CaseIterable, Identifiable {
     public var needsKey: Bool { self != .ollama }
 
     /// Suggested models, first is the default. Users can fetch the service's full list.
+    /// False only where the service is known to refuse images; others answer for their own models.
+    public var acceptsImages: Bool { self != .deepSeek }
+
     public var catalog: [(model: String, style: ThinkingStyle)] {
         switch self {
         case .openAI: [("gpt-4.1-mini", .none), ("gpt-4.1", .none), ("gpt-5-mini", .openAIEffort), ("o4-mini", .intrinsic)]

@@ -96,7 +96,7 @@ as a violation unless its reason no longer holds. Anything not listed here is no
 | Plain Agent column instead of `.inspector` | `NSSplitViewController` throws if the inspector changes mid-animation (crash on 2026-10-30) | `AgentPanelColumn` |
 | Veer green tint instead of the system accent color | Brand color, used only on small areas. Custom accent colors are out of scope for v1 | `Color.veerAccent` |
 | Fixed chart palette | Categorical colors need stable, color-blind-checked pairs that the system colors do not give. Every chart has a legend with exact counts | `ChartPalette` |
-| `.strings` instead of String Catalog | `xcstringstool` needs Xcode, which this machine does not have | SPEC 9 |
+| `.strings` instead of String Catalog | Chosen before Xcode was installed; the existing localization and checks still use it, and a migration is not scheduled | SPEC 9 |
 | Carbon `RegisterEventHotKey` for global shortcuts | The only system API for them without a third-party library. Unbound by default | SPEC 8, `HotKeys` |
 
 ## Acceptance

@@ -660,7 +660,9 @@ final class ProxyStore {
             let order = proxies["GLOBAL"]?.all ?? proxies.keys.sorted()
             groups = order.compactMap { proxies[$0] }.filter { $0.isGroup && $0.hidden != true }.map { group in
                 Group(name: group.name, type: group.type, now: group.now, members: (group.all ?? []).map { name in
-                    Group.Member(name: name, delay: proxies[name]?.lastDelay, isGroup: proxies[name]?.isGroup == true)
+                    // A policy that blocks can't answer a delay test, and isn't timing out.
+                    Group.Member(name: name, delay: ["REJECT", "REJECT-DROP", "PASS"].contains(name) ? nil : proxies[name]?.lastDelay,
+                                 isGroup: proxies[name]?.isGroup == true)
                 })
             }
             if let mode = Mode(rawValue: try await controller.mode().lowercased()) { self.mode = mode }
@@ -878,14 +880,6 @@ final class ProxyStore {
         } catch {
             notice = message(for: error)
         }
-    }
-
-    func toggleCollapsed(_ group: String) {
-        if collapsedGroups.contains(group) { collapsedGroups.remove(group) } else { collapsedGroups.insert(group) }
-    }
-
-    func setAllCollapsed(_ collapsed: Bool) {
-        collapsedGroups = collapsed ? Set(groups.map(\.name)) : []
     }
 
     /// One delay test of every node after the core starts, so the Proxies page and "fastest"

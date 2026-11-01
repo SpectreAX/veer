@@ -58,6 +58,8 @@ public struct AIRequestPayload: Sendable, Codable, Hashable {
     public var lookups: String?
     /// Results of the checks the model asked for, as sent.
     public var checks: [String]?
+    /// Attached files' text as sent, and the images' names.
+    public var attachments: String?
 
     public init(model: String, exits: [String], history: [String], instruction: String, system: String? = nil, config: String? = nil) {
         self.model = model
@@ -81,6 +83,7 @@ public struct AIRequestPayload: Sendable, Codable, Hashable {
         }
         if !history.isEmpty { text += "\n\n此前对话（已匿名）：\n" + history.map { "· \($0)" }.joined(separator: "\n") }
         text += "\n\n指令：\n\(instruction)"
+        if let attachments { text += attachments }
         if let lookups { text += "\n\n\(lookups)" }
         for check in checks ?? [] { text += "\n\n\(check)" }
         return text
@@ -217,8 +220,9 @@ public struct AIClient: Sendable {
 
     // MARK: Requests
 
+    /// `images` go with the instruction, however many messages follow it.
     public func makeRequest(settings: AISettings, apiKey: String?, system: String, history: [(role: String, content: String)], prompt: String,
-                            followUps: [(role: String, content: String)] = [], stream: Bool = false) throws -> AIRequest {
+                            images: [AIImage] = [], followUps: [(role: String, content: String)] = [], stream: Bool = false) throws -> AIRequest {
         if settings.provider.needsKey && (apiKey ?? "").trimmingCharacters(in: .whitespaces).isEmpty { throw AIFailure.missingKey }
         let model = settings.model.trimmingCharacters(in: .whitespaces)
         guard !model.isEmpty else { throw AIFailure.invalidEndpoint(String(localized: "请选择或填写模型。")) }
@@ -227,6 +231,8 @@ public struct AIClient: Sendable {
         let level = settings.effectiveLevel
         let thinks = level != .off
         let turns = history + [("user", prompt)] + followUps
+        // Where the instruction ends up once turns of the same role are merged.
+        let promptIndex = Self.alternating(history + [("user", prompt)]).count - 1
 
         let url: URL
         var body: [String: Any]
@@ -234,30 +240,13 @@ public struct AIClient: Sendable {
         case .openAI:
             url = try Self.endpoint(for: settings.baseURL)
             body = ["model": model, "stream": stream,
-                    "messages": [["role": "system", "content": system]] + turns.map { ["role": $0.role, "content": $0.content] }]
-            switch (style, thinks) {
-            case (.openAIEffort, _):
-                // GPT-5 family accepts only the default temperature.
-                body["reasoning_effort"] = thinks ? level.rawValue : "minimal"
-                body["response_format"] = ["type": "json_object"]
-            case (_, true):
-                // Reasoning is slow, and several services ignore or reject temperature and JSON mode.
-                if style == .zhipu { body["thinking"] = ["type": "enabled"] }
-                if style == .deepSeek {
-                    body["thinking"] = ["type": "enabled"]
-                    body["reasoning_effort"] = level.rawValue
-                }
-            case (_, false):
-                // DeepSeek V4 and GLM think unless told not to.
-                if style == .zhipu || style == .deepSeek { body["thinking"] = ["type": "disabled"] }
-                body["temperature"] = 0
-                body["response_format"] = ["type": "json_object"]
-            }
+                    "messages": [["role": "system", "content": system]] + Self.openAIMessages(turns, promptIndex: history.count, images: images)]
+            Self.addOpenAIThinking(to: &body, style: style, level: level)
         case .anthropic:
             url = try Self.url(settings.baseURL, appending: "/messages")
             let budget = [ThinkingLevel.low: 2_048, .medium: 8_000, .high: 16_000, .max: 32_000][level] ?? 0
             body = ["model": model, "system": system, "max_tokens": budget + 4_096,
-                    "messages": Self.alternating(turns).map { ["role": $0.role, "content": $0.content] }]
+                    "messages": Self.anthropicMessages(Self.alternating(turns), promptIndex: promptIndex, images: images)]
             if thinks { body["thinking"] = ["type": "enabled", "budget_tokens": budget] } else { body["temperature"] = 0 }
             if stream { body["stream"] = true }
         case .gemini:
@@ -268,18 +257,9 @@ public struct AIClient: Sendable {
             url = stream
                 ? try Self.url(settings.baseURL, appending: "/models/\(escaped):streamGenerateContent", query: [URLQueryItem(name: "alt", value: "sse")])
                 : try Self.url(settings.baseURL, appending: "/models/\(escaped):generateContent")
-            var generation: [String: Any] = ["responseMimeType": "application/json"]
-            if !thinks { generation["temperature"] = 0 }
-            switch style {
-            case .gemini:
-                // -1 lets the model decide how much to think.
-                let budget = [ThinkingLevel.low: 1_024, .medium: 8_192, .high: -1, .max: -1][level] ?? 0
-                generation["thinkingConfig"] = thinks ? ["thinkingBudget": budget, "includeThoughts": true] : ["thinkingBudget": 0]
-            case .intrinsic: generation["thinkingConfig"] = ["includeThoughts": true]
-            default: break
-            }
+            let generation = Self.geminiGeneration(style: style, level: level)
             body = ["systemInstruction": ["parts": [["text": system]]],
-                    "contents": Self.alternating(turns).map { ["role": $0.role == "assistant" ? "model" : "user", "parts": [["text": $0.content]]] },
+                    "contents": Self.geminiContents(Self.alternating(turns), promptIndex: promptIndex, images: images),
                     "generationConfig": generation]
         }
 
@@ -290,6 +270,73 @@ public struct AIClient: Sendable {
         if stream { request.setValue("text/event-stream", forHTTPHeaderField: "Accept") }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return AIRequest(urlRequest: request, format: format, streaming: stream)
+    }
+
+    static func addOpenAIThinking(to body: inout [String: Any], style: ThinkingStyle, level: ThinkingLevel) {
+        let thinks = level != .off
+        switch (style, thinks) {
+        case (.openAIEffort, _):
+            // GPT-5 family accepts only the default temperature.
+            body["reasoning_effort"] = thinks ? level.rawValue : "minimal"
+            body["response_format"] = ["type": "json_object"]
+        case (_, true):
+            // Reasoning is slow, and several services ignore or reject temperature and JSON mode.
+            if style == .zhipu { body["thinking"] = ["type": "enabled"] }
+            if style == .deepSeek {
+                body["thinking"] = ["type": "enabled"]
+                body["reasoning_effort"] = level.rawValue
+            }
+        case (_, false):
+            // DeepSeek V4 and GLM think unless told not to.
+            if style == .zhipu || style == .deepSeek { body["thinking"] = ["type": "disabled"] }
+            body["temperature"] = 0
+            body["response_format"] = ["type": "json_object"]
+        }
+    }
+
+    static func geminiGeneration(style: ThinkingStyle, level: ThinkingLevel) -> [String: Any] {
+        let thinks = level != .off
+        var generation: [String: Any] = ["responseMimeType": "application/json"]
+        if !thinks { generation["temperature"] = 0 }
+        switch style {
+        case .gemini:
+            // -1 lets the model decide how much to think.
+            let budget = [ThinkingLevel.low: 1_024, .medium: 8_192, .high: -1, .max: -1][level] ?? 0
+            generation["thinkingConfig"] = thinks ? ["thinkingBudget": budget, "includeThoughts": true] : ["thinkingBudget": 0]
+        case .intrinsic: generation["thinkingConfig"] = ["includeThoughts": true]
+        default: break
+        }
+        return generation
+    }
+
+    typealias Turns = [(role: String, content: String)]
+
+    static func openAIMessages(_ turns: Turns, promptIndex: Int, images: [AIImage]) -> [[String: Any]] {
+        turns.enumerated().map { index, turn in
+            guard index == promptIndex, !images.isEmpty else { return ["role": turn.role, "content": turn.content] }
+            let parts: [[String: Any]] = images.map { image in
+                ["type": "image_url", "image_url": ["url": "data:\(image.mediaType);base64,\(image.data.base64EncodedString())"]]
+            }
+            return ["role": turn.role, "content": [["type": "text", "text": turn.content]] + parts]
+        }
+    }
+
+    static func anthropicMessages(_ turns: Turns, promptIndex: Int, images: [AIImage]) -> [[String: Any]] {
+        turns.enumerated().map { index, turn in
+            guard index == promptIndex, !images.isEmpty else { return ["role": turn.role, "content": turn.content] }
+            let parts: [[String: Any]] = images.map { image in
+                ["type": "image", "source": ["type": "base64", "media_type": image.mediaType, "data": image.data.base64EncodedString()]]
+            }
+            return ["role": turn.role, "content": parts + [["type": "text", "text": turn.content]]]
+        }
+    }
+
+    static func geminiContents(_ turns: Turns, promptIndex: Int, images: [AIImage]) -> [[String: Any]] {
+        turns.enumerated().map { index, turn in
+            let parts: [[String: Any]] = index == promptIndex
+                ? images.map { ["inline_data": ["mime_type": $0.mediaType, "data": $0.data.base64EncodedString()]] } : []
+            return ["role": turn.role == "assistant" ? "model" : "user", "parts": parts + [["text": turn.content]]]
+        }
     }
 
     /// Claude and Gemini need user/assistant turns to alternate, starting with the user.
@@ -503,8 +550,8 @@ public struct AIClient: Sendable {
     }
 
     /// Instructions for every Veer client; see `SystemPrompt`.
-    public static func systemPrompt(config: String, search: Bool = false, mode: ExecutionMode = .manual) -> String {
-        SystemPrompt.build(config: config, search: search, mode: mode)
+    public static func systemPrompt(config: String, search: Bool = false, mode: ExecutionMode = .manual, attachments: Bool = false) -> String {
+        SystemPrompt.build(config: config, search: search, mode: mode, attachments: attachments)
     }
 }
 

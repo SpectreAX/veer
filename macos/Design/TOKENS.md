@@ -15,7 +15,7 @@ Do not force native controls into matching sizes.
 ## Layout
 
 `Metrics`: `readingWidth` 760, `sidebarWidth` 240, `inspectorWidth` 360, `minWindow` 860 × 560,
-`defaultWindow` 1080 × 720, `compactBreakpoint` 1100, `roomyTitleWidth` 960.
+`defaultWindow` 1080 × 720, `compactBreakpoint` 1100, `roomyTitleWidth` 960, `attachmentWidth` 220.
 
 ## Motion
 

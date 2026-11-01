@@ -77,6 +77,16 @@ final class AgentStore {
     @ObservationIgnored private let saveQueue = DispatchQueue(label: "veer.thread-save", qos: .utility)
     @ObservationIgnored private var saveWork: [UUID: DispatchWorkItem] = [:]
     @ObservationIgnored private var toastWork: DispatchWorkItem?
+    /// Files and images waiting in the composer.
+    var pendingAttachments: [ChatAttachment] = []
+    /// How many are still being read.
+    var loadingAttachments = 0
+    /// Why the last ones couldn't be added or sent, shown in the composer.
+    var attachmentProblem: String?
+    /// Set by the menu command; the composer shows the open panel.
+    var choosingAttachments = false
+    /// What each turn sent, for trying it again. Only for this launch: their contents aren't saved.
+    @ObservationIgnored private var sentAttachments: [UUID: [ChatAttachment]] = [:]
 
     init(proxy: ProxyStore, keyStore: KeyStoring? = nil, engine: EditorEngine? = nil, defaults: UserDefaults = .standard, persist: Bool = true) {
         self.proxy = proxy
@@ -209,15 +219,106 @@ final class AgentStore {
         if let text { ask(text) } else { composerFocusToken += 1 }
     }
 
+    // MARK: Attachments
+
+    /// Reads them off the main thread. Those that can't be read say why together, and leave the rest.
+    func attach(_ urls: [URL]) {
+        guard canAttach else { return }
+        attachmentProblem = nil
+        loadingAttachments += urls.count
+        Task { [weak self] in
+            var problems: [String] = []
+            for url in urls {
+                let accessed = url.startAccessingSecurityScopedResource()
+                defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+                let result = await Task.detached { Result { try AttachmentReader.read(url) } }.value
+                self?.loadingAttachments -= 1
+                if let problem = self?.add(result) { problems.append(problem) }
+            }
+            self?.report(problems)
+        }
+    }
+
+    /// A pasted image, which has no file name of its own.
+    func attach(imageData data: Data) {
+        guard canAttach else { return }
+        attachmentProblem = nil
+        loadingAttachments += 1
+        let name = String(localized: "粘贴的图片")
+        Task { [weak self] in
+            let result = await Task.detached { Result { try AttachmentReader.image(from: data, name: name) } }.value
+            self?.loadingAttachments -= 1
+            if let problem = self?.add(result) { self?.report([problem]) }
+        }
+    }
+
+    private var canAttach: Bool {
+        if effectiveUseAI { return true }
+        report([String(localized: "图片和文件只在 AI 解析时可用")])
+        return false
+    }
+
+    private func canSend(_ attachments: [ChatAttachment], forceAI: Bool) -> Bool {
+        guard !attachments.isEmpty else { return true }
+        guard forceAI ? aiConfigured : effectiveUseAI else {
+            report([String(localized: "本地解析读不了图片和文件，请先选择 AI。")])
+            return false
+        }
+        guard settings.provider.acceptsImages || attachments.allSatisfy({ $0.image == nil }) else {
+            report([String(localized: "\(settings.provider.title) 不能读取图片，请换一个 AI 服务，或移除图片。")])
+            return false
+        }
+        return true
+    }
+
+    private func record(_ attachments: [ChatAttachment], on turn: inout Turn) {
+        guard !attachments.isEmpty else { return }
+        turn.attachments = attachments.map(\.info)
+        sentAttachments[turn.id] = attachments
+        // What a file or image says isn't what the user says: it never applies without a look.
+        if turn.executionMode != .plan { turn.executionMode = .manual }
+    }
+
+    /// What went wrong, if it couldn't be added.
+    private func add(_ result: Result<ChatAttachment, Error>) -> String? {
+        switch result {
+        case .failure(let error): return message(for: error)
+        case .success(let attachment):
+            guard pendingAttachments.count < ChatAttachment.maxCount else {
+                return String(localized: "一次最多发送 \(ChatAttachment.maxCount) 个图片或文件。")
+            }
+            pendingAttachments.append(attachment)
+            return nil
+        }
+    }
+
+    /// In the composer, where they stay until the next try: a toast would leave before several were
+    /// read, and says everything with a check mark.
+    private func report(_ problems: [String]) {
+        let unique = problems.uniqued()
+        guard !unique.isEmpty else { return }
+        attachmentProblem = unique.joined(separator: "\n")
+        announce(unique.joined(separator: " "))
+    }
+
+    func removeAttachment(_ id: UUID) {
+        pendingAttachments.removeAll { $0.id == id }
+        attachmentProblem = nil
+    }
+
     func draftInstruction(_ text: String) {
         composerText = text
         composerFocusToken += 1
     }
 
     /// `executionMode` overrides the composer's mode for this one instruction.
-    func send(_ raw: String? = nil, executionMode override: ExecutionMode? = nil, forceAI: Bool = false) {
-        let prompt = (raw ?? composerText).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !prompt.isEmpty, !isRunning else { return }
+    /// `attachments` go with a `raw` instruction, which otherwise leaves what waits in the composer alone.
+    func send(_ raw: String? = nil, attachments sent: [ChatAttachment] = [], executionMode override: ExecutionMode? = nil, forceAI: Bool = false) {
+        guard raw != nil || loadingAttachments == 0 else { return }
+        let attachments = raw == nil ? pendingAttachments : sent
+        var prompt = (raw ?? composerText).trimmingCharacters(in: .whitespacesAndNewlines)
+        if prompt.isEmpty, !attachments.isEmpty { prompt = String(localized: "请看附件。") }
+        guard !prompt.isEmpty, !isRunning, canSend(attachments, forceAI: forceAI) else { return }
         if prompt == "/undo" || prompt == "/redo" {
             composerText = ""
             prompt == "/undo" ? undo() : redo()
@@ -225,7 +326,11 @@ final class AgentStore {
         }
         if current == nil { newThread() }
         guard var session = current, let live = liveText, let draft = document(for: live) else { return }
-        if raw == nil { composerText = "" }
+        if raw == nil {
+            composerText = ""
+            pendingAttachments = []
+        }
+        attachmentProblem = nil
         // Each instruction works on the profile as it runs now.
         session.draftText = live
         if session.turns.isEmpty { session.title = String(prompt.prefix(40)) }
@@ -235,6 +340,7 @@ final class AgentStore {
         let steps = EditorEngine.stepTitles.enumerated().map { Turn.Step(id: $0.offset, title: $0.element, state: .waiting) }
         var turn = Turn(prompt: prompt, mode: mode, steps: steps)
         turn.executionMode = override ?? executionMode
+        record(attachments, on: &turn)
         var request = EditorEngine.Request(prompt: prompt, draft: draft, regions: session.regions(for: draft.targets), useAI: useAI,
                                            settings: settings, apiKey: apiKey, history: history(for: session, context: draft),
                                            shareRuleLiterals: shareRuleLiterals)
@@ -243,6 +349,7 @@ final class AgentStore {
         // Changes to the running core only make sense for the profile it runs.
         request.runtime = session.profileID == proxy.activeProfileID
         request.replyLanguage = Self.replyLanguage
+        request.attachments = attachments
         let proxy = proxy
         request.liveConnections = { domains in await proxy.connectionSummary(for: domains) }
         if useAI { turn.sentPayload = EditorEngine.payload(for: request) }
@@ -316,7 +423,8 @@ final class AgentStore {
                     + (run.undone ? "；用户随后撤销了" : "")  // for the AI
             default: continue
             }
-            messages.append(("user", anon.anonymize(turn.prompt)))
+            let attached = turn.attachments.map { list in "（附件：" + list.map(\.name).joined(separator: "、") + "）" } ?? ""  // for the AI
+            messages.append(("user", anon.anonymize(turn.prompt) + attached))
             messages.append(("assistant", reply))
         }
         return messages
@@ -468,6 +576,8 @@ final class AgentStore {
         guard var session = current, let profileID = session.profileID, let id = turnID ?? latestProposalTurnID,
               let index = session.turns.firstIndex(where: { $0.id == id }),
               var proposal = session.turns[index].proposal, canWrite(session.turns[index]) else { return }
+        let group = directGroup(for: proposal, turn: session.turns[index])
+        proposal.previousDirectNode = group.flatMap { name in proxy.groups.first(where: { $0.name == name })?.now }
         let edit = RoutingLayer.Edit(id: id, source: .agent, prompt: session.turns[index].prompt, plan: proposal.plan,
                                      accepted: proposal.accepted, items: proposal.items, base: proposal.baseDraft)
         guard proxy.addEdit(edit, to: profileID) else { return }
@@ -481,6 +591,34 @@ final class AgentStore {
         showToast(applyMessage(count: proposal.accepted.count), undoable: true)
         announce(String(localized: "已应用"))
         recordApplied(turnID: id, in: session.id)
+        if let group, proxy.isRunning, !profileIsInactive {
+            selectAfterEdit("DIRECT", in: group, session: session, turnID: id, status: .written)
+        }
+    }
+
+    private func directGroup(for proposal: Turn.Proposal, turn: Turn) -> String? {
+        guard let base = document(for: proposal.baseDraft) else { return nil }
+        return DedicatedGroupRoute.groupToSwitch(after: turn.prompt, in: base, plan: proposal.plan,
+                                                accepted: proposal.accepted, mode: turn.executionMode ?? .manual)
+    }
+
+    /// The core reloads after the edit, so it may not know its new members straight away.
+    private func selectAfterEdit(_ node: String, in group: String, session: Session, turnID: UUID, status: Turn.ProposalStatus) {
+        guard let profileID = session.profileID else { return }
+        let sessionID = session.id
+        Task { [weak self] in
+            for _ in 0..<5 {
+                try? await Task.sleep(for: .milliseconds(400))
+                guard let self, self.proxy.activeProfileID == profileID, self.proxy.isRunning,
+                      self.sessions.first(where: { $0.id == sessionID })?.turns.first(where: { $0.id == turnID })?.proposal?.status == status else { return }
+                let proxy = self.proxy
+                do {
+                    try await proxy.choose(node, in: group)
+                    return
+                } catch { continue }
+            }
+            self?.proxy.notice = String(localized: "“\(group)”未能切换到 \(node)，请在代理页重试。")
+        }
     }
 
     private func applyMessage(count: Int) -> String {
@@ -742,6 +880,10 @@ final class AgentStore {
         }
         session.draftText = (try? proxy.effectiveText(of: profileID)) ?? session.draftText
         current = session
+        if let proposal = session.turns[index].proposal, let group = directGroup(for: proposal, turn: session.turns[index]),
+           let node = applied ? "DIRECT" : proposal.previousDirectNode, proxy.isRunning, !profileIsInactive {
+            selectAfterEdit(node, in: group, session: session, turnID: turnID, status: applied ? .written : .undone)
+        }
         let done = applied ? String(localized: "已重做") : String(localized: "已撤销")
         showToast(done)
         announce(done)
@@ -762,12 +904,15 @@ final class AgentStore {
         undoRuntime(sessionID: id, turnID: turnID)
         changes.forget(turnID)
     }
+    /// A turn's files live only as long as this launch, and it means little without them.
+    func canRetry(_ turn: Turn) -> Bool { turn.attachments?.isEmpty != false || sentAttachments[turn.id] != nil }
+
     var canRedo: Bool { current?.turns.contains { $0.proposal?.status == .undone } == true && !isRunning }
 
     func retry(turnID: UUID, useLocal: Bool = false) {
         guard let turn = current?.turns.first(where: { $0.id == turnID }) else { return }
         if useLocal { useAI = false }
-        send(turn.prompt)
+        send(turn.prompt, attachments: useLocal ? [] : sentAttachments[turnID] ?? [])
     }
 
     /// Veer has no inspector; changes show in the turn itself.

@@ -64,12 +64,33 @@ struct ProxiesView: View {
                     StateView(symbol: "magnifyingglass", title: String(localized: "没有匹配“\(query)”的节点或策略组"))
                         .frame(minHeight: 320)
                 }
-                LazyVStack(alignment: .leading, spacing: Spacing.lg) {
+                // Not lazy: as sections collapse, those arriving from below the window would have no
+                // earlier place to move from, and slid over the rest. Each one's nodes are still lazy.
+                VStack(alignment: .leading, spacing: Spacing.lg) {
                     ForEach(shownGroups) { GroupSection(group: $0) }
                 }
                 .padding(Spacing.xl)
             }
         }
+    }
+}
+
+extension ProxyStore {
+    func toggleCollapsed(_ group: String) {
+        withCollapseAnimation {
+            if collapsedGroups.contains(group) { collapsedGroups.remove(group) } else { collapsedGroups.insert(group) }
+        }
+    }
+
+    func setAllCollapsed(_ collapsed: Bool) {
+        withCollapseAnimation { collapsedGroups = collapsed ? Set(groups.map(\.name)) : [] }
+    }
+
+    /// Around the change, so the sections below move with the one that changes. An animation on each
+    /// section would animate its own height while its neighbours jumped. The menu bar's commands come
+    /// through here too, where there is no view to read Reduce Motion from.
+    private func withCollapseAnimation(_ change: () -> Void) {
+        withAnimation(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : Motion.standard, change)
     }
 }
 
@@ -83,11 +104,34 @@ private struct GroupSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.md) {
-            // The node in use goes first when the row runs short: its tile shows it too, and the
-            // group's name would otherwise be squeezed down to nothing.
+            // The type and node on a line of their own when the row runs short, as squeezed into it the
+            // group's name goes first. The node stays in reach: a collapsed group has no other way to show it.
             ViewThatFits(in: .horizontal) {
-                header(showingNode: true)
-                header(showingNode: false)
+                HStack(spacing: Spacing.sm) {
+                    title
+                    typeTag
+                    quickSwitch(fixed: true)
+                    Spacer(minLength: 0)
+                    actions(compact: false)
+                }
+                VStack(alignment: .leading, spacing: Spacing.xs) {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: Spacing.sm) {
+                            title
+                            Spacer(minLength: 0)
+                            actions(compact: false)
+                        }
+                        HStack(spacing: Spacing.sm) {
+                            title
+                            Spacer(minLength: 0)
+                            actions(compact: true)
+                        }
+                    }
+                    HStack(spacing: Spacing.sm) {
+                        typeTag
+                        quickSwitch(fixed: false)
+                    }
+                }
             }
             if !collapsed {
             LazyVGrid(columns: columns, alignment: .leading, spacing: Spacing.sm) {
@@ -103,30 +147,35 @@ private struct GroupSection: View {
                     }
                 }
             }
+            .transition(.opacity)
             }
         }
         .panel()
-        .animation(Motion.standard, value: collapsed)
+        // Nodes fading out as a section closes would show past its edge.
+        .clipShape(RoundedRectangle(cornerRadius: Radius.large, style: .continuous))
     }
 
-    private func header(showingNode: Bool) -> some View {
-        HStack(spacing: Spacing.sm) {
-            Button { store.toggleCollapsed(group.name) } label: {
-                HStack(spacing: Spacing.sm) {
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .rotationEffect(.degrees(collapsed ? 0 : 90))
-                    Text(group.name).font(.headline).lineLimit(1).truncationMode(.middle)
-                    Tag(text: Self.typeLabel(group.type))
-                }
-                .contentShape(Rectangle())
+    private var title: some View {
+        Button { store.toggleCollapsed(group.name) } label: {
+            HStack(spacing: Spacing.sm) {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(collapsed ? 0 : 90))
+                Text(group.name).font(.headline).lineLimit(1)
             }
-            .buttonStyle(.plain)
-            .help(collapsed ? String(localized: "展开") : String(localized: "proxies.collapse", defaultValue: "收起"))
-            .accessibilityLabel(collapsed ? String(localized: "展开“\(group.name)”") : String(localized: "收起“\(group.name)”"))
-            if showingNode { quickSwitch }
-            Spacer()
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(collapsed ? String(localized: "展开“\(group.name)”") : String(localized: "收起“\(group.name)”"))
+        .accessibilityLabel(collapsed ? String(localized: "展开“\(group.name)”") : String(localized: "收起“\(group.name)”"))
+    }
+
+    private var typeTag: some View { Tag(text: Self.typeLabel(group.type)) }
+
+    /// `compact` leaves the Ask AI menu its symbol, and the row its width.
+    private func actions(compact: Bool) -> some View {
+        HStack(spacing: Spacing.sm) {
             if store.testingGroups.contains(group.name) {
                 ProgressView().controlSize(.small)
             }
@@ -134,31 +183,38 @@ private struct GroupSection: View {
                 Button("换到延迟最低的节点") { ask(String(localized: "“\(group.name)”换到延迟最低的节点")) }
                 Button("哪些网站走这个策略组？") { ask(String(localized: "哪些网站走“\(group.name)”？")) }
                 Button("问 AI…") { ask(String(localized: "关于策略组“\(group.name)”：")) }
-            } label: { Label("问 AI", systemImage: "sparkles") }
+            } label: {
+                if compact {
+                    Label("问 AI", systemImage: "sparkles").labelStyle(.iconOnly)
+                } else {
+                    Label("问 AI", systemImage: "sparkles")
+                }
+            }
             .menuStyle(.borderlessButton).fixedSize().neutralControl()
             .help("让 Agent 处理这个策略组")
             Button("测速") { store.testDelay(group.name) }
                 .secondaryAction()
+                .fixedSize()
                 .disabled(store.testingGroups.contains(group.name))
                 .help("测试这个策略组里每个成员的延迟")
         }
     }
 
     /// The node in use, and for a select group a menu of every member with its delay: switching
-    /// without opening the group.
-    @ViewBuilder private var quickSwitch: some View {
+    /// without opening the group. `fixed` keeps its whole name, where the row has been measured to fit.
+    @ViewBuilder private func quickSwitch(fixed: Bool) -> some View {
         if let now = group.now {
             if group.isSelectable {
                 Menu {
                     NodeMenuItems(group: group)
                 } label: {
-                    Text(verbatim: "→ \(now)").lineLimit(1).truncationMode(.middle)
+                    Text(verbatim: "→ \(now)").lineLimit(1)
                 }
-                .menuStyle(.borderlessButton).fixedSize().neutralControl()
+                .menuStyle(.borderlessButton).fixedSize(horizontal: fixed, vertical: true).neutralControl()
                 .font(.callout)
                 .help("切换节点")
             } else {
-                Text(verbatim: "→ \(now)").font(.callout).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                Text(verbatim: "→ \(now)").font(.callout).foregroundStyle(.secondary).lineLimit(1)
             }
         }
     }

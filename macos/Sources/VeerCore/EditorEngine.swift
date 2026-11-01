@@ -59,6 +59,8 @@ public struct EditorEngine: Sendable {
         /// Veer: how the running core routed recent connections to these domains, in words with
         /// real names; added to a check's results so "why did X go through the proxy" has facts.
         public var liveConnections: (@Sendable ([String]) async -> String?)?
+        /// Files and images sent with the instruction.
+        public var attachments: [ChatAttachment] = []
 
         public init(prompt: String, draft: ConfigDocument, regions: [String: Region], useAI: Bool, settings: AISettings, apiKey: String?,
                     history: [(role: String, content: String)] = [], shareRuleLiterals: Bool = false) {
@@ -94,20 +96,28 @@ public struct EditorEngine: Sendable {
 
     /// The anonymized payload a request would send; shown to the user per turn.
     public static func payload(for request: Request) -> AIRequestPayload {
+        let attached = ChatAttachment.message(for: request.attachments)
         let anonymized = AnonymizedConfig.make(document: request.draft, regions: request.regions, shareRuleLiterals: request.shareRuleLiterals,
-                                                instruction: request.prompt)
+                                                instruction: request.prompt + attached)
         var payload = AIRequestPayload(model: request.settings.modelLabel, exits: anonymized.context.exits.map(\.label),
                                        history: request.history.map { "\($0.role == "user" ? "用户" : "助手")：\($0.content)" },
                                        instruction: anonymized.context.anonymize(request.prompt),
-                                       system: AIClient.systemPrompt(config: anonymized.yaml, search: request.search != nil, mode: request.mode),
+                                       system: AIClient.systemPrompt(config: anonymized.yaml, search: request.search != nil, mode: request.mode,
+                                                                     attachments: !request.attachments.isEmpty),
                                        config: anonymized.yaml)
         payload.sourceDigest = AIRequestPayload.digest(request.draft.text)
         payload.shareRuleLiterals = request.shareRuleLiterals
+        if !attached.isEmpty { payload.attachments = anonymized.context.anonymize(attached) }
         return payload
     }
 
     public func run(_ request: Request, progress: @Sendable (Progress) async -> Void) async throws -> Output {
         await progress(.started(0))
+        // An option Veer offered itself means what it says, with no need to ask the AI.
+        if let choice = DedicatedGroupRoute.choice(for: request.prompt, in: request.draft) {
+            await progress(.finished(0, detail: String(localized: "本地解析")))
+            return try await run(choice, request: request, progress: progress)
+        }
         // Switching nodes and testing delays are out of scope for an editor; in Veer the AI can do
         // them as runtime actions, and only local parsing cannot.
         if LocalIntentParser.isOutOfScope(request.prompt) && (!request.runtime || !request.useAI) {
@@ -123,87 +133,110 @@ public struct EditorEngine: Sendable {
             return try await handle(reply, request: request, progress: progress)
         }
 
+        return try await askAI(request, hints: hints, progress: progress)
+    }
+
+    /// Asks the model, answers the searches and checks it requests, and sends back an unusable
+    /// answer once with what was wrong with it.
+    private func askAI(_ request: Request, hints: LookupHints?, progress: @Sendable (Progress) async -> Void) async throws -> Output {
+        let attached = ChatAttachment.message(for: request.attachments)
         let anonymized = AnonymizedConfig.make(document: request.draft, regions: request.regions, shareRuleLiterals: request.shareRuleLiterals,
-                                                instruction: request.prompt)
+                                                instruction: request.prompt + attached)
         let system = SystemPrompt.build(config: anonymized.yaml, search: request.search != nil, mode: request.mode, runtime: request.runtime,
-                                        replyLanguage: request.replyLanguage)
+                                        replyLanguage: request.replyLanguage, attachments: !request.attachments.isEmpty)
         // Lookup results travel with the instruction (and are anonymized with it).
-        let prompt = anonymized.context.anonymize(request.prompt + (hints.map { "\n\n" + $0.message } ?? ""))
+        let prompt = anonymized.context.anonymize(request.prompt + (hints.map { "\n\n" + $0.message } ?? "") + attached)
+        let images = request.attachments.compactMap(\.image)
         let model = request.settings.modelLabel
         var followUps: [(role: String, content: String)] = []
         var attempt = 0
         var searchRounds = 0
         var checkRounds = 0
         while true {
-            // Thinking models stream, so their reasoning shows while they work.
-            let streaming = request.settings.thinks
             let httpRequest = try ai.makeRequest(settings: request.settings, apiKey: request.apiKey, system: system, history: request.history,
-                                                 prompt: prompt, followUps: followUps, stream: streaming)
-            let answer = streaming
-                ? try await ai.stream(httpRequest) { reasoning in await progress(.reasoning(reasoning)) }
-                : try await ai.completeWithReasoning(httpRequest)
-            try Task.checkCancellation()
-            if !streaming, let reasoning = answer.reasoning, !reasoning.isEmpty { await progress(.reasoning(reasoning)) }
+                                                 prompt: prompt, images: images, followUps: followUps, stream: request.settings.thinks)
+            let answer = try await nextAnswer(httpRequest, streaming: request.settings.thinks, progress: progress)
             do {
-                let decoded = try EditPlan.decodeReplyWithUnderstanding(answer.content)
+                let decoded = try EditPlan.decodeReplyWithUnderstanding(answer)
                 if let understanding = decoded.understanding, !understanding.isEmpty {
                     await progress(.understanding(anonymized.context.restore(understanding)))
                 }
                 if case let .search(queries) = decoded.reply {
-                    // Search, hand the results back, and ask again (at most `maxRounds` times).
-                    guard let config = request.search else { throw EditorError(String(localized: "联网搜索未开启，不能请求搜索。请直接输出修改计划或澄清问题。")) }
-                    guard searchRounds < SearchQueries.maxRounds else { throw EditorError(String(localized: "本轮已经搜索过 \(SearchQueries.maxRounds) 次，不能再搜索。请根据已有结果输出修改计划或澄清问题。")) }
-                    let checked = SearchQueries.sanitize(queries)
-                    guard !checked.accepted.isEmpty else { throw EditorError(String(localized: "搜索词包含配置里的标签、占位符或私有地址，Veer 不会发送。请只用公开的服务或网站名称搜索。")) }
-                    searchRounds += 1
-                    await progress(.searching(checked.accepted))
-                    let records = await searcher.search(checked.accepted, config: config)
-                    try Task.checkCancellation()
-                    await progress(.searched(records))
-                    followUps += [("assistant", String(answer.content.prefix(8_000))),
-                                  ("user", SearchQueries.message(for: records, refused: checked.refused, lastRound: searchRounds >= SearchQueries.maxRounds))]
+                    let message = try await searchMessage(queries, request: request, rounds: &searchRounds, progress: progress)
+                    followUps += [("assistant", String(answer.prefix(8_000))), ("user", message)]
                     continue
                 }
                 if case let .check(raw) = decoded.reply {
-                    // Test the domains against the draft and hand the results back (at most `maxRounds` times).
-                    guard let checker else { throw EditorError(String(localized: "本机检查不可用。请直接输出修改计划或澄清问题。")) }
-                    guard checkRounds < DomainChecker.maxRounds else { throw EditorError(String(localized: "本轮已经检查过 \(DomainChecker.maxRounds) 次，不能再检查。请根据已有结果输出修改计划或澄清问题。")) }
-                    let domains = DomainChecker.sanitize(raw)
-                    guard !domains.isEmpty else { throw EditorError(String(localized: "check.domains 里没有有效的域名（例如 i0.hdslb.com），请只列公开域名。")) }
-                    checkRounds += 1
-                    await progress(.checking(domains))
-                    let records = await checker.check(domains, draft: request.draft)
-                    try Task.checkCancellation()
-                    let geodata = await checker.geo?.status().has(.geosite) ?? false
-                    var message = DomainChecker.message(for: records, anonymizedRules: anonymized.rules, geodata: geodata,
-                                                        lastRound: checkRounds >= DomainChecker.maxRounds)
-                    if let live = await request.liveConnections?(domains) {
-                        message += "\n\n" + anonymized.context.anonymize(live)
-                    }
-                    await progress(.checked(records, sent: message))
-                    followUps += [("assistant", String(answer.content.prefix(8_000))), ("user", message)]
+                    let message = try await checkMessage(raw, request: request, anonymized: anonymized, rounds: &checkRounds, progress: progress)
+                    followUps += [("assistant", String(answer.prefix(8_000))), ("user", message)]
                     continue
                 }
                 if request.mode == .plan, case .plan = decoded.reply {
                     throw EditorError(String(localized: "计划模式下不要输出修改计划。请用 clarification 写出分析，用 options 给出 2 到 3 个方案。"))
                 }
                 if attempt == 0 { await progress(.finished(0, detail: String(localized: "已由 \(model) 解析"))) }
-                var reply = anonymized.restoringRuleSetNames(in: decoded.reply)
-                if case let .clarification(question, options) = reply {
-                    // The user sees, and later sends, real exit names, not the model's labels.
-                    reply = .clarification(anonymized.context.restore(question), options: options.map {
-                        ClarifyOption(label: anonymized.context.restore($0.label), prompt: $0.prompt.map(anonymized.context.restore))
-                    })
-                }
-                return try await handle(reply, request: request, progress: progress, restore: anonymized.context.restore)
+                return try await handle(Self.restored(decoded.reply, anonymized), request: request, progress: progress, restore: anonymized.context.restore)
             } catch let error as EditorError where attempt < Self.repairAttempts {
                 // Send the problem back once instead of showing the user an unusable answer.
                 attempt += 1
                 await progress(.retrying(error.message))
-                followUps += [("assistant", String(answer.content.prefix(8_000))),
+                followUps += [("assistant", String(answer.prefix(8_000))),
                               ("user", "你上一次的输出无法使用：\(error.message)\n请根据这个问题修正，重新输出一个完整、符合格式的 JSON 对象，不要输出其他内容。")]
             }
         }
+    }
+
+    /// The model's next answer. Thinking models stream, so their reasoning shows while they work.
+    private func nextAnswer(_ httpRequest: AIRequest, streaming: Bool, progress: @Sendable (Progress) async -> Void) async throws -> String {
+        let answer = streaming
+            ? try await ai.stream(httpRequest) { reasoning in await progress(.reasoning(reasoning)) }
+            : try await ai.completeWithReasoning(httpRequest)
+        try Task.checkCancellation()
+        if !streaming, let reasoning = answer.reasoning, !reasoning.isEmpty { await progress(.reasoning(reasoning)) }
+        return answer.content
+    }
+
+    /// Searches and hands the results back (at most `maxRounds` times).
+    private func searchMessage(_ queries: [String], request: Request, rounds: inout Int, progress: @Sendable (Progress) async -> Void) async throws -> String {
+        guard let config = request.search else { throw EditorError(String(localized: "联网搜索未开启，不能请求搜索。请直接输出修改计划或澄清问题。")) }
+        guard rounds < SearchQueries.maxRounds else { throw EditorError(String(localized: "本轮已经搜索过 \(SearchQueries.maxRounds) 次，不能再搜索。请根据已有结果输出修改计划或澄清问题。")) }
+        let checked = SearchQueries.sanitize(queries)
+        guard !checked.accepted.isEmpty else { throw EditorError(String(localized: "搜索词包含配置里的标签、占位符或私有地址，Veer 不会发送。请只用公开的服务或网站名称搜索。")) }
+        rounds += 1
+        await progress(.searching(checked.accepted))
+        let records = await searcher.search(checked.accepted, config: config)
+        try Task.checkCancellation()
+        await progress(.searched(records))
+        return SearchQueries.message(for: records, refused: checked.refused, lastRound: rounds >= SearchQueries.maxRounds)
+    }
+
+    /// Tests the domains against the draft and hands the results back (at most `maxRounds` times).
+    private func checkMessage(_ raw: [String], request: Request, anonymized: AnonymizedConfig, rounds: inout Int,
+                              progress: @Sendable (Progress) async -> Void) async throws -> String {
+        guard let checker else { throw EditorError(String(localized: "本机检查不可用。请直接输出修改计划或澄清问题。")) }
+        guard rounds < DomainChecker.maxRounds else { throw EditorError(String(localized: "本轮已经检查过 \(DomainChecker.maxRounds) 次，不能再检查。请根据已有结果输出修改计划或澄清问题。")) }
+        let domains = DomainChecker.sanitize(raw)
+        guard !domains.isEmpty else { throw EditorError(String(localized: "check.domains 里没有有效的域名（例如 i0.hdslb.com），请只列公开域名。")) }
+        rounds += 1
+        await progress(.checking(domains))
+        let records = await checker.check(domains, draft: request.draft)
+        try Task.checkCancellation()
+        let geodata = await checker.geo?.status().has(.geosite) ?? false
+        var message = DomainChecker.message(for: records, anonymizedRules: anonymized.rules, geodata: geodata, lastRound: rounds >= DomainChecker.maxRounds)
+        if let live = await request.liveConnections?(domains) {
+            message += "\n\n" + anonymized.context.anonymize(live)
+        }
+        await progress(.checked(records, sent: message))
+        return message
+    }
+
+    /// The user sees, and later sends, real exit names, not the model's labels.
+    private static func restored(_ reply: AssistantReply, _ anonymized: AnonymizedConfig) -> AssistantReply {
+        let reply = anonymized.restoringRuleSetNames(in: reply)
+        guard case let .clarification(question, options) = reply else { return reply }
+        return .clarification(anonymized.context.restore(question), options: options.map {
+            ClarifyOption(label: anonymized.context.restore($0.label), prompt: $0.prompt.map(anonymized.context.restore))
+        })
     }
 
     /// `restore` turns the model's exit labels back into real names (runtime actions name groups by label).
@@ -217,6 +250,11 @@ public struct EditorEngine: Sendable {
         case let .outOfScope(message):
             return .outOfScope(message)
         case let .plan(plan):
+            if let conflict = DedicatedGroupRoute.conflict(in: plan, draft: request.draft) {
+                // Full permission means no questions: it takes what keeps the group.
+                if request.mode == .full { return try await run(.useDirect(group: conflict.group), request: request, progress: progress) }
+                return .clarification(DedicatedGroupRoute.question(for: conflict), options: DedicatedGroupRoute.options(for: conflict))
+            }
             return try await process(plan, draft: request.draft, regions: request.regions, progress: progress)
         case .search:
             // Searches are answered inside the AI loop; one reaching here was not allowed.
@@ -227,6 +265,24 @@ public struct EditorEngine: Sendable {
             guard request.runtime else { throw EditorError(String(localized: "这里不能切换节点或模式，只能修改分流规则。")) }
             return .runtime(try actions.map { try $0.resolved(in: request.draft, restore: restore) })
         }
+    }
+
+    func run(_ choice: DedicatedGroupRoute.Choice, request: Request, progress: @Sendable (Progress) async -> Void) async throws -> Output {
+        let plan: EditPlan
+        switch choice {
+        case let .useDirect(group):
+            guard let id = request.draft.target(named: group)?.id else { throw EditorError(String(localized: "修改引用了当前配置中不存在的出口。")) }
+            guard let members = DedicatedGroupRoute.membersAddingDirect(to: group, in: request.draft) else {
+                // Already there: all that is left is to switch to it.
+                guard request.runtime else { return .noChange(String(localized: "“\(group)”里已经有直连，在代理页选中它即可。")) }
+                return .runtime([.select(group: group, node: "DIRECT")])
+            }
+            plan = EditPlan(operations: [.groupMembers(targetId: id, members: members)])
+        case let .replaceRule(match, matchType):
+            guard let direct = request.draft.target(named: "DIRECT")?.id else { throw EditorError(String(localized: "修改引用了当前配置中不存在的出口。")) }
+            plan = EditPlan(operations: [.route(matchType: matchType, match: match, targetId: direct)])
+        }
+        return try await process(plan, draft: request.draft, regions: request.regions, progress: progress)
     }
 
     /// Exits to offer when the model asked without options: groups in the regions the instruction

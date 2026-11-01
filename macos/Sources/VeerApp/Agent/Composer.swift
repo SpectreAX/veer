@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 import VeerCore
 
 struct CompletionItem: Identifiable, Hashable {
@@ -21,6 +22,12 @@ struct ComposerView: View {
     /// An input method is composing (pinyin shown as marked text) but nothing is committed yet.
     @State private var composing = false
     @State private var completionHeight: CGFloat = 0
+    @State private var droppingFiles = false
+
+    private var canSend: Bool {
+        guard store.loadingAttachments == 0 else { return false }
+        return !store.pendingAttachments.isEmpty || !store.composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     private var completions: [CompletionItem] {
         guard let query else { return [] }
@@ -46,6 +53,7 @@ struct ComposerView: View {
         @Bindable var store = store
         VStack(spacing: Spacing.xs) {
             VStack(alignment: .leading, spacing: Spacing.sm) {
+                if !store.pendingAttachments.isEmpty || store.loadingAttachments > 0 || store.attachmentProblem != nil { attachments }
                 ZStack(alignment: .topLeading) {
                     if store.composerText.isEmpty && !composing {
                         Text(String(localized: "描述分流，例如“Netflix 走日本，ChatGPT 走美国”"))
@@ -63,6 +71,8 @@ struct ComposerView: View {
                         },
                         onPick: { pick(completions[min(highlighted, completions.count - 1)]) },
                         onSubmit: { store.send() },
+                        onPasteFiles: { store.attach($0) },
+                        onPasteImage: { store.attach(imageData: $0) },
                     )
                     .frame(height: height)
                     .disabled(store.isRunning)
@@ -85,7 +95,7 @@ struct ComposerView: View {
                             .help(String(localized: "发送（↩）")).accessibilityLabel(String(localized: "发送"))
                             .primaryAction()
                             .buttonBorderShape(.circle)
-                            .disabled(store.composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            .disabled(!canSend)
                     }
                 }
             }
@@ -93,6 +103,19 @@ struct ComposerView: View {
             .padding(.top, Spacing.md)
             .padding(.bottom, Spacing.sm)
             .glassSurface(in: RoundedRectangle(cornerRadius: Radius.large + Spacing.xs, style: .continuous))
+            .overlay {
+                if droppingFiles {
+                    RoundedRectangle(cornerRadius: Radius.large + Spacing.xs, style: .continuous)
+                        .strokeBorder(Color.veerAccent, lineWidth: 2)
+                        .allowsHitTesting(false)
+                }
+            }
+            .dropDestination(for: URL.self) { urls, _ in
+                let files = urls.filter(\.isFileURL)
+                guard store.effectiveUseAI, !files.isEmpty else { return false }
+                store.attach(files)
+                return true
+            } isTargeted: { droppingFiles = $0 && store.effectiveUseAI }
             .overlay(alignment: .topLeading) {
                 if !completions.isEmpty {
                     // Lifted by its own measured height so it floats above the composer; an
@@ -110,6 +133,38 @@ struct ComposerView: View {
             }
         }
         .onChange(of: query?.text) { highlighted = 0 }
+        .fileImporter(isPresented: $store.choosingAttachments, allowedContentTypes: AttachmentReader.offeredTypes, allowsMultipleSelection: true) { result in
+            if case .success(let urls) = result { store.attach(urls) }
+        }
+    }
+
+    private var attachments: some View {
+        VStack(alignment: .leading, spacing: Spacing.xs) {
+            if !store.pendingAttachments.isEmpty || store.loadingAttachments > 0 {
+                FlowLayout(spacing: Spacing.xs) {
+                    ForEach(store.pendingAttachments) { attachment in
+                        AttachmentChip(info: attachment.info, thumbnail: attachment.image?.data) { store.removeAttachment(attachment.id) }
+                    }
+                    if store.loadingAttachments > 0 {
+                        ProgressView().controlSize(.small).accessibilityLabel(String(localized: "正在读取"))
+                    }
+                }
+            }
+            if let problem = store.attachmentProblem { StatusBadge(kind: .failure, text: problem, compact: true).lineLimit(3) }
+            if !store.pendingAttachments.isEmpty {
+                // Not a fixed height: measured at the window's narrowest, a long line grows taller than
+                // the window, and the window's content is pushed out past its top.
+                Text(attachmentNote).font(.caption).foregroundStyle(.secondary).lineLimit(3)
+            }
+        }
+    }
+
+    private var attachmentNote: String {
+        var note = store.pendingAttachments.contains { $0.image != nil }
+            ? String(localized: "文件里的密钥和链接发送前会隐藏；图片会原样发给 AI 服务。")
+            : String(localized: "文件里的密钥和链接发送前会隐藏。这条指令的修改都需要你确认。")
+        if store.pendingAttachments.contains(where: \.info.truncated) { note += String(localized: "有的文件太长，只会发送开头。") }
+        return note
     }
 
     private func hints(_ count: Int) -> some View {
@@ -129,6 +184,13 @@ struct ComposerView: View {
         return HStack(spacing: Spacing.sm) {
             ExecutionModePicker()
             modelMenu
+            Button { store.choosingAttachments = true } label: { Image(systemName: "paperclip") }
+                .buttonStyle(PillButtonStyle())
+                .fixedSize()
+                .disabled(!store.effectiveUseAI)
+                .help(store.effectiveUseAI ? String(localized: "添加图片或文件，也可以拖到这里或粘贴")
+                                           : String(localized: "图片和文件只在 AI 解析时可用"))
+                .accessibilityLabel(String(localized: "添加图片或文件"))
             ToggleChip(title: String(localized: "联网搜索"), symbol: "globe", isOn: $store.searchSettings.enabled, compact: true)
                 .disabled(!store.effectiveUseAI)
                 .help(store.effectiveUseAI
@@ -207,6 +269,59 @@ struct CompletionList: View {
     }
 }
 
+/// A file or image going with an instruction: in the composer with a way to remove it, in the
+/// conversation without one.
+struct AttachmentChip: View {
+    let info: AttachmentInfo
+    var thumbnail: Data?
+    var remove: (() -> Void)?
+
+    /// The smallest target the HIG gives a macOS control.
+    private static let rowHeight: CGFloat = 20
+
+    private var note: String {
+        var parts = [info.name]
+        if info.redacted { parts.append(String(localized: "已隐藏密钥和链接")) }
+        if info.truncated { parts.append(remove == nil ? String(localized: "内容太长，只发送了开头") : String(localized: "内容太长，只会发送开头")) }
+        return parts.joined(separator: " · ")
+    }
+
+    var body: some View {
+        HStack(spacing: Spacing.xs) {
+            if let thumbnail, let image = NSImage(data: thumbnail) {
+                Image(nsImage: image).resizable().scaledToFill()
+                    .frame(width: Self.rowHeight, height: Self.rowHeight)
+                    .clipShape(RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
+                    .accessibilityHidden(true)
+            } else {
+                Image(systemName: info.kind == .image ? "photo" : "doc.text").foregroundStyle(.secondary).accessibilityHidden(true)
+            }
+            Text(verbatim: info.name).font(.caption).lineLimit(1).truncationMode(.middle)
+            if info.redacted { Image(systemName: "eye.slash").font(.caption2).foregroundStyle(.secondary).accessibilityHidden(true) }
+            if info.truncated { Image(systemName: "scissors").font(.caption2).foregroundStyle(.secondary).accessibilityHidden(true) }
+            Spacer(minLength: 0)
+            if let remove {
+                Button(action: remove) {
+                    Image(systemName: "xmark.circle.fill")
+                        .frame(width: Self.rowHeight, height: Self.rowHeight)
+                        .contentShape(Rectangle())
+                }
+                    .buttonStyle(.plain).foregroundStyle(.secondary)
+                    .help(String(localized: "移除"))
+                    .accessibilityLabel(String(localized: "移除 \(info.name)"))
+            }
+        }
+        .frame(minHeight: Self.rowHeight)
+        .padding(.horizontal, Spacing.sm)
+        .padding(.vertical, Spacing.xxs)
+        .frame(maxWidth: Metrics.attachmentWidth, alignment: .leading)
+        .background(Color.subtleFill, in: RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
+        .help(note)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(note)
+    }
+}
+
 /// NSTextView wrapper: Return sends unless an input method is composing; reports @ and / tokens.
 struct ComposerTextView: NSViewRepresentable {
     @Binding var text: String
@@ -219,6 +334,8 @@ struct ComposerTextView: NSViewRepresentable {
     let onMove: (Int) -> Void
     let onPick: () -> Void
     let onSubmit: () -> Void
+    let onPasteFiles: ([URL]) -> Void
+    let onPasteImage: (Data) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -232,6 +349,12 @@ struct ComposerTextView: NSViewRepresentable {
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         let coordinator = context.coordinator
         textView.onMarkedTextChange = { [weak coordinator] composing in coordinator?.setComposing(composing) }
+        textView.onPasteFiles = { [weak coordinator] in coordinator?.parent.onPasteFiles($0) }
+        textView.onPasteImage = { [weak coordinator] in coordinator?.parent.onPasteImage($0) }
+        // Text only: a text view would otherwise take a dropped file and type its path, before the
+        // composer around it could attach it.
+        textView.unregisterDraggedTypes()
+        textView.registerForDraggedTypes([.string])
         let scroll = NSScrollView()
         scroll.documentView = textView
         scroll.drawsBackground = false
@@ -375,6 +498,35 @@ struct ComposerTextView: NSViewRepresentable {
 /// announce through textDidChange.
 final class ComposerNSTextView: NSTextView {
     var onMarkedTextChange: ((Bool) -> Void)?
+    var onPasteFiles: (([URL]) -> Void)?
+    var onPasteImage: ((Data) -> Void)?
+
+    /// Without these, a plain text view disables Paste for a clipboard holding only an image, as a
+    /// screenshot's does, and `paste` is never called.
+    override var readablePasteboardTypes: [NSPasteboard.PasteboardType] {
+        super.readablePasteboardTypes + [.fileURL, .png, .tiff]
+    }
+
+    /// Copied files and images become attachments; SwiftUI has no paste hook for a text view's ⌘V.
+    override func paste(_ sender: Any?) {
+        if !readAttachments(from: .general) { super.paste(sender) }
+    }
+
+    override func readSelection(from pasteboard: NSPasteboard, type: NSPasteboard.PasteboardType) -> Bool {
+        readAttachments(from: pasteboard) || super.readSelection(from: pasteboard, type: type)
+    }
+
+    private func readAttachments(from pasteboard: NSPasteboard) -> Bool {
+        let files = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        if !files.isEmpty {
+            onPasteFiles?(files)
+        } else if pasteboard.string(forType: .string) == nil, let image = pasteboard.data(forType: .png) ?? pasteboard.data(forType: .tiff) {
+            onPasteImage?(image)
+        } else {
+            return false
+        }
+        return true
+    }
 
     override func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
         super.setMarkedText(string, selectedRange: selectedRange, replacementRange: replacementRange)

@@ -14,6 +14,14 @@ struct TurnView: View {
             }
         } else {
             VStack(alignment: .leading, spacing: Spacing.md) {
+                if let attachments = turn.attachments, !attachments.isEmpty {
+                    HStack {
+                        Spacer(minLength: Spacing.xxxl * 2)
+                        FlowLayout(spacing: Spacing.xs, alignment: .trailing) {
+                            ForEach(attachments) { AttachmentChip(info: $0) }
+                        }
+                    }
+                }
                 UserBubble(text: turn.prompt)
                 AssistantTurn(turn: turn)
             }
@@ -300,8 +308,11 @@ struct ProposalView: View {
             case .discarded:
                 StatusBadge(kind: .neutral, text: String(localized: "已放弃"))
             case .pending, .stale:
-                StatusBadge(kind: .warning, text: String(localized: "已失效 · 分流已变化，请重新生成"))
-                Button(String(localized: "重新生成")) { store.retry(turnID: turn.id) }.buttonStyle(.link).foregroundStyle(Color.veerAccent)
+                StatusBadge(kind: .warning, text: store.canRetry(turn) ? String(localized: "已失效 · 分流已变化，请重新生成")
+                            : String(localized: "附件未保存，请重新添加后发送。"))
+                if store.canRetry(turn) {
+                    Button(String(localized: "重新生成")) { store.retry(turnID: turn.id) }.buttonStyle(.link).foregroundStyle(Color.veerAccent)
+                }
             }
             if turn.sentPayload != nil {
                 Button(String(localized: "查看发送给 AI 的内容")) { store.payloadTurnID = turn.id }.buttonStyle(.link).foregroundStyle(Color.veerAccent)
@@ -474,10 +485,14 @@ struct FailureView: View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
             StatusBadge(kind: .failure, text: message).fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
+            if !store.canRetry(turn) {
+                Text(String(localized: "附件未保存，请重新添加后发送。")).font(.callout).foregroundStyle(.secondary)
+            }
             HStack(spacing: Spacing.sm) {
                 if opensSettings { Button(String(localized: "打开设置")) { openSettings() } }
-                if canUseLocal { Button(String(localized: "改用本地解析")) { store.retry(turnID: turn.id, useLocal: true) } }
-                Button(String(localized: "重试")) { store.retry(turnID: turn.id) }
+                // Local parsing can't read attachments, and a turn's files last only as long as this launch.
+                if canUseLocal, turn.attachments?.isEmpty != false { Button(String(localized: "改用本地解析")) { store.retry(turnID: turn.id, useLocal: true) } }
+                if store.canRetry(turn) { Button(String(localized: "重试")) { store.retry(turnID: turn.id) } }
             }
             .buttonStyle(.bordered)
             .disabled(store.isRunning)

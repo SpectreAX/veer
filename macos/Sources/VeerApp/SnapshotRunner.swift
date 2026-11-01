@@ -59,6 +59,37 @@ enum SnapshotRunner {
         }
     }
 
+    private static let longNamedGroups: [ProxyStore.Group] = {
+        typealias Member = ProxyStore.Group.Member
+        let nodes = [Member(name: "🇸🇬 新加坡 03-0.1倍 | 电信联通推荐", delay: 88, isGroup: false),
+                     Member(name: "🇺🇸 美国 02-0.1倍 | 电信移动推荐", delay: 154, isGroup: false),
+                     Member(name: "🇯🇵 日本 01-1倍 | 三网优化", delay: 99, isGroup: false),
+                     Member(name: "🇯🇵 日本东京特别专线 IPLC 01 | 0.5x 高速稳定线路备用节点名字很长", delay: 120, isGroup: false)]
+        return [.init(name: "🚀 节点选择", type: "Selector", now: nodes[0].name, members: nodes),
+                .init(name: "♻️ 自动选择", type: "URLTest", now: nodes[0].name, members: nodes),
+                .init(name: "🇸🇬 狮城节点", type: "Selector", now: nodes[3].name, members: nodes),
+                .init(name: "这是一个名字特别特别长的专用策略组用来检查标题行", type: "Selector", now: nodes[1].name, members: nodes),
+                .init(name: "🛑 广告拦截", type: "Selector", now: "REJECT",
+                      members: [Member(name: "REJECT", delay: nil, isGroup: false), Member(name: "DIRECT", delay: 3, isGroup: false)])]
+    }()
+
+    private static func attachmentThread(_ agent: AgentStore) {
+        agent.settings.provider = .ollama
+        sampleThread(agent, status: .pending)
+        agent.current?.turns[0].attachments = [AttachmentInfo(name: "筛选结果.yaml", kind: .text, redacted: true),
+                                               AttachmentInfo(name: "很长很长很长很长的连接日志导出文件名称.log", kind: .text, truncated: true)]
+        agent.attachmentProblem = String(localized: "不支持“\("archive.zip")”。可以发送图片、文本、PDF、RTF 和 Word 文档。")
+        agent.pendingAttachments = [ChatAttachment.file(named: "规则.txt", text: "mini4k.net"),
+                                    ChatAttachment(info: AttachmentInfo(name: "屏幕截图 2026-11-01.png", kind: .image), image: sampleImage),
+                                    ChatAttachment(info: AttachmentInfo(name: "很长很长很长很长的连接日志导出文件名称.log", kind: .text, truncated: true, redacted: true),
+                                                   text: "")]
+    }
+
+    private static var sampleImage: AIImage? {
+        let image = NSImage(systemSymbolName: "map", accessibilityDescription: nil)
+        return image?.tiffRepresentation.map { AIImage(data: $0, mediaType: "image/tiff") }
+    }
+
     private static func mapDefaults() -> UserDefaults {
         let defaults = UserDefaults(suiteName: "veer-snapshot-\(UUID().uuidString)")!
         defaults.set(true, forKey: "proxiesShowMap")
@@ -171,6 +202,38 @@ enum SnapshotRunner {
             Scene(name: "09c-agent-proposal", store: { running(page: .agent) }, view: AnyView(MainView()), agent: { agent in
                 agent.settings.provider = .ollama
                 sampleThread(agent, status: .pending)
+            }),
+            // Files waiting in the composer, and files already sent.
+            Scene(name: "09p-agent-attachments", store: { running(page: .agent) }, view: AnyView(MainView()), agent: attachmentThread),
+            Scene(name: "09q-panel-attachments", size: CGSize(width: 860, height: 640), store: { running(page: .overview, panel: true) },
+                  view: AnyView(MainView()), agent: attachmentThread),
+            Scene(name: "09s-attachments-smallest", size: CGSize(width: 860, height: 560), store: { running(page: .overview, panel: true) },
+                  view: AnyView(MainView()), agent: { agent in
+                attachmentThread(agent)
+                agent.pendingAttachments.append(.file(named: "additional-rules.txt", text: "example.com"))
+            }),
+            Scene(name: "09t-attachments-loading", size: CGSize(width: 860, height: 560), store: { running(page: .agent) },
+                  view: AnyView(MainView()), agent: { agent in
+                attachmentThread(agent)
+                agent.loadingAttachments = 1
+            }),
+            Scene(name: "09u-attachments-unavailable", size: CGSize(width: 860, height: 560), store: { running(page: .agent) },
+                  view: AnyView(MainView()), agent: { agent in
+                attachmentThread(agent)
+                agent.pendingAttachments = []
+                agent.attachmentProblem = nil
+                agent.current?.turns[0].proposal?.status = .stale
+            }),
+            Scene(name: "09v-attachments-wide", size: CGSize(width: 1440, height: 900), store: { running(page: .agent) },
+                  view: AnyView(MainView()), agent: attachmentThread),
+            // What Veer asks when a domain with its own group is to go direct.
+            Scene(name: "09r-agent-own-group", store: { running(page: .agent) }, view: AnyView(MainView()), agent: { agent in
+                agent.settings.provider = .ollama
+                agent.newThread()
+                let conflict = DedicatedGroupRoute.Conflict(group: "mini4k", match: "mini4k.net")
+                var turn = Turn(prompt: "mini4k.net 走直连", mode: .ai(model: "qwen3:14b"), steps: [])
+                turn.outcome = .clarify(DedicatedGroupRoute.question(for: conflict), options: DedicatedGroupRoute.options(for: conflict))
+                agent.current?.turns = [turn]
             }),
             // Five suggestions on the Agent page once pushed the window's content past its top.
             Scene(name: "09j-agent-suggestions", store: {
@@ -309,6 +372,19 @@ enum SnapshotRunner {
                 return store
             }, view: AnyView(NodeMapView().frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.surface))),
             // The whole window with the map chosen, on throwaway defaults, for the toolbar's switch.
+            // Long names beside the Agent panel: the headers once lost the group's name and the test button.
+            Scene(name: "05e-proxies-panel-names", size: CGSize(width: 860, height: 640), store: {
+                let store = running(page: .proxies, panel: true)
+                store.groups = longNamedGroups
+                store.collapsedGroups = ["♻️ 自动选择", "🛑 广告拦截"]
+                return store
+            }, view: AnyView(MainView()), agent: { $0.settings.provider = .ollama }),
+            Scene(name: "05f-proxies-names", store: {
+                let store = running(page: .proxies)
+                store.groups = longNamedGroups
+                store.collapsedGroups = ["♻️ 自动选择", "🛑 广告拦截"]
+                return store
+            }, view: AnyView(MainView())),
             // Capitals run wider than a count of characters says, and must still clear the toolbar.
             Scene(name: "05d-proxies-latin-name-smallest", size: CGSize(width: 860, height: 560), store: {
                 let store = running(page: .proxies)

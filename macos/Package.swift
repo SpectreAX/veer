@@ -35,5 +35,6 @@ let package = Package(
         .testTarget(name: "VeerCoreTests", dependencies: ["VeerCore"]),
         .testTarget(name: "VeerProxyTests", dependencies: ["VeerProxy"]),
         .testTarget(name: "VeerUITests", dependencies: ["VeerUI"]),
+        .testTarget(name: "VeerAppTests", dependencies: ["VeerApp"]),
     ]
 )
