@@ -989,6 +989,9 @@ final class ProxyStore {
 
     func clearRequests() { requests = [] }
 
+    /// What Undo brings back, behind anything that has ended since, up to the usual limit.
+    func restoreRequests(_ saved: [ClosedRequest]) { requests = Array((requests + saved).prefix(Self.requestLimit)) }
+
     // MARK: Suggestions
 
     /// At most `suggestionLimit`, the newest first; an older one makes room.
@@ -1069,6 +1072,9 @@ final class ProxyStore {
     }
 
     func clearLogs() { logs = [] }
+
+    /// What Undo brings back, before anything logged since, up to the usual limit.
+    func restoreLogs(_ saved: [LogEntry]) { logs = Array((saved + logs).suffix(Self.logLimit)) }
 
     /// Group and node names a manual rule can send traffic to: groups first, then built-ins.
     /// Parsed off the main thread; call once, not while drawing.

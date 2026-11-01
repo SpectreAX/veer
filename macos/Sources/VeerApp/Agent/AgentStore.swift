@@ -615,6 +615,49 @@ final class AgentStore {
         }
     }
 
+    /// Emptied, with Edit → Undo to bring it back: history the core can't send again, and a quiet
+    /// way back is less of an interruption than asking first.
+    func clearLogs() {
+        guard !proxy.logs.isEmpty else { return }
+        var saved = proxy.logs
+        proxy.clearLogs()
+        recordClear(String(localized: "menu.clearLogs", defaultValue: "清空日志")) { [weak self] restored in
+            guard let proxy = self?.proxy else { return false }
+            if restored {
+                proxy.restoreLogs(saved)
+            } else {
+                saved = proxy.logs
+                proxy.clearLogs()
+            }
+            return true
+        }
+    }
+
+    func clearRequests() {
+        guard !proxy.requests.isEmpty else { return }
+        var saved = proxy.requests
+        proxy.clearRequests()
+        recordClear(String(localized: "menu.clearRequests", defaultValue: "清空请求记录")) { [weak self] restored in
+            guard let proxy = self?.proxy else { return false }
+            if restored {
+                proxy.restoreRequests(saved)
+            } else {
+                saved = proxy.requests
+                proxy.clearRequests()
+            }
+            return true
+        }
+    }
+
+    private func recordClear(_ name: String, change: @escaping @MainActor (Bool) -> Bool) {
+        changes.made(name, id: UUID(), group: Self.historyGroup, undoTo: true, change: change)
+        showToast(String(localized: "已清空，可以用“撤销”恢复。"))
+        announce(String(localized: "已清空，可以用“撤销”恢复。"))
+    }
+
+    /// For what belongs to no conversation, so that deleting one leaves these alone.
+    private static let historyGroup = UUID()
+
     /// The last applied change of this conversation, turned off in "my routing"; or, when the
     /// latest thing done was a runtime action, that action put back.
     func undo() {

@@ -40,6 +40,7 @@ Use the native control first, then a `VeerUI` component, then a new one. Shared 
 | `ToolbarToggle` | A switch in a toolbar group: a button that fills when on, since the groups' controls are round icon buttons. Keyboard and VoiceOver as a button with the toggle trait and its state as the value. Light and dark through `accentFill` and `onAccent`; same on macOS 14 |
 | `ProfileTile`, `ToolRow` | A row of plain buttons with secondary actions beside them, on `ProxiesView` and `ToolsView`. Plain buttons, so keyboard and VoiceOver work as for any button |
 | `CoreStateRing` | A ring and ripple around the Overview's start button, for what the core is doing. Decorative: hidden from VoiceOver, which hears the new state as an announcement. Same in light and dark and on macOS 14; steady with Reduce Motion |
+| `ColumnFit` | Not a control: which table columns to hide so that the rest fit, for tables that narrow beside a panel |
 | `KeyCap`, `ShortcutHint` | Keyboard shortcut display |
 | `ChoiceRow` | A row in a choice list |
 

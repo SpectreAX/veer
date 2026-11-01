@@ -8,13 +8,6 @@ enum Page: String, CaseIterable, Identifiable, Hashable {
     /// What the sidebar lists, in order, for ⌘1 onward. The rest are subpages of Tools.
     static let sidebarPages: [Page] = [.overview, .proxies, .connections, .tools, .agent]
 
-    var hasSearch: Bool {
-        switch self {
-        case .proxies, .connections, .requests, .logs: true
-        default: false
-        }
-    }
-
     /// The page a subpage goes back to.
     var parent: Page? {
         switch self {
@@ -217,8 +210,8 @@ struct MainView: View {
         .lineLimit(1)
     }
 
-    /// Short enough to stay clear of the capsule in the narrowest window; the foot of the sidebar
-    /// has it in full.
+    /// Short enough to stay clear of the capsule in the narrowest window. The menu it opens has it in
+    /// full.
     private var profileName: String {
         let name = store.activeProfile?.name ?? ""
         return name.count > 16 ? name.prefix(15) + "…" : name
@@ -284,7 +277,8 @@ struct MainView: View {
                         Image(systemName: profile.isSubscription ? "antenna.radiowaves.left.and.right" : "doc")
                             .foregroundStyle(.secondary)
                         // Not beside a Spacer, which would take half of what the name could use.
-                        Text(profile.name).lineLimit(1).truncationMode(.middle)
+                        // Two lines of it. The tooltip below has the rest of a very long name.
+                        Text(profile.name).lineLimit(2).truncationMode(.tail)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .contentShape(Rectangle())

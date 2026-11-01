@@ -235,12 +235,19 @@ enum SnapshotRunner {
             }, view: AnyView(MainView())),
             Scene(name: "09k-add-rule", size: CGSize(width: 480, height: 420), store: { running(page: .connections) },
                   view: AnyView(AddRuleSheet(row: sampleConnections()[0]))),
-            Scene(name: "09g-route-map", size: CGSize(width: 260, height: 620), store: { running(page: .connections) },
+            Scene(name: "09g-route-map", size: CGSize(width: 880, height: 240), store: { running(page: .connections) },
                   view: AnyView(RouteMap(row: sampleConnections()[0]) { RouteActions(row: sampleConnections()[0], addRule: {}, close: {}) })),
             // One selected row: its route and actions beside the table.
             Scene(name: "09m-connections-selected", size: CGSize(width: 880, height: 720), store: {
                 let store = running(page: .connections)
                 store.connectionsPaused = true
+                store.connections = sampleConnections()
+                return store
+            }, view: AnyView(ConnectionsView(selection: [sampleSelectedConnection])
+                    .frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.surface))),
+            // The same in the narrowest column, where the route stacks.
+            Scene(name: "09n-connections-selected-narrow", size: CGSize(width: 280, height: 560), store: {
+                let store = running(page: .connections)
                 store.connections = sampleConnections()
                 return store
             }, view: AnyView(ConnectionsView(selection: [sampleSelectedConnection])

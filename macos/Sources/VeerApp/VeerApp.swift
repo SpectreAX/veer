@@ -130,7 +130,7 @@ struct VeerCommands: Commands {
         CommandGroup(replacing: .textEditing) {
             Button("查找") { ToolbarSearchFocus.focus() }
                 .keyboardShortcut("f")
-                .disabled(!store.page.hasSearch)
+                .disabled(!store.canSearch)
         }
         CommandGroup(after: .sidebar) {
             ForEach(Array(Page.sidebarPages.enumerated()), id: \.element) { index, page in
@@ -194,13 +194,13 @@ struct VeerCommands: Commands {
         Button("关闭全部连接…") { store.confirmingCloseAllConnections = true }
             .disabled(store.page != .connections || store.connections.isEmpty)
         Divider()
-        Button(String(localized: "menu.clearRequests", defaultValue: "清空请求记录")) { store.clearRequests() }
+        Button(String(localized: "menu.clearRequests", defaultValue: "清空请求记录")) { agent.clearRequests() }
             .disabled(store.page != .requests || store.requests.isEmpty)
         Divider()
         Button(store.logsPaused ? String(localized: "menu.resumeLogs", defaultValue: "继续记录日志")
                                 : String(localized: "menu.pauseLogs", defaultValue: "暂停记录日志")) { store.logsPaused.toggle() }
             .disabled(store.page != .logs)
-        Button(String(localized: "menu.clearLogs", defaultValue: "清空日志")) { store.clearLogs() }
+        Button(String(localized: "menu.clearLogs", defaultValue: "清空日志")) { agent.clearLogs() }
             .disabled(store.page != .logs || store.logs.isEmpty)
     }
 }

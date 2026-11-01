@@ -1259,3 +1259,4 @@
 "继续刷新连接" = "Resume connection updates";
 "暂停刷新连接" = "Pause connection updates";
 "overview.groups" = "Groups";
+"已清空，可以用“撤销”恢复。" = "Cleared. Use Undo to bring it back.";

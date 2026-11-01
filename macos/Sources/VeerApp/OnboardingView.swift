@@ -20,12 +20,7 @@ struct OnboardingView: View {
         }
         .padding(Spacing.xxl)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background {
-            // A quiet wash of the accent for the glass to pick up.
-            LinearGradient(colors: [Color.veerAccent.opacity(0.16), Color.surface, Color.statusInfo.opacity(0.10)],
-                           startPoint: .topLeading, endPoint: .bottomTrailing)
-                .ignoresSafeArea()
-        }
+        .background(Color.surface.ignoresSafeArea())
     }
 }
 

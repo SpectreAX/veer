@@ -171,7 +171,8 @@ private struct StatusCard: View {
         HStack(alignment: .center, spacing: Spacing.lg) {
             details()
             Spacer(minLength: 0)
-            startButton
+            // After a failure the panel above has Try Again, the one primary action.
+            if case .failed = store.phase {} else { startButton }
         }
     }
 

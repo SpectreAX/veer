@@ -5,6 +5,7 @@ import VeerProxy
 /// The core's log while it runs: filter by level, search, pause, copy.
 struct LogsView: View {
     @Environment(ProxyStore.self) private var store
+    @Environment(AgentStore.self) private var agent
     @State private var level: Level
     @State private var query = ""
     @State private var selection = Set<LogEntry.ID>()
@@ -44,7 +45,7 @@ struct LogsView: View {
                 Button { copy(shown) } label: { Label("复制", systemImage: "doc.on.doc") }
                     .help("复制显示的日志")
                     .disabled(shown.isEmpty)
-                Button { store.clearLogs() } label: { Label("清空", systemImage: "trash") }
+                Button { agent.clearLogs() } label: { Label("清空", systemImage: "trash") }
                     .help("清空日志")
                     .disabled(store.logs.isEmpty)
             } content: {

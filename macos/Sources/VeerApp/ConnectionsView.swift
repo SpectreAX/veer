@@ -11,6 +11,16 @@ struct ConnectionsView: View {
     @State private var process: String?
     @State private var policy: String?
     @State private var selection: Set<ConnectionRow.ID>
+    @State private var columns = TableColumnCustomization<ConnectionRow>()
+    @State private var hiddenColumns = Set<String>()
+    @State private var measuredWidth: CGFloat = 0
+
+    private static let columnWidths: [ColumnFit.Column] = [
+        .init("host", ideal: 150), .init("process", ideal: 90), .init("rule", ideal: 100), .init("chain", ideal: 150),
+        .init("traffic", ideal: 105), .init("speed", ideal: 60), .init("duration", ideal: 64),
+    ]
+    /// The selected row's route shows the first two, and the host always stays.
+    private static let columnsGivenUp = ["rule", "chain", "duration", "process", "speed"]
     @State private var addingRule: ConnectionRow?
 
     init(selection: Set<ConnectionRow.ID> = []) {
@@ -52,17 +62,21 @@ struct ConnectionsView: View {
             VStack(spacing: 0) {
                 filterBar
                 Divider()
-                HStack(spacing: 0) {
-                    table
-                    // One selected connection: its route, rule to node.
-                    if selection.count == 1, let row = shown.first(where: { selection.contains($0.id) }) {
-                        Divider()
-                        RouteMap(row: row) {
-                            RouteActions(row: row, addRule: { addingRule = row }, close: { store.closeConnection(row.id) })
-                        }
-                        .frame(width: 240)
+                table
+                // One selected connection: its route, rule to node. Below, so that it leaves the columns alone.
+                if selection.count == 1, let row = shown.first(where: { selection.contains($0.id) }) {
+                    Divider()
+                    RouteMap(row: row) {
+                        RouteActions(row: row, addRule: { addingRule = row }, close: { store.closeConnection(row.id) })
                     }
                 }
+            }
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { measuredWidth = $0 }
+            // Once it settles: the first layout measures next to nothing, and the Agent panel passes
+            // through every width as it opens. Columns hidden on the way come back squeezed.
+            .task(id: measuredWidth) {
+                try? await Task.sleep(for: .milliseconds(120))
+                if !Task.isCancelled { fitColumns(to: measuredWidth) }
             }
         }
     }
@@ -100,36 +114,44 @@ struct ConnectionsView: View {
     }
 
     private var table: some View {
-        Table(shown, selection: $selection) {
+        Table(shown, selection: $selection, columnCustomization: $columns) {
             TableColumn("主机") { row in
                 VStack(alignment: .leading, spacing: Spacing.xxs) {
                     Text(row.host).lineLimit(1).truncationMode(.middle).help(row.host)
                     if row.network == "udp" { Text(verbatim: "UDP").font(.caption2).foregroundStyle(.secondary) }
                 }
             }
-            .width(min: 100, ideal: 130)
+            .width(min: 100, ideal: 150)
+            .customizationID("host").disabledCustomizationBehavior([.reorder, .visibility])
             TableColumn("进程") { row in
                 Text(row.process ?? "—").lineLimit(1).foregroundStyle(row.process == nil ? .secondary : .primary)
                     .help(row.process ?? "")
             }
-                .width(min: 50, ideal: 70)
+                .width(min: 50, ideal: 90)
+                .customizationID("process").disabledCustomizationBehavior([.reorder, .visibility])
             TableColumn("规则") { row in Text(row.rule).lineLimit(1).help(row.rule) }
-                .width(min: 60, ideal: 80)
+                .width(min: 60, ideal: 100)
+                .customizationID("rule").disabledCustomizationBehavior([.reorder, .visibility])
             TableColumn("代理链") { row in Text(row.chain.joined(separator: " → ")).lineLimit(1).truncationMode(.middle).help(row.chain.joined(separator: " → ")) }
-                .width(min: 90, ideal: 120)
+                .width(min: 90, ideal: 150)
+                .customizationID("chain").disabledCustomizationBehavior([.reorder, .visibility])
             TableColumn("流量") { row in
                 Text(verbatim: "↑\(Format.bytes(row.upload)) ↓\(Format.bytes(row.download))").font(Typography.codeSmall).foregroundStyle(.secondary)
+                    .help(Text(verbatim: "↑\(Format.bytes(row.upload)) ↓\(Format.bytes(row.download))"))
             }
-            .width(min: 100, ideal: 105)
+            .width(min: 100, ideal: 105, max: 140)
+            .customizationID("traffic").disabledCustomizationBehavior([.reorder, .visibility])
             TableColumn("速率") { row in
                 Text(verbatim: Format.rate(row.downloadRate + row.uploadRate)).font(Typography.codeSmall)
                     .foregroundStyle(row.downloadRate + row.uploadRate > 0 ? .primary : .secondary)
             }
-            .width(min: 56, ideal: 60)
+            .width(min: 56, ideal: 60, max: 90)
+            .customizationID("speed").disabledCustomizationBehavior([.reorder, .visibility])
             TableColumn("时长") { row in
                 Text(verbatim: row.start.map { Format.duration(since: $0) } ?? "—").font(Typography.codeSmall).foregroundStyle(.secondary)
             }
-            .width(min: 64, ideal: 64)
+            .width(min: 64, ideal: 64, max: 72)
+            .customizationID("duration").disabledCustomizationBehavior([.reorder, .visibility])
         }
         .contextMenu(forSelectionType: ConnectionRow.ID.self) { ids in
             if let row = rows(ids).first {
@@ -147,6 +169,21 @@ struct ConnectionsView: View {
         .onCopyCommand(perform: selection.isEmpty ? nil : {
             [NSItemProvider(object: rows(selection).map(\.host).joined(separator: "\n") as NSString)]
         })
+        // A new table when the columns change, the one way to get clean widths: an existing one squeezes
+        // or stretches them whatever it is told. The window or the Agent panel can do that, a selection
+        // can't, so this doesn't take the focus from someone choosing a row.
+        .id(hiddenColumns)
+    }
+
+    /// Hides what no longer fits as the table narrows. Only on a change: writing this resets the widths.
+    private func fitColumns(to width: CGFloat) {
+        let hidden = ColumnFit.hidden(in: width, columns: Self.columnWidths, givingUp: Self.columnsGivenUp)
+        guard hidden != hiddenColumns else { return }
+        hiddenColumns = hidden
+        // From scratch: this also holds the widths the old table had. A width someone dragged goes with them.
+        var fresh = TableColumnCustomization<ConnectionRow>()
+        for id in hidden { fresh[visibility: id] = .hidden }
+        columns = fresh
     }
 
     @ViewBuilder private var toolbar: some View {
@@ -254,9 +291,12 @@ struct AddRuleSheet: View {
 
 /// How one connection was routed, top to bottom: the host, the rule that matched it, each
 /// group it passed through and the node it left by.
+private let routeMapMaxHeight: CGFloat = 220
+
 struct RouteMap<Actions: View>: View {
     let row: ConnectionRow
     @ViewBuilder var actions: () -> Actions
+    @State private var height = routeMapMaxHeight
 
     private struct Step: Identifiable {
         let id: Int
@@ -278,27 +318,38 @@ struct RouteMap<Actions: View>: View {
     }
 
     var body: some View {
+        // Its own height while that is short enough, so that it takes no more from the table than it needs.
         ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                Text("路由").font(.headline).padding(.bottom, Spacing.md)
-                ForEach(steps) { step in
-                    if step.id > 0 {
-                        Image(systemName: "arrow.down").font(.caption).foregroundStyle(.tertiary)
-                            .frame(width: 28).padding(.vertical, Spacing.xxs)
-                    }
-                    HStack(alignment: .top, spacing: Spacing.sm) {
-                        Image(systemName: step.symbol).foregroundStyle(Color.veerAccent).frame(width: 28)
-                        VStack(alignment: .leading, spacing: Spacing.xxs) {
-                            Text(step.label).font(.caption).foregroundStyle(.secondary)
-                            Text(step.value).font(.callout).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                }
-                .accessibilityElement(children: .combine)
-                actions().padding(.top, Spacing.lg)
+            panel.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+        }
+        .frame(height: min(height, routeMapMaxHeight))
+    }
+
+    private var panel: some View {
+        VStack(alignment: .leading, spacing: Spacing.md) {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: Spacing.md) { flow(arrow: "arrow.right") }
+                VStack(alignment: .leading, spacing: Spacing.xs) { flow(arrow: "arrow.down") }
             }
-            .padding(Spacing.lg)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            actions()
+        }
+        .padding(Spacing.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder private func flow(arrow: String) -> some View {
+        ForEach(steps) { step in
+            if step.id > 0 {
+                Image(systemName: arrow).font(.caption).foregroundStyle(.tertiary).accessibilityHidden(true)
+            }
+            HStack(alignment: .top, spacing: Spacing.sm) {
+                Image(systemName: step.symbol).foregroundStyle(Color.veerAccent).accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: Spacing.xxs) {
+                    Text(step.label).font(.caption).foregroundStyle(.secondary)
+                    Text(step.value).font(.callout).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
     }
 }
@@ -318,20 +369,26 @@ struct RouteActions: View {
     var close: (() -> Void)?
 
     var body: some View {
-        VStack(spacing: Spacing.sm) {
-            action(String(localized: "问 AI：为什么这样走？")) { agent.open(asking: String(localized: "为什么 \(row.host) 走了“\(row.policy)”？")) }
-            action(String(localized: "为这个主机添加规则…"), perform: addRule)
-            action(String(localized: "复制主机")) {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(row.host, forType: .string)
-            }
-            if let close { action(String(localized: "关闭连接"), perform: close) }
+        // In a row while they fit, else one above the other at full width.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: Spacing.sm) { buttons }
+            VStack(spacing: Spacing.sm) { buttons }
         }
+    }
+
+    @ViewBuilder private var buttons: some View {
+        action(String(localized: "问 AI：为什么这样走？")) { agent.open(asking: String(localized: "为什么 \(row.host) 走了“\(row.policy)”？")) }
+        action(String(localized: "为这个主机添加规则…"), perform: addRule)
+        action(String(localized: "复制主机")) {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(row.host, forType: .string)
+        }
+        if let close { action(String(localized: "关闭连接"), perform: close) }
     }
 
     private func action(_ title: String, perform: @escaping () -> Void) -> some View {
         Button(action: perform) {
-            Text(title).lineLimit(2).multilineTextAlignment(.center).frame(maxWidth: .infinity)
+            Text(title).lineLimit(1).fixedSize().frame(maxWidth: .infinity)
         }
         .secondaryAction()
     }
