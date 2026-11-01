@@ -87,6 +87,7 @@ as a violation unless its reason no longer holds. Anything not listed here is no
 |---|---|---|
 | The system toolbar stays empty and the controls float above it | With items in `NSToolbar`, opening the sidebar pushes them into the `»` overflow, and they jump instead of animating between pages | SPEC 5, `PageToolbar`, `ToolbarCapsule` |
 | The window has no toolbar at all in full screen | AppKit moves a toolbar to a window of its own in front of the content, which covers the floating controls, and entering full screen shows it again if it is hidden | SPEC 5, `EmptyWindowToolbar` |
+| Proxies' add button shares a glass group with the view controls | A group of its own would make four, and the HIG asks for at most three | SPEC 5, `ProxiesView` |
 | Own glass switch instead of a segmented picker in the top row | Outside a real toolbar, which Veer leaves empty, the system's picker draws its own track instead of glass. The selection is a neutral shape, so it does not use the system accent | SPEC 5, `GlassSwitch` |
 | Back button floats in the top row instead of `NavigationStack` | A stack's back button belongs to the system toolbar, which Veer leaves empty | SPEC 5, `MainView` |
 | "Later" instead of "Cancel" in the TUN helper alert | It puts the install off rather than calling anything off, and Esc still works. The wording is the product owner's | SPEC 4.1, `HelperPrompt` |
