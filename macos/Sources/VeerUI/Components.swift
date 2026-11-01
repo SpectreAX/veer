@@ -38,6 +38,8 @@ public struct Tag: View {
     public var body: some View {
         Text(text)
             .font(.caption2.weight(.medium))
+            // One line whatever the room: broken up, it stops reading as a label.
+            .fixedSize()
             .foregroundStyle(tint)
             .padding(.horizontal, Spacing.xs + Spacing.xxs)
             .padding(.vertical, Spacing.xxs)

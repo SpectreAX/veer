@@ -20,9 +20,11 @@ enum SnapshotRunner {
                                            defaults: UserDefaults(suiteName: "veer-snapshot-agent-\(UUID().uuidString)")!, persist: false)
                     scene.agent?(agent)
                     // The app's window never gets smaller than this; content sized views would shrink it.
+                    // Scenes that want a setting say so; without this they draw the user's own.
+                    let content = scene.view.defaultAppStorage(UserDefaults(suiteName: "veer-snapshot-\(UUID().uuidString)")!)
                     let view = scene.fullScreen
-                        ? AnyView(scene.view.environment(store).environment(agent).tint(.veerAccent))
-                        : AnyView(scene.view.environment(store).environment(agent).tint(.veerAccent).frame(width: scene.size.width, height: scene.size.height))
+                        ? AnyView(content.environment(store).environment(agent).tint(.veerAccent))
+                        : AnyView(content.environment(store).environment(agent).tint(.veerAccent).frame(width: scene.size.width, height: scene.size.height))
                     let window = NSWindow(contentRect: CGRect(origin: .zero, size: scene.size), styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
                     window.appearance = NSAppearance(named: name)
                     // As `.windowStyle(.hiddenTitleBar)` leaves the app's window.
@@ -307,6 +309,14 @@ enum SnapshotRunner {
                 return store
             }, view: AnyView(NodeMapView().frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.surface))),
             // The whole window with the map chosen, on throwaway defaults, for the toolbar's switch.
+            // Capitals run wider than a count of characters says, and must still clear the toolbar.
+            Scene(name: "05d-proxies-latin-name-smallest", size: CGSize(width: 860, height: 560), store: {
+                let store = running(page: .proxies)
+                if let index = store.profiles.firstIndex(where: { $0.id == store.activeProfileID }) {
+                    store.profiles[index].name = "MOMENTUM NETWORK PREMIUM"
+                }
+                return store
+            }, view: AnyView(MainView())),
             Scene(name: "18f-proxies-map-window", store: { running(page: .proxies) }, view: AnyView(MainView().defaultAppStorage(mapDefaults()))),
             Scene(name: "18g-proxies-map-window-smallest", size: CGSize(width: 860, height: 560), store: {
                 let store = running(page: .proxies)
