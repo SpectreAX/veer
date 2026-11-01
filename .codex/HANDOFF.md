@@ -29,6 +29,10 @@ system proxy, and TUN tests on the real Mac remain outside authorization.
 - Signed development app: `macos/dist/Veer-agent-attachments-20261101.app`, Apple Development,
   deep strict codesign check PASS, deployment target 14.0 / SDK 27.2. It was not launched, and the
   person's real `dist/Veer.app` was not replaced. App version remains 1.0.4 / build 5; no release/tag.
+- Subsequent user instruction: replace the app. Confirmed no target process was running, installed
+  that signed development build as `macos/dist/Veer.app`, and retained the previous bundle as
+  `macos/dist/Veer-before-agent-attachments-20261101.app`. Post-replacement strict signature and
+  executable SHA-256 checks PASS. The replaced app was not launched; proxy/TUN state was not changed.
 - Workflow setup and this feature are separate local commits; use `git log` for exact hashes.
   Nothing is pushed or published. No real API Key was read and no proxy/TUN toggle was used.
 - Still NOT VERIFIED: real provider vision, live app drag/drop and Command-V, keyboard focus and

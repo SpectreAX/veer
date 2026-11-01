@@ -22,7 +22,9 @@
   8 张原生 TUN 提示框的透明背景影响判读，记为 NOT VERIFIED。详见
   [本轮审查记录](reviews/2026-11-01-agent-attachments.md)。
 - **开发版交付：** `macos/dist/Veer-agent-attachments-20261101.app`，使用现有 Apple Development
-  身份签名，深度严格签名校验通过，最低系统 14.0、SDK 27.2。没有替换或自动启动真实 `dist/Veer.app`。
+  身份签名，深度严格签名校验通过，最低系统 14.0、SDK 27.2。构建交付时未替换原应用。
+  随后按用户“替换应用”的指示，确认 Veer 已退出，将开发版安装为 `macos/dist/Veer.app`，旧版保留为
+  `macos/dist/Veer-before-agent-attachments-20261101.app`；替换后签名和可执行文件哈希校验通过，未启动应用。
 - **仍需实机验收：** 真实模型识图、真实应用中的拖放和 ⌘V、键盘焦点 / VoiceOver、窗口拖动 /
   全屏 / 实时缩放、macOS 14 VM，以及系统代理 / TUN 流程。Hooks 整轮自动触发和公证也仍未验证。
   这些是剩余验收项，不能写成已通过。
