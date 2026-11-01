@@ -118,7 +118,7 @@ struct ClarificationView: View {
             Text(question).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
             if !options.isEmpty {
                 FlowLayout(spacing: Spacing.sm) {
-                    ForEach(options, id: \.self) { option in
+                    ForEach(options.uniqued(), id: \.self) { option in
                         // A resolved prompt replaces only the ambiguous phrase; otherwise send a short
                         // follow-up that the AI resolves against the conversation.
                         Chip(text: option.label) {
@@ -328,7 +328,7 @@ struct ChangeRow: View {
                 if !item.replaced.isEmpty, item.kind != .groupMembers, item.kind != .moveRule {
                     HStack(spacing: Spacing.xs) {
                         Text(item.kind == .removeRule ? String(localized: "删除") : String(localized: "替换")).font(.caption).foregroundStyle(.secondary)
-                        ForEach(item.replaced, id: \.self) { rule in
+                        ForEach(item.replaced.uniqued(), id: \.self) { rule in
                             Text(rule).font(Typography.codeSmall).foregroundStyle(Color.statusFailure)
                                 .strikethrough(true, color: Color.statusFailure.opacity(0.6))
                                 .lineLimit(1).truncationMode(.middle)
@@ -723,7 +723,7 @@ struct CheckRecordsView: View {
     var body: some View {
         DisclosureGroup(isExpanded: Binding(get: { expanded ?? running }, set: { expanded = $0 })) {
             VStack(alignment: .leading, spacing: Spacing.sm) {
-                ForEach(records, id: \.domain) { record in
+                ForEach(Array(records.enumerated()), id: \.offset) { _, record in
                     VStack(alignment: .leading, spacing: Spacing.xxs) {
                         Text(record.domain).font(Typography.codeSmall).textSelection(.enabled)
                         if let index = record.ruleIndex, let rule = record.rule {
@@ -735,7 +735,7 @@ struct CheckRecordsView: View {
                         if let note = record.note { Text(note).font(.caption).foregroundStyle(.tertiary) }
                         if !record.sets.isEmpty {
                             FlowLayout(spacing: Spacing.xs) {
-                                ForEach(record.sets, id: \.self) { Tag(text: GeoSiteHit.isBroad($0) ? String(localized: "\($0)（宽泛）") : $0) }
+                                ForEach(record.sets.uniqued(), id: \.self) { Tag(text: GeoSiteHit.isBroad($0) ? String(localized: "\($0)（宽泛）") : $0) }
                             }
                             .help(String(localized: "包含这个域名的 MetaCubeX 规则集"))
                         }
@@ -767,7 +767,7 @@ struct LookupHintsView: View {
     var body: some View {
         DisclosureGroup(isExpanded: Binding(get: { expanded ?? suggestsNetwork }, set: { expanded = $0 })) {
             VStack(alignment: .leading, spacing: Spacing.sm) {
-                ForEach(hints.domains, id: \.domain) { entry in
+                ForEach(Array(hints.domains.enumerated()), id: \.offset) { _, entry in
                     VStack(alignment: .leading, spacing: Spacing.xxs) {
                         Text(entry.domain).font(Typography.codeSmall).textSelection(.enabled)
                         if entry.ownSet == nil && entry.others.isEmpty && entry.broad.isEmpty {
@@ -775,8 +775,8 @@ struct LookupHintsView: View {
                         } else {
                             FlowLayout(spacing: Spacing.xs) {
                                 if let own = entry.ownSet { Tag(text: String(localized: "自己的规则集 \(own)"), tint: .statusSuccess) }
-                                ForEach(entry.others, id: \.self) { Tag(text: $0) }
-                                ForEach(entry.broad, id: \.self) { Tag(text: String(localized: "\($0)（宽泛）")) }
+                                ForEach(entry.others.uniqued(), id: \.self) { Tag(text: $0) }
+                                ForEach(entry.broad.uniqued(), id: \.self) { Tag(text: String(localized: "\($0)（宽泛）")) }
                             }
                             if entry.ownSet != nil, local {
                                 Text(String(localized: "本地解析用它代替单条 DOMAIN-SUFFIX，覆盖这个网站的全部域名。")).font(.caption).foregroundStyle(.secondary)
@@ -784,7 +784,7 @@ struct LookupHintsView: View {
                         }
                     }
                 }
-                ForEach(hints.addresses, id: \.address) { entry in
+                ForEach(Array(hints.addresses.enumerated()), id: \.offset) { _, entry in
                     VStack(alignment: .leading, spacing: Spacing.xxs) {
                         Text(entry.address).font(Typography.codeSmall).textSelection(.enabled)
                         if entry.isFakeIP {
@@ -796,7 +796,7 @@ struct LookupHintsView: View {
                                 Text(String(localized: "AS\(String(asn)) \(entry.organization ?? "") · 网段 \(entry.network ?? "")")).font(.caption).foregroundStyle(.secondary)
                             }
                             if !entry.geoip.isEmpty {
-                                FlowLayout(spacing: Spacing.xs) { ForEach(entry.geoip, id: \.self) { Tag(text: "geoip/\($0)") } }
+                                FlowLayout(spacing: Spacing.xs) { ForEach(entry.geoip.uniqued(), id: \.self) { Tag(text: "geoip/\($0)") } }
                             }
                             if let network = entry.network {
                                 HStack(spacing: Spacing.sm) {
@@ -835,7 +835,7 @@ struct SearchRecordsView: View {
                         Label(record.query, systemImage: "magnifyingglass").font(.callout.weight(.medium))
                         if !record.geosite.isEmpty || !record.geoip.isEmpty {
                             FlowLayout(spacing: Spacing.xs) {
-                                ForEach(record.geosite + record.geoip.map { "geoip/\($0)" }, id: \.self) { Tag(text: $0) }
+                                ForEach((record.geosite + record.geoip.map { "geoip/\($0)" }).uniqued(), id: \.self) { Tag(text: $0) }
                             }
                             .help(String(localized: "MetaCubeX 中已确认存在的规则集"))
                         }
@@ -855,14 +855,14 @@ struct SearchRecordsView: View {
                         if record.web.isEmpty, let note = record.note {
                             Text(String(localized: "网页：\(note)")).font(.caption).foregroundStyle(.secondary)
                         }
-                        ForEach(record.containing ?? [], id: \.domain) { entry in
+                        ForEach(Array((record.containing ?? []).enumerated()), id: \.offset) { _, entry in
                             VStack(alignment: .leading, spacing: Spacing.xxs) {
                                 Text(String(localized: "包含 \(entry.domain) 的规则集")).font(.caption).foregroundStyle(.secondary)
                                 if entry.sets.isEmpty {
                                     Text(String(localized: "没有")).font(.caption).foregroundStyle(.tertiary)
                                 } else {
                                     FlowLayout(spacing: Spacing.xs) {
-                                        ForEach(entry.sets, id: \.self) { Tag(text: GeoSiteHit.isBroad($0) ? String(localized: "\($0)（宽泛）") : $0) }
+                                        ForEach(entry.sets.uniqued(), id: \.self) { Tag(text: GeoSiteHit.isBroad($0) ? String(localized: "\($0)（宽泛）") : $0) }
                                     }
                                 }
                             }

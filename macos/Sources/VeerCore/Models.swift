@@ -1,5 +1,14 @@
 import Foundation
 
+public extension Sequence where Element: Hashable {
+    /// The first of each, in order. Lists from an AI or a config file can repeat, and a SwiftUI
+    /// list identified by value misbehaves when they do.
+    func uniqued() -> [Element] {
+        var seen = Set<Element>()
+        return filter { seen.insert($0).inserted }
+    }
+}
+
 /// A user-facing failure. `message` is Chinese UI text and never contains configuration secrets.
 public struct EditorError: Error, Equatable, Sendable, LocalizedError {
     public let message: String

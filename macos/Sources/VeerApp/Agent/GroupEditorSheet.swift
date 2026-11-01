@@ -174,7 +174,7 @@ struct GroupEditorSheet: View {
                 .tint(.accentFill)
                 .disabled(existing == nil
                     ? members.isEmpty || name.trimmingCharacters(in: .whitespaces).isEmpty || name.contains(",")
-                    : members == group?.members || (members.isEmpty && group?.members.isEmpty == false))
+                    : members == group?.members.uniqued() || (members.isEmpty && group?.members.isEmpty == false))
             }
         }
         .padding(Spacing.xl)
@@ -184,7 +184,7 @@ struct GroupEditorSheet: View {
             loaded = true
             name = group.name
             type = group.type
-            members = group.members
+            members = group.members.uniqued()
         }
     }
 }
