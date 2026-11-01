@@ -1,0 +1,31 @@
+{
+  "description": "Veer: load shared macOS rules and reuse the existing Claude format/lint checks.",
+  "hooks": {
+    "SessionStart": [{
+      "hooks": [{
+        "type": "command",
+        "command": "python3 \"$(git rev-parse --show-toplevel)/.codex/scripts/workflow.py\" session",
+        "timeout": 10,
+        "additionalContextLimit": 7000,
+        "statusMessage": "Loading Veer rules and handoff"
+      }]
+    }],
+    "PostToolUse": [{
+      "matcher": "^(apply_patch|Edit|Write)$",
+      "hooks": [{
+        "type": "command",
+        "command": "python3 \"$(git rev-parse --show-toplevel)/.codex/scripts/workflow.py\" post",
+        "timeout": 60,
+        "statusMessage": "Veer: format and lint edited Swift files"
+      }]
+    }],
+    "Stop": [{
+      "hooks": [{
+        "type": "command",
+        "command": "python3 \"$(git rev-parse --show-toplevel)/.codex/scripts/workflow.py\" stop",
+        "timeout": 120,
+        "statusMessage": "Veer: check changed Swift files"
+      }]
+    }]
+  }
+}

@@ -10,7 +10,8 @@ No test target lives here. This records what each kind of check can and cannot s
 | Review | `/macos-visual-audit`, `/apple-design-review` | Comparison against the HIG and the design spec | It is a judgment, not Apple certification |
 | By a person | `docs/RELEASE.md` | Keyboard, VoiceOver, macOS 14 VM, system proxy, TUN | |
 
-XCUITest needs Xcode, which this machine does not have.
+Xcode is installed on the development Mac. This SwiftPM package does not currently have an
+XCUITest app target or runner; installing Xcode alone does not verify UI automation.
 
 ## Acceptance
 

@@ -11,6 +11,10 @@ Read these before changing the matching area:
 - Code layout and state: [ARCHITECTURE.md](ARCHITECTURE.md).
 - Module notes: a `CLAUDE.md` in `Sources/VeerProxy`, `Sources/VeerUI` and `Sources/VeerApp/Agent`. Keep each short, for what the code does not show. They are excluded in `Package.swift`, and `build-app.sh` stops if one reaches the app.
 - Coding and design rules are in `.claude/rules/` and load at the start of each session.
+- On resuming work, read [docs/PLAN.md](docs/PLAN.md), [docs/WORKFLOW.md](docs/WORKFLOW.md) and
+  [the shared handoff](../.codex/HANDOFF.md), then check actual Git state. After meaningful progress,
+  update PLAN and the handoff with implementation, verification evidence, remaining work and commit
+  status. Keep historical checks distinct from checks run in the current session.
 
 ## Commands
 

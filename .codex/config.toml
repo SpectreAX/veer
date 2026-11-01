@@ -1,0 +1,2 @@
+# Keep the same module instructions in both agents. AGENTS.md takes precedence where present.
+project_doc_fallback_filenames = ["CLAUDE.md"]
