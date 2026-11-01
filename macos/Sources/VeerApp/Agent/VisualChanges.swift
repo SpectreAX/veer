@@ -22,7 +22,7 @@ struct VisualChangesView: View {
                     GroupCard(name: change.name, type: change.newType, members: members, badge: String(localized: "已修改"),
                               analysis: diff.after, highlighted: Set(change.added), removed: change.removed, edit: nil)
                 }
-                ForEach(diff.groupsRemoved, id: \.self) { name in
+                ForEach(diff.groupsRemoved.uniqued(), id: \.self) { name in
                     Label(String(localized: "删除策略组 \(name)"), systemImage: "minus.circle").foregroundStyle(Color.statusFailure).font(.callout)
                 }
                 if !diff.rules.isEmpty {
@@ -35,11 +35,11 @@ struct VisualChangesView: View {
                     VStack(alignment: .leading, spacing: Spacing.sm) {
                         Text(String(localized: "规则集")).font(.headline)
                         FlowLayout(spacing: Spacing.xs + Spacing.xxs) {
-                            ForEach(diff.providersAdded, id: \.self) { key in
+                            ForEach(diff.providersAdded.uniqued(), id: \.self) { key in
                                 Label(key, systemImage: "plus").font(.caption).padding(.horizontal, Spacing.sm).padding(.vertical, Spacing.xxs + 1)
                                     .background(Color.diffAdded, in: Capsule())
                             }
-                            ForEach(diff.providersRemoved, id: \.self) { key in
+                            ForEach(diff.providersRemoved.uniqued(), id: \.self) { key in
                                 Label(key, systemImage: "minus").font(.caption).padding(.horizontal, Spacing.sm).padding(.vertical, Spacing.xxs + 1)
                                     .background(Color.diffRemoved, in: Capsule())
                             }
@@ -81,7 +81,8 @@ struct GroupCard: View {
                 VStack(alignment: .leading, spacing: Spacing.xxs) {
                     Text(name).font(.headline).lineLimit(1).truncationMode(.middle)
                     // Its own line, so a narrow inspector never wraps it beside the name.
-                    Text(String(localized: "\(ProfileAnalysis.groupTypeTitle(type)) · \(members.count) 个成员")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Text(String(localized: "\(ProfileAnalysis.groupTypeTitle(type)) · \(shownMembers.count) 个成员"))
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
                 if let badge { Tag(text: badge, tint: .veerAccent) }
                 Spacer(minLength: 0)
@@ -91,7 +92,7 @@ struct GroupCard: View {
                 }
             }
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 116), spacing: Spacing.sm)], spacing: Spacing.sm) {
-                ForEach(members, id: \.self) { member in
+                ForEach(shownMembers, id: \.self) { member in
                     MemberTile(name: member, detail: detail(for: member), count: count(for: member), highlighted: highlighted.contains(member))
                 }
             }
@@ -103,8 +104,10 @@ struct GroupCard: View {
         .background(Color.surfaceRaised, in: RoundedRectangle(cornerRadius: Radius.large, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: Radius.large, style: .continuous).strokeBorder(Color.separatorLine.opacity(0.7)))
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(String(localized: "策略组 \(name)，\(members.count) 个出口"))
+        .accessibilityLabel(String(localized: "策略组 \(name)，\(shownMembers.count) 个出口"))
     }
+
+    private var shownMembers: [String] { members.uniqued() }
 
     private func detail(for member: String) -> String {
         if member == "DIRECT" { return String(localized: "直连") }

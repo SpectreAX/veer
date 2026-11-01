@@ -235,7 +235,7 @@ struct AddRuleSheet: View {
                 .neutralControl()
                 TextField("匹配内容", text: $value)
                 Picker("出口", selection: $target) {
-                    ForEach(targets, id: \.self) { Text($0).tag($0) }
+                    ForEach(targets.uniqued(), id: \.self) { Text($0).tag($0) }
                 }
                 .disabled(targets.isEmpty)
                 .neutralControl()

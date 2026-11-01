@@ -28,15 +28,15 @@ public struct Profile: Codable, Identifiable, Sendable, Equatable {
 }
 
 /// Profiles on disk: `profiles.json` lists them, `profiles/<id>.yaml` holds each config, and
-/// subscription links live in the secrets file (0600), never in the index.
+/// subscription links live in the secret store, never in the index.
 public final class ProfileStore: @unchecked Sendable {
     public let paths: VeerPaths
-    let secrets: KeyStoring
+    public let secrets: KeyStoring
     private let lock = NSLock()
 
     public init(paths: VeerPaths, secrets: KeyStoring? = nil) {
         self.paths = paths
-        self.secrets = secrets ?? FileKeyStore(url: paths.secrets)
+        self.secrets = secrets ?? paths.makeSecretStore()
     }
 
     public func loadAll() -> [Profile] {

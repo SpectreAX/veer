@@ -257,7 +257,7 @@ public struct AISettings: Sendable, Codable, Equatable {
         var models = provider.catalog.map(\.model)
         if includingFetched { models += fetchedModels.filter { !models.contains($0) } }
         if !model.isEmpty && !models.contains(model) { models.append(model) }
-        return models
+        return models.uniqued()
     }
 
     /// Selects a model; a retired id is replaced with its successor.

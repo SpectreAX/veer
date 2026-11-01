@@ -56,6 +56,12 @@ cat > "$app/Contents/Library/LaunchDaemons/$helper_label.plist" <<PLIST
 </dict>
 </plist>
 PLIST
+# Notes for developers and their tools never ship, whatever a later copy above picks up.
+internal="$(find "$app" \( -iname 'CLAUDE*.md' -o -iname 'AGENTS.md' -o -name '.claude' -o -name '.git' -o -name '.cursor' \) -print -quit)"
+if [[ -n "$internal" ]]; then
+  print -u2 "内部文件进了安装包，已停止：$internal"
+  exit 1
+fi
 # The helper accepts only callers and cores signed by its own team, so everything is signed
 # with one identity: VEER_SIGN_IDENTITY, else the first Apple Development certificate. Without
 # one the app is signed ad hoc and TUN is unavailable.

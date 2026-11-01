@@ -83,37 +83,11 @@ private struct GroupSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.md) {
-            HStack(spacing: Spacing.sm) {
-                Button { store.toggleCollapsed(group.name) } label: {
-                    HStack(spacing: Spacing.sm) {
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .rotationEffect(.degrees(collapsed ? 0 : 90))
-                        Text(group.name).font(.headline).lineLimit(1).truncationMode(.middle)
-                        Tag(text: Self.typeLabel(group.type))
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help(collapsed ? String(localized: "展开") : String(localized: "proxies.collapse", defaultValue: "收起"))
-                .accessibilityLabel(collapsed ? String(localized: "展开“\(group.name)”") : String(localized: "收起“\(group.name)”"))
-                quickSwitch
-                Spacer()
-                if store.testingGroups.contains(group.name) {
-                    ProgressView().controlSize(.small)
-                }
-                Menu {
-                    Button("换到延迟最低的节点") { ask(String(localized: "“\(group.name)”换到延迟最低的节点")) }
-                    Button("哪些网站走这个策略组？") { ask(String(localized: "哪些网站走“\(group.name)”？")) }
-                    Button("问 AI…") { ask(String(localized: "关于策略组“\(group.name)”：")) }
-                } label: { Label("问 AI", systemImage: "sparkles") }
-                .menuStyle(.borderlessButton).fixedSize().neutralControl()
-                .help("让 Agent 处理这个策略组")
-                Button("测速") { store.testDelay(group.name) }
-                    .secondaryAction()
-                    .disabled(store.testingGroups.contains(group.name))
-                    .help("测试这个策略组里每个成员的延迟")
+            // The node in use goes first when the row runs short: its tile shows it too, and the
+            // group's name would otherwise be squeezed down to nothing.
+            ViewThatFits(in: .horizontal) {
+                header(showingNode: true)
+                header(showingNode: false)
             }
             if !collapsed {
             LazyVGrid(columns: columns, alignment: .leading, spacing: Spacing.sm) {
@@ -133,6 +107,41 @@ private struct GroupSection: View {
         }
         .panel()
         .animation(Motion.standard, value: collapsed)
+    }
+
+    private func header(showingNode: Bool) -> some View {
+        HStack(spacing: Spacing.sm) {
+            Button { store.toggleCollapsed(group.name) } label: {
+                HStack(spacing: Spacing.sm) {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(collapsed ? 0 : 90))
+                    Text(group.name).font(.headline).lineLimit(1).truncationMode(.middle)
+                    Tag(text: Self.typeLabel(group.type))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(collapsed ? String(localized: "展开") : String(localized: "proxies.collapse", defaultValue: "收起"))
+            .accessibilityLabel(collapsed ? String(localized: "展开“\(group.name)”") : String(localized: "收起“\(group.name)”"))
+            if showingNode { quickSwitch }
+            Spacer()
+            if store.testingGroups.contains(group.name) {
+                ProgressView().controlSize(.small)
+            }
+            Menu {
+                Button("换到延迟最低的节点") { ask(String(localized: "“\(group.name)”换到延迟最低的节点")) }
+                Button("哪些网站走这个策略组？") { ask(String(localized: "哪些网站走“\(group.name)”？")) }
+                Button("问 AI…") { ask(String(localized: "关于策略组“\(group.name)”：")) }
+            } label: { Label("问 AI", systemImage: "sparkles") }
+            .menuStyle(.borderlessButton).fixedSize().neutralControl()
+            .help("让 Agent 处理这个策略组")
+            Button("测速") { store.testDelay(group.name) }
+                .secondaryAction()
+                .disabled(store.testingGroups.contains(group.name))
+                .help("测试这个策略组里每个成员的延迟")
+        }
     }
 
     /// The node in use, and for a select group a menu of every member with its delay: switching

@@ -5,7 +5,7 @@
 | Target | Job | Rules |
 |---|---|---|
 | `VeerCore` | Config parsing, AI rule editing, validation, controller client | No UI. A separate copy from veer-editor; port fixes by hand when both need them |
-| `VeerUI` | Design tokens and shared components | The only place for macOS 26 APIs and raw colors |
+| `VeerUI` | Design tokens and shared components | The only place for macOS 26 APIs and raw colors. No business logic or services: from `VeerCore` it takes value types only |
 | `VeerProxy` | Mihomo process, runtime config, profiles, system proxy | No UI, testable |
 | `VeerHelperKit` | XPC protocol, paths, signature checks shared with the helper | Small |
 | `VeerHelper` | Root daemon that runs Mihomo for TUN | Small on purpose: no YAML, no AI. Bump `HelperConstants.version` when it changes |

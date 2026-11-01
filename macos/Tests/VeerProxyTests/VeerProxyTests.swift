@@ -105,6 +105,15 @@ struct ProfileStoreTests {
         func delete(for provider: String) { keys[provider] = nil }
     }
 
+    @Test func onlyASignedBuildOnItsRealFolderUsesTheKeychain() {
+        let real = VeerPaths()
+        #expect(real.usesKeychain(team: "TEAM", environment: [:]))
+        #expect(!real.usesKeychain(team: nil, environment: [:]))
+        #expect(!real.usesKeychain(team: "TEAM", environment: ["VEER_SNAPSHOT_DIR": "/tmp/shots"]))
+        let temporary = VeerPaths(root: FileManager.default.temporaryDirectory.appendingPathComponent("veer-\(UUID().uuidString)"))
+        #expect(!temporary.usesKeychain(team: "TEAM", environment: [:]))
+    }
+
     @Test func profilesRoundTripAndLinksStayOutOfTheIndex() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("veer-profiles-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }

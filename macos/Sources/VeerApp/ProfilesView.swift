@@ -336,7 +336,7 @@ private struct EditRow: View {
                     Tag(text: edit.source.label)
                     Text(Format.relative(edit.createdAt)).font(.caption).foregroundStyle(.secondary)
                 }
-                ForEach(conflicts, id: \.self) { StatusBadge(kind: .warning, text: $0, compact: true) }
+                ForEach(conflicts.uniqued(), id: \.self) { StatusBadge(kind: .warning, text: $0, compact: true) }
             }
             Spacer(minLength: 0)
             Button(role: .destructive) { confirmingDelete = true } label: { Image(systemName: "trash") }

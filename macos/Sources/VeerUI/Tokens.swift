@@ -28,6 +28,8 @@ nonisolated public enum Metrics {
     public static let minWindow = CGSize(width: 860, height: 560)
     public static let defaultWindow = CGSize(width: 1080, height: 720)
     public static let compactBreakpoint: CGFloat = 1100
+    /// Below this the page title leaves the profile's name less room beside the toolbar.
+    public static let roomyTitleWidth: CGFloat = 960
 }
 
 nonisolated public enum Motion {
