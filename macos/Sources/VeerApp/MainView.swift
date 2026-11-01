@@ -223,9 +223,16 @@ struct MainView: View {
                 ForEach(Page.Section.allCases, id: \.self) { section in
                     Section(section.title) {
                         ForEach(Page.sidebarPages.filter { $0.section == section }) { page in
-                            Label(page.title, systemImage: page.symbol)
+                            Label {
+                                Text(page.title)
+                            } icon: {
+                                // By hand: the list's own tint stays on it when the row isn't what it thinks is selected.
+                                Image(systemName: page.symbol)
+                                    .foregroundStyle((store.page.parent ?? store.page) == page ? Color.onAccent : Color.accentColor)
+                            }
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .contentShape(Rectangle())
+                                .selectionHighlight((store.page.parent ?? store.page) == page)
                                 // The list reports no change for the row already selected, which
                                 // a subpage's parent is, and a click there should go back to it.
                                 .simultaneousGesture(TapGesture().onEnded {
@@ -236,7 +243,7 @@ struct MainView: View {
                     }
                 }
             }
-            .safeAreaInset(edge: .bottom) { profileFooter }
+            .safeAreaInset(edge: .bottom) { appFooter }
             .safeAreaPadding(.top, fullScreenTopInset)
             .overlay(alignment: .top) { dragRow }
             .toolbar(removing: .sidebarToggle)
@@ -267,27 +274,20 @@ struct MainView: View {
         .navigationTitle(store.page.title)
     }
 
-    /// The profile in use, at the foot of the sidebar (a click opens the proxies page, which lists them), and the
-    /// way into Settings.
-    private var profileFooter: some View {
+    /// What this is and which version, at the foot of the sidebar, and the way into Settings. The
+    /// profile is under the page's title.
+    private var appFooter: some View {
         HStack(spacing: Spacing.sm) {
-            if let profile = store.activeProfile {
-                Button { store.page = .proxies } label: {
-                    HStack(spacing: Spacing.sm) {
-                        Image(systemName: profile.isSubscription ? "antenna.radiowaves.left.and.right" : "doc")
-                            .foregroundStyle(.secondary)
-                        // Not beside a Spacer, which would take half of what the name could use.
-                        // Two lines of it. The tooltip below has the rest of a very long name.
-                        Text(profile.name).lineLimit(2).truncationMode(.tail)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help(String(localized: "当前配置：\(profile.name)"))
-            } else {
-                Spacer(minLength: 0)
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: Spacing.xxl, height: Spacing.xxl)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(verbatim: "Veer").font(.headline)
+                Text(verbatim: AboutSettings.version).font(.caption).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
             }
+            .accessibilityElement(children: .combine)
+            Spacer(minLength: 0)
             // A plain button rather than SettingsLink, which leaves VoiceOver with only "button".
             Button { openSettings() } label: {
                 Label(String(localized: "设置"), systemImage: "gearshape").labelStyle(.iconOnly).imageScale(.large)

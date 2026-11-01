@@ -57,6 +57,15 @@ struct FailurePanel: View {
                 .padding(Spacing.sm)
                 .background(Color.codeBackground, in: RoundedRectangle(cornerRadius: Radius.small))
             }
+            // On a line of its own, as the row below is full in a narrow column. The way out if an update
+            // is what stopped it starting; TUN runs the bundled one anyway.
+            if store.hasUpdatedCore, !store.settings.tun {
+                Button(String(localized: "恢复随附版本")) {
+                    store.useBundledCore()
+                    if !store.hasUpdatedCore { store.start() }
+                }
+                .neutralControl()
+            }
             HStack {
                 SettingsLink { Text("打开设置…") }.neutralControl()
                 Spacer()

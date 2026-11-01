@@ -63,8 +63,6 @@ struct AISettingsPane: View {
                         status(fetchState, passed: String(localized: "已获取 \(store.settings.fetchedModels.count) 个模型"))
                     }
                 }
-                Text(String(localized: "深度思考让模型先推理再回答，更擅长理解复杂指令；强度越高越慢、费用越高。DeepSeek V4、Claude、Gemini 2.5 Flash、GPT-5 可选强度，GLM 只能开关，o4-mini、R1 等推理模型始终深度思考。"))
-                    .font(.caption).foregroundStyle(.secondary)
             }
             SearchSettingsSection()
             Section {

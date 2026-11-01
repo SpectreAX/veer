@@ -90,6 +90,7 @@ as a violation unless its reason no longer holds. Anything not listed here is no
 | Own glass switch instead of a segmented picker in the top row | Outside a real toolbar, which Veer leaves empty, the system's picker draws its own track instead of glass. The selection is a neutral shape, so it does not use the system accent | SPEC 5, `GlassSwitch` |
 | Back button floats in the top row instead of `NavigationStack` | A stack's back button belongs to the system toolbar, which Veer leaves empty | SPEC 5, `MainView` |
 | "Later" instead of "Cancel" in the TUN helper alert | It puts the install off rather than calling anything off, and Esc still works. The wording is the product owner's | SPEC 4.1, `HelperPrompt` |
+| Sidebar selection stays in the accent color when the focus moves | Pages put the cursor in their own field, and the system's dimming then flashes between two looks on every click. The product owner asked for one look | SPEC 5, `selectionHighlight` |
 | Own search field instead of `.searchable` | Several `.searchable` pages crash `NSToolbar` with a duplicate identifier on page switch (1.0.3 crash) | SPEC 5, `ToolbarSearchField` |
 | Plain Agent column instead of `.inspector` | `NSSplitViewController` throws if the inspector changes mid-animation (crash on 2026-10-30) | `AgentPanelColumn` |
 | Veer green tint instead of the system accent color | Brand color, used only on small areas. Custom accent colors are out of scope for v1 | `Color.veerAccent` |

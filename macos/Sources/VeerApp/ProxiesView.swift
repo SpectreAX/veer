@@ -29,6 +29,8 @@ struct ProxiesView: View {
                     .init(value: false, title: String(localized: "网格"), symbol: "square.grid.2x2"),
                     .init(value: true, title: String(localized: "地图"), symbol: "map"),
                 ])
+                // Neither shows anything until there are groups to show.
+                .disabled(!store.isRunning || store.groups.isEmpty)
                 let allCollapsed = !store.groups.isEmpty && store.groups.allSatisfy { store.collapsedGroups.contains($0.name) }
                 Button { store.setAllCollapsed(!allCollapsed) } label: {
                     allCollapsed ? Label("全部展开", systemImage: "rectangle.expand.vertical")

@@ -151,7 +151,9 @@ struct VeerCommands: Commands {
             // The top row's `GlassSwitch`, for anyone who cannot or does not Tab to it. Choosing one
             // goes to the page, so it never changes a view that isn't showing.
             Toggle("网格", isOn: Binding(get: { !proxiesShowMap }, set: { _ in proxiesShowMap = false; store.page = .proxies }))
+                .disabled(!store.isRunning || store.groups.isEmpty)
             Toggle("地图", isOn: Binding(get: { proxiesShowMap }, set: { _ in proxiesShowMap = true; store.page = .proxies }))
+                .disabled(!store.isRunning || store.groups.isEmpty)
             Divider()
         }
         CommandMenu("代理") {

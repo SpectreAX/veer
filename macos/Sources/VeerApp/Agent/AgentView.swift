@@ -143,9 +143,14 @@ private struct ThreadList: View {
             ForEach(agent.sessions) { session in
                 VStack(alignment: .leading, spacing: Spacing.xxs) {
                     Text(session.title).lineLimit(1)
-                    Text(subtitle(session)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    // Not secondary when selected: it fades too far on the selection's color.
+                    Text(subtitle(session)).font(.caption)
+                        .foregroundStyle(agent.selectedID == session.id ? AnyShapeStyle(Color.onAccent) : AnyShapeStyle(.secondary))
+                        .lineLimit(1)
                 }
                 .padding(.vertical, Spacing.xxs)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .selectionHighlight(agent.selectedID == session.id)
                 .tag(session.id)
                 .contextMenu {
                     Button(String(localized: "删除对话…"), role: .destructive) { agent.pendingDeletion = session }

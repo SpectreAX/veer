@@ -63,6 +63,10 @@ public extension Color {
     /// A label or glyph on `accentFill`.
     static let onAccent = Color.white
 
+    /// Behind the selected row of a sidebar or list: the system's own, which follows the color the
+    /// person chose and stays dark enough for a white label, as the plain accent color doesn't.
+    static let selectionFill = Color(nsColor: .selectedContentBackgroundColor)
+
     /// User message bubble: a light wash of the accent with normal text, so the solid accent is
     /// left for primary actions.
     static let userBubble = Color(nsColor: NSColor(name: "VeerBubble") { appearance in

@@ -721,7 +721,7 @@ struct CheckRecordsView: View {
     @State private var expanded: Bool?
 
     var body: some View {
-        DisclosureGroup(isExpanded: Binding(get: { expanded ?? true }, set: { expanded = $0 })) {
+        DisclosureGroup(isExpanded: Binding(get: { expanded ?? running }, set: { expanded = $0 })) {
             VStack(alignment: .leading, spacing: Spacing.sm) {
                 ForEach(records, id: \.domain) { record in
                     VStack(alignment: .leading, spacing: Spacing.xxs) {

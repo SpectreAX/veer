@@ -247,6 +247,30 @@ public struct PrimaryActionStyle: ViewModifier {
     }
 }
 
+/// A selected row in a sidebar or list, the same whether the list or something else has the focus. The
+/// system dims it when the focus leaves, and a page that moves the focus to its own field makes that
+/// flash between the two. Only a window in the background still looks dimmed, as it should.
+private struct SelectionHighlight: ViewModifier {
+    let isSelected: Bool
+    @Environment(\.controlActiveState) private var activeState
+
+    private var isShown: Bool { isSelected && activeState != .inactive }
+
+    func body(content: Content) -> some View {
+        content
+            .foregroundStyle(isShown ? AnyShapeStyle(Color.onAccent) : AnyShapeStyle(.primary))
+            .listRowBackground(
+                RoundedRectangle(cornerRadius: Radius.medium, style: .continuous)
+                    .fill(isShown ? Color.selectionFill : .clear)
+                    .padding(.horizontal, Spacing.sm + Spacing.xxs),
+            )
+    }
+}
+
+public extension View {
+    func selectionHighlight(_ isSelected: Bool) -> some View { modifier(SelectionHighlight(isSelected: isSelected)) }
+}
+
 /// Secondary action beside content (Update, Test, Use): clear Liquid Glass on macOS 26, the
 /// bordered style before it. Uncolored, so the accent stays on the one primary action.
 public struct SecondaryActionStyle: ViewModifier {

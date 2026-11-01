@@ -59,6 +59,7 @@ final class ProxyStore {
     var agentPanelWidth: Double { didSet { defaults.set(agentPanelWidth, forKey: "agentPanelWidth") } }
     var phase: Phase = .stopped {
         didSet {
+            if phase == .starting { runningCoreRevision = coreRevision }
             // The proxy must not point at a core that failed: every app would lose the network. A
             // restart on its own can get here, with no one watching. It comes back with the next start.
             if case .failed = phase, systemProxyOn {
@@ -166,6 +167,12 @@ final class ProxyStore {
     let stateStore: StateStore
     let systemProxy: SystemProxy
     let binary: URL?
+    /// A newer core installed from Settings, which runs in place of `binary`.
+    var hasUpdatedCore: Bool
+    /// Changes with each core installed or removed, for what shows its version.
+    var coreRevision = 0
+    /// `coreRevision` when the core running now started.
+    @ObservationIgnored var runningCoreRevision = 0
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var core: CoreRunning?
     @ObservationIgnored private var controller: MihomoController?
@@ -227,6 +234,7 @@ final class ProxyStore {
         self.stateStore = StateStore(paths: paths)
         self.systemProxy = systemProxy
         self.binary = binary
+        hasUpdatedCore = CoreUpdater(paths: paths).hasInstalled
         self.defaults = defaults
         settings = defaults.data(forKey: "runtimeSettings").flatMap { try? JSONDecoder().decode(RuntimeSettings.self, from: $0) } ?? RuntimeSettings()
         restoreLastState = defaults.object(forKey: "restoreLastState") as? Bool ?? true
@@ -300,7 +308,11 @@ final class ProxyStore {
         watchNetwork()
         scheduleSubscriptionUpdates()
         for profile in profiles { alertAboutUsage(of: profile) }
-        if restoreLastState, state.running, activeProfile != nil { start() }
+        // After a stale update has gone, so that it isn't what starts.
+        Task {
+            await dropStaleCoreUpdate()
+            if restoreLastState, state.running, activeProfile != nil { start() }
+        }
     }
 
     /// When Veer last quit without cleaning up, the system proxy still points at its port with
@@ -349,7 +361,7 @@ final class ProxyStore {
         guard phase != .starting, phase != .running else { return }
         notice = nil
         guard let profile = activeProfile else { return }
-        guard let binary else {
+        guard let binary = activeBinary else {
             phase = .failed(String(localized: "应用包里缺少 Mihomo 内核，请重新安装 Veer。"), log: [])
             return
         }
@@ -1543,7 +1555,7 @@ final class ProxyStore {
     func diagnosticItems() async -> [Diagnostics.Item] {
         var config: String?
         if let id = activeProfileID { config = try? await effectiveTextInBackground(of: id) }
-        let coreVersion = await AboutSettings.coreVersion(binary)
+        let coreVersion = await CoreUpdater.version(of: reportedBinary ?? URL(fileURLWithPath: "/nonexistent"))
         let state = (try? Data(contentsOf: paths.state)).map { String(decoding: $0, as: UTF8.self) }
         let logs = logs.map { "\($0.time.formatted(.iso8601)) [\($0.level)] \($0.message)" }
         let settings = settings, tail = core?.tail ?? [], version = AboutSettings.version

@@ -29,6 +29,7 @@ only fade.
 | `veerAccent` | Small areas: primary actions, the node in use, written state |
 | `accentFill` | Behind a label: primary actions and toolbar toggles that are on. Darker than `veerAccent` in dark |
 | `onAccent` | A label or glyph on `accentFill` |
+| `selectionFill` | The selected row of a sidebar or list, with `onAccent` over it |
 | `userBubble` | The user's message bubble |
 | `statusSuccess`, `statusWarning`, `statusFailure`, `statusInfo` | Status, always with an icon and text through `StatusKind`. Warning and failure are darker than the system's in light, as small text on white |
 | `surface`, `surfaceRaised`, `surfaceSunken` | Window, raised and recessed backgrounds |

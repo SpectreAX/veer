@@ -33,6 +33,13 @@ Veer 随应用打包以下组件，各自适用其许可证；许可证全文位
 - License: MIT (`licenses/Sparkle-LICENSE`).
 - Source: <https://github.com/sparkle-project/Sparkle>.
 
+## Mihomo updates · Mihomo 更新
+
+Settings can replace the bundled core with a newer official build, downloaded unmodified from
+<https://github.com/MetaCubeX/mihomo/releases>, where its corresponding source is published under
+the same license. It runs as a separate process, as the bundled one does.
+设置里可以把随附内核换成更新的官方版本，从上述地址原样下载，对应源代码也在那里按相同许可证发布，同样作为独立进程运行。
+
 ## Natural Earth
 
 - `Resources/Map/countries-110m.json` is the 1:110m Admin 0 countries layer of Natural Earth

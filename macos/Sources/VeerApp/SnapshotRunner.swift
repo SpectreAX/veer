@@ -286,6 +286,7 @@ enum SnapshotRunner {
             Scene(name: "12-profile-routing", size: CGSize(width: 560, height: 520), store: { sample() },
                   view: AnyView(SampleProfileSheet(tab: .routing))),
             Scene(name: "13-settings-general", size: CGSize(width: 520, height: 360), store: { sample() }, view: AnyView(GeneralSettings())),
+            Scene(name: "14b-settings-core", size: CGSize(width: 560, height: 300), store: { sample() }, view: AnyView(CoreSettings())),
             Scene(name: "14-settings-proxy", size: CGSize(width: 520, height: 300), store: { sample() }, view: AnyView(ProxySettings())),
             Scene(name: "15-overview-tun", store: { running(tun: true) }, view: AnyView(MainView())),
             Scene(name: "18-proxies-map", size: CGSize(width: 900, height: 520), store: { running(page: .proxies) }, view: AnyView(NodeMapView())),
