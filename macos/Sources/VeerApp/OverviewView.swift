@@ -2,8 +2,8 @@ import SwiftUI
 import VeerCore
 import VeerProxy
 
-/// The dashboard: status and exit, traffic, mode and switches, profile, services, connections and
-/// groups, as cards in a grid that reflows with the window.
+/// The dashboard: status and exit, traffic, services, connections and groups, as cards in a grid that
+/// reflows with the window. Mode, switches and profile are in its toolbar.
 struct OverviewView: View {
     @Environment(ProxyStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -11,9 +11,23 @@ struct OverviewView: View {
     /// window), each row's halves stack, and below the second width the quarter cards too.
     static let stackBelow: CGFloat = 720, stackPairsBelow: CGFloat = 460
     @State private var width: CGFloat = 1000
+    /// The first width is where the page starts, not a change to animate: opening the page beside
+    /// the Agent panel would otherwise rearrange every card, every time.
+    @State private var measured = false
     private var stacked: Bool { width < Self.stackBelow }
 
     var body: some View {
+        content
+            .pageToolbar(.overview) {
+                GlassSwitch(label: String(localized: "模式"), selection: Binding(get: { store.mode }, set: { store.setMode($0) }),
+                            options: ProxyStore.Mode.allCases.map { .init(value: $0, title: $0.title) })
+                    .disabled(!store.isRunning)
+            } content: {
+                OverviewToolbar()
+            }
+    }
+
+    @ViewBuilder private var content: some View {
         if store.profiles.isEmpty {
             StateView(symbol: "tray.and.arrow.down", title: String(localized: "还没有配置"),
                       message: String(localized: "导入订阅链接、配置文件或节点分享链接后，Veer 会启动内核并按配置分流。"),
@@ -29,21 +43,27 @@ struct OverviewView: View {
                     // Rows of two equal halves: cards shrink with the window (a Grid sizes cells to
                     // their widest content and overflowed it).
                     row { StatusCard() } right: { pair { TrafficCard(direction: .upload) } and: { TrafficCard(direction: .download) } }
-                    row { ModeCard() } right: { pair { SystemProxyCard() } and: { TUNCard() } }
-                    row { pair { NetworkCard() } and: { ProfileCard() } } right: { pair { ServicesCard() } and: { ConnectionsCard() } }
+                    row { ServicesCard() } right: { ConnectionsCard() }
                     if store.isRunning { GroupsCard() }
                 }
                 .padding(Spacing.xl)
                 .frame(maxWidth: 1180)
                 .frame(maxWidth: .infinity)
-                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { new in
+                    var first = Transaction()
+                    first.disablesAnimations = !measured
+                    withTransaction(first) {
+                        width = new
+                        measured = true
+                    }
+                }
                 // Cards rearrange rather than jump when the Agent panel opens or closes.
                 .animation(reduceMotion ? nil : Motion.standard, value: stacked)
                 .animation(reduceMotion ? nil : Motion.standard, value: width < Self.stackPairsBelow)
             }
             .task(id: store.isRunning) {
                 guard store.isRunning else { return }
-                if store.exit == nil { store.checkExit() }
+                store.checkExitIfNeeded()
                 // Service latency now and once a minute while the dashboard is open.
                 while !Task.isCancelled {
                     store.checkServices()
@@ -106,29 +126,114 @@ private struct Card<Content: View, Accessory: View>: View {
 /// Running or not, where traffic leaves, for how long, and the one big start/stop button.
 private struct StatusCard: View {
     @Environment(ProxyStore.self) private var store
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Card(String(localized: "状态"), symbol: "waveform.path.ecg") {
             StatusBadge(kind: store.phase.kind, text: store.phase.title, compact: true)
         } content: {
-            HStack(alignment: .center, spacing: Spacing.lg) {
-                VStack(alignment: .leading, spacing: Spacing.sm) {
-                    exit
-                    HStack(spacing: Spacing.xl) {
-                        LabeledValue(String(localized: "运行时间")) {
-                            if let since = store.runningSince, store.isRunning {
-                                TimelineView(.periodic(from: since, by: 1)) { context in
-                                    Text(verbatim: Format.duration(since: since, now: context.date)).monospacedDigit()
-                                }
-                            } else { Text(verbatim: "—") }
-                        }
-                        LabeledValue(String(localized: "网络")) {
-                            Text(store.exit?.organization ?? "—").lineLimit(1).truncationMode(.tail)
-                        }
+            // The whole width for the address, which matters most here, beside the Agent panel too.
+            exit
+            // As few lines as fit. The network's name, which can be long, is the first to get its own;
+            // last the address, which must keep its port and has no room beside the button.
+            ViewThatFits(in: .horizontal) {
+                beside {
+                    HStack(alignment: .top, spacing: Spacing.xl) {
+                        runTime
+                        localAddress
+                        network
                     }
                 }
-                Spacer(minLength: 0)
-                startButton
+                beside {
+                    VStack(alignment: .leading, spacing: Spacing.sm) {
+                        HStack(alignment: .top, spacing: Spacing.xl) {
+                            runTime
+                            localAddress
+                        }
+                        network
+                    }
+                }
+                VStack(alignment: .leading, spacing: Spacing.sm) {
+                    beside {
+                        VStack(alignment: .leading, spacing: Spacing.sm) {
+                            runTime
+                            network
+                        }
+                    }
+                    localAddress
+                }
+            }
+            reach
+        }
+    }
+
+    private func beside<Details: View>(@ViewBuilder _ details: () -> Details) -> some View {
+        HStack(alignment: .center, spacing: Spacing.lg) {
+            details()
+            Spacer(minLength: 0)
+            // After a failure the panel above has Try Again, the one primary action.
+            if case .failed = store.phase {} else { startButton }
+        }
+    }
+
+    /// Whether traffic reaches Veer at all, in words, as the toolbar's switches say it only in a fill.
+    @ViewBuilder private var reach: some View {
+        let tun = String(localized: "TUN：\(store.tunStatus)")
+        switch TrafficReach(running: store.isRunning, tunActive: store.tunActive, systemProxyOn: store.systemProxyOn,
+                            systemProxyRemembered: store.systemProxyRemembered) {
+        case .bypassed:
+            StatusBadge(kind: .warning, text: String(localized: "系统代理和 TUN 都没生效，流量不经过 Veer"))
+                .fixedSize(horizontal: false, vertical: true)
+        case .tun:
+            reachLine(String(localized: "TUN 已接管全部流量"))
+        case .systemProxy:
+            reachLine(String(localized: "系统代理已打开，端口 \(String(store.proxyPort))"), tun)
+        case .systemProxyComing:
+            reachLine(String(localized: "正在打开系统代理"), tun)
+        case .stopped(let proxyOnStart):
+            reachLine(proxyOnStart ? String(localized: "启动后打开系统代理") : String(localized: "系统代理已关闭"), tun)
+        }
+    }
+
+    /// On one line, or a line each when that would break in the middle of one.
+    private func reachLine(_ parts: String...) -> some View {
+        ViewThatFits(in: .horizontal) {
+            Text(verbatim: parts.joined(separator: " · ")).lineLimit(1)
+            VStack(alignment: .leading, spacing: Spacing.xxs) {
+                ForEach(parts, id: \.self) { Text(verbatim: $0) }
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
+
+    private var runTime: some View {
+        LabeledValue(String(localized: "运行时间")) {
+            if let since = store.runningSince, store.isRunning {
+                TimelineView(.periodic(from: since, by: 1)) { context in
+                    Text(verbatim: Format.duration(since: since, now: context.date)).monospacedDigit()
+                }
+            } else { Text(verbatim: "—") }
+        }
+    }
+
+    private var network: some View {
+        LabeledValue(String(localized: "网络")) {
+            Text(store.exit?.organization ?? "—").lineLimit(1).truncationMode(.tail).help(store.exit?.organization ?? "")
+        }
+    }
+
+    /// What a device on the local network connects to.
+    private var localAddress: some View {
+        LabeledValue(String(localized: "局域网")) {
+            if !store.settings.allowLAN {
+                Text("仅本机可用").lineLimit(1)
+            } else if !store.isRunning {
+                Text("启动后生效").lineLimit(1)
+            } else if let address = ProxyStore.localAddress {
+                Text(verbatim: "\(address):\(store.proxyPort)").lineLimit(1).textSelection(.enabled)
+            } else {
+                Text(verbatim: "—")
             }
         }
     }
@@ -136,24 +241,41 @@ private struct StatusCard: View {
     @ViewBuilder private var exit: some View {
         HStack(alignment: .firstTextBaseline, spacing: Spacing.sm) {
             if store.isRunning, let exit = store.exit, !exit.ip.isEmpty {
-                if !exit.flag.isEmpty { Text(exit.flag).font(.title) }
-                Text(exit.ip).font(.system(.title, design: .rounded).weight(.semibold)).textSelection(.enabled)
-                    .lineLimit(1).minimumScaleFactor(0.5)
-                if let country = exit.country { Tag(text: country) }
+                // The country gives way first: the flag says it too, and the address is the point.
+                ViewThatFits(in: .horizontal) {
+                    address(of: exit, country: exit.country)
+                    address(of: exit, country: nil)
+                }
             } else if store.isRunning, store.exit == .unknown {
                 Text("无法检测出口").font(.title3.weight(.semibold)).foregroundStyle(.secondary)
-            } else if store.isRunning {
-                ProgressView().controlSize(.small)
-                Text("正在检测出口…").font(.title3).foregroundStyle(.secondary)
+            } else if store.isRunning, store.showExitIP {
+                Image(systemName: "antenna.radiowaves.left.and.right")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+                    .symbolEffect(.variableColor.iterative, options: .repeating, isActive: !reduceMotion)
+                    .accessibilityHidden(true)
+                // Short, on one line as the IP that replaces it is: the narrowest window has room for
+                // little more, and the card's title says what this is about.
+                Text("正在检测…").font(.title3).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7)
             } else {
                 Text(store.activeProfile?.name ?? "").font(.title3.weight(.semibold)).lineLimit(1)
             }
-            if store.isRunning {
-                Button { store.checkExit() } label: { Image(systemName: "arrow.clockwise") }
+            // Not while a check is under way.
+            if store.isRunning, store.exit != nil {
+                Button { store.recheckExit() } label: { Image(systemName: "arrow.clockwise") }
                     .buttonStyle(.borderless)
                     .help("重新检测出口")
                     .accessibilityLabel(String(localized: "重新检测出口"))
             }
+        }
+    }
+
+    private func address(of exit: ExitInfo, country: String?) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: Spacing.sm) {
+            if !exit.flag.isEmpty { Text(exit.flag).font(.title) }
+            Text(exit.ip).font(.system(.title, design: .rounded).weight(.semibold)).textSelection(.enabled)
+                .lineLimit(1).minimumScaleFactor(0.5)
+            if let country { Tag(text: country).fixedSize() }
         }
     }
 
@@ -162,12 +284,72 @@ private struct StatusCard: View {
             Image(systemName: store.isRunning ? "stop.fill" : "play.fill")
                 .font(.title.weight(.semibold))
                 .frame(width: 64, height: 64)
+                .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                .animation(reduceMotion ? nil : Motion.standard, value: store.isRunning)
         }
         .buttonBorderShape(.circle)
         .primaryAction()
+        .overlay { CoreStateRing(phase: store.phase) }
         .disabled(store.phase == .starting || store.activeProfile == nil)
         .help(store.isRunning ? String(localized: "停止内核（⌘R）") : String(localized: "启动内核（⌘R）"))
-        .accessibilityLabel(store.isRunning ? String(localized: "停止") : String(localized: "启动"))
+        .accessibilityLabel(store.phase == .starting ? String(localized: "正在启动") : store.isRunning ? String(localized: "停止") : String(localized: "启动"))
+    }
+}
+
+/// Around the big button, what the core is doing: a ring that turns while it starts, and one ripple
+/// when it has started or stopped. With Reduce Motion, a steady ring and no ripple; either way the
+/// status above says it in words, and VoiceOver hears it on this page.
+private struct CoreStateRing: View {
+    let phase: ProxyStore.Phase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var ripples = 0
+    @State private var rippleColor = Color.veerAccent
+
+    private static let lineWidth: CGFloat = 3
+    private static let turn: TimeInterval = 1.1
+
+    private enum Ripple: CaseIterable {
+        case idle, shown, gone
+
+        var opacity: Double { self == .shown ? 0.7 : 0 }
+        var scale: CGFloat { self == .gone ? 1.4 : 1 }
+    }
+
+    var body: some View {
+        ZStack {
+            if phase == .starting { startingRing.padding(-Spacing.xs) }
+            if !reduceMotion {
+                Circle()
+                    .stroke(rippleColor, lineWidth: Self.lineWidth)
+                    .phaseAnimator(Ripple.allCases, trigger: ripples) { circle, ripple in
+                        circle.scaleEffect(ripple.scale).opacity(ripple.opacity)
+                    } animation: { ripple in
+                        ripple == .gone ? .easeOut(duration: 0.6) : .linear(duration: 0.01)
+                    }
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+        .onChange(of: phase) { old, new in
+            AccessibilityNotification.Announcement(new.title).post()
+            // Not when a failure ends a start: the panel above the cards says so.
+            guard new == .running || (new == .stopped && old == .running) else { return }
+            rippleColor = new == .running ? Color.veerAccent : Color.secondary
+            ripples += 1
+        }
+    }
+
+    @ViewBuilder private var startingRing: some View {
+        if reduceMotion {
+            Circle().stroke(Color.veerAccent.opacity(0.5), lineWidth: Self.lineWidth)
+        } else {
+            TimelineView(.animation) { context in
+                Circle()
+                    .trim(from: 0, to: 0.28)
+                    .stroke(Color.veerAccent, style: StrokeStyle(lineWidth: Self.lineWidth, lineCap: .round))
+                    .rotationEffect(.degrees(context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: Self.turn) / Self.turn * 360))
+            }
+        }
     }
 }
 
@@ -182,7 +364,8 @@ private struct LabeledValue<Value: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.xxs) {
-            Text(title).font(.caption).foregroundStyle(.secondary)
+            // Whole: the row shares its width out evenly, which broke "Network" in the narrowest window.
+            Text(title).font(.caption).foregroundStyle(.secondary).fixedSize()
             value().font(.callout)
         }
     }
@@ -207,106 +390,38 @@ private struct TrafficCard: View {
     }
 }
 
-private struct ModeCard: View {
+/// The system proxy, TUN and local network switches: what the proxy reaches, together in one group.
+private struct OverviewToolbar: View {
     @Environment(ProxyStore.self) private var store
 
     var body: some View {
-        Card(String(localized: "出站模式"), symbol: "arrow.triangle.branch") {
-            SegmentedControl(label: String(localized: "模式"), selection: Binding(get: { store.mode }, set: { store.setMode($0) }),
-                             options: ProxyStore.Mode.allCases.map { .init(value: $0, title: $0.title) })
-                .controlSize(.large)
-                .disabled(!store.isRunning)
+        ToolbarToggle(title: String(localized: "系统代理"), symbol: "network", isOn: store.systemProxyOn,
+                      help: String(localized: "系统代理：\(proxyStatus)")) {
+            store.setSystemProxy(!store.systemProxyOn)
+        }
+        .disabled(!store.isRunning)
+        ToolbarToggle(title: String(localized: "TUN"), symbol: tunWithoutEffect ? "exclamationmark.shield" : "shield.lefthalf.filled",
+                      isOn: store.settings.tun && !tunWithoutEffect, help: String(localized: "TUN：\(store.tunStatus)"), value: store.tunStatus) {
+            store.setTUN(!store.settings.tun)
+        }
+        ToolbarToggle(title: String(localized: "允许局域网设备连接"), symbol: "rectangle.connected.to.line.below", isOn: store.settings.allowLAN,
+                      help: store.settings.allowLAN ? String(localized: "允许局域网设备连接") : String(localized: "仅本机可用")) {
+            store.settings.allowLAN.toggle()
         }
     }
+
+    private var proxyStatus: String {
+        store.tunActive ? String(localized: "TUN 已接管全部流量") : String(localized: "端口 \(String(store.proxyPort))")
+    }
+
+    private var tunWithoutEffect: Bool { store.settings.tun && store.isRunning && !store.tunActive }
 }
 
-private struct SystemProxyCard: View {
-    @Environment(ProxyStore.self) private var store
-
-    var body: some View {
-        Card(String(localized: "系统代理"), symbol: "network") {
-            Toggle(String(localized: "系统代理"), isOn: Binding(get: { store.systemProxyOn }, set: { store.setSystemProxy($0) }))
-                .toggleStyle(.switch).labelsHidden()
-                .disabled(!store.isRunning)
-        } content: {
-            Text(store.tunActive ? String(localized: "TUN 已接管全部流量") : String(localized: "端口 \(String(store.proxyPort))"))
-                .font(.caption).foregroundStyle(.secondary)
-        }
-    }
-}
-
-/// All traffic through a TUN device, run as root by the helper.
-private struct TUNCard: View {
-    @Environment(ProxyStore.self) private var store
-
-    var body: some View {
-        Card(String(localized: "TUN"), symbol: "shield.lefthalf.filled") {
-            Toggle(String(localized: "TUN"), isOn: Binding(get: { store.settings.tun }, set: { store.setTUN($0) }))
-                .toggleStyle(.switch).labelsHidden()
-        } content: {
-            Text(status).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-        }
-    }
-
-    private var status: String {
-        if store.tunActive { return String(localized: "运行中") }
-        if !store.settings.tun { return String(localized: "已关闭") }
-        return store.isRunning ? String(localized: "未生效，已改用系统代理") : String(localized: "启动后生效")
-    }
-}
-
-/// This Mac's address on the local network, and whether devices there may use the proxy.
-private struct NetworkCard: View {
-    @Environment(ProxyStore.self) private var store
-
-    var body: some View {
-        @Bindable var store = store
-        Card(String(localized: "局域网"), symbol: "wifi") {
-            Toggle(String(localized: "允许局域网设备连接"), isOn: $store.settings.allowLAN)
-                .toggleStyle(.switch).labelsHidden().controlSize(.small)
-                .help("允许局域网设备连接")
-        } content: {
-            Text(verbatim: ProxyStore.localAddress ?? "—").font(.system(.title3, design: .rounded).weight(.semibold)).textSelection(.enabled)
-            Text(store.settings.allowLAN ? String(localized: "允许局域网设备连接") : String(localized: "仅本机可用"))
-                .font(.caption).foregroundStyle(.secondary)
-        }
-    }
-}
-
-/// The profile in use: when it was updated and how much of the subscription is left.
-private struct ProfileCard: View {
-    @Environment(ProxyStore.self) private var store
-
-    var body: some View {
-        Card(String(localized: "配置"), symbol: "doc.text") {
-            if let profile = store.activeProfile, profile.isSubscription {
-                Button { store.update(profile.id) } label: { Image(systemName: "arrow.clockwise") }
-                    .buttonStyle(.borderless)
-                    .disabled(store.updatingProfiles.contains(profile.id))
-                    .help("更新订阅")
-                    .accessibilityLabel(String(localized: "更新订阅"))
-            }
-        } content: {
-            if let profile = store.activeProfile {
-                Button { store.page = .profiles } label: {
-                    Text(profile.name).font(.headline).lineLimit(1).truncationMode(.middle)
-                }
-                .buttonStyle(.plain)
-                Text("更新于 \(Format.relative(profile.updatedAt))").font(.caption).foregroundStyle(.secondary)
-                if let usage = profile.usage, let total = usage.total, total > 0 {
-                    let used = (usage.upload ?? 0) + (usage.download ?? 0)
-                    ProgressView(value: min(1, Double(used) / Double(total))).tint(Color.veerAccent)
-                    HStack {
-                        Text(verbatim: "\(Format.bytes(used)) / \(Format.bytes(total))").font(.caption).monospacedDigit()
-                        Spacer()
-                        if let expire = usage.expire {
-                            let days = max(0, Calendar.current.dateComponents([.day], from: .now, to: expire).day ?? 0)
-                            Text("剩 \(days) 天").font(.caption).foregroundStyle(days <= 3 ? Color.statusWarning : .secondary)
-                        }
-                    }
-                }
-            }
-        }
+private extension ProxyStore {
+    var tunStatus: String {
+        if tunActive { return String(localized: "运行中") }
+        if !settings.tun { return String(localized: "已关闭") }
+        return isRunning ? String(localized: "未生效，已改用系统代理") : String(localized: "启动后生效")
     }
 }
 
@@ -325,7 +440,13 @@ private struct ServicesCard: View {
             Grid(alignment: .leading, horizontalSpacing: Spacing.md, verticalSpacing: Spacing.xs) {
                 ForEach(ProxyStore.services, id: \.name) { service in
                     GridRow {
-                        Label(service.name, systemImage: service.symbol).font(.callout).lineLimit(1)
+                        // The symbols differ in width, which would leave the names out of line.
+                        Label {
+                            Text(service.name)
+                        } icon: {
+                            Image(systemName: service.symbol).frame(width: Spacing.lg + Spacing.xs)
+                        }
+                        .font(.callout).lineLimit(1)
                         delay(store.serviceDelays[service.name])
                     }
                 }
@@ -369,7 +490,7 @@ private struct GroupsCard: View {
     private let columns = [GridItem(.adaptive(minimum: 240), spacing: Spacing.md)]
 
     var body: some View {
-        Card(String(localized: "策略组"), symbol: "square.stack.3d.up") {
+        Card(String(localized: "overview.groups", defaultValue: "策略组"), symbol: "square.stack.3d.up") {
             Button { store.page = .proxies } label: { Image(systemName: "chevron.right") }
                 .buttonStyle(.borderless)
                 .help("打开代理页")
@@ -395,36 +516,5 @@ private struct GroupsCard: View {
                 }
             }
         }
-    }
-}
-
-/// Why the core could not start, its last lines, and the way back.
-private struct FailurePanel: View {
-    @Environment(ProxyStore.self) private var store
-    let message: String
-    let log: [String]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Spacing.md) {
-            StatusBadge(kind: .failure, text: message).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
-            if !log.isEmpty {
-                ScrollView {
-                    Text(log.suffix(12).joined(separator: "\n"))
-                        .font(Typography.codeSmall)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .frame(maxHeight: 180)
-                .padding(Spacing.sm)
-                .background(Color.codeBackground, in: RoundedRectangle(cornerRadius: Radius.small))
-            }
-            HStack {
-                SettingsLink { Text("打开设置…") }.neutralControl()
-                Spacer()
-                Button("重试") { store.start() }.primaryAction(.regular)
-            }
-        }
-        .panel()
     }
 }

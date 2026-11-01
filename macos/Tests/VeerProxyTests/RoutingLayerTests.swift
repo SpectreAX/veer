@@ -1,8 +1,8 @@
 import Foundation
 import Testing
 @testable import VeerCore
-import Yams
 @testable import VeerProxy
+import Yams
 
 struct RoutingLayerTests {
     static let profile = """

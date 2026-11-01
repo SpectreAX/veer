@@ -13,11 +13,11 @@ struct VeerApp: App {
                 .environment(store)
                 .environment(agent)
                 .tint(.veerAccent)
-                .frame(minWidth: 860, minHeight: 560)
+                .frame(minWidth: Metrics.minWindow.width, minHeight: Metrics.minWindow.height)
         }
         // The window's title is `MainView`'s own, in the row with its other controls.
         .windowStyle(.hiddenTitleBar)
-        .defaultSize(width: 1080, height: 720)
+        .defaultSize(Metrics.defaultWindow)
         .commands { VeerCommands(store: store, agent: agent) }
 
         MenuBarExtra {
@@ -103,8 +103,11 @@ enum DockPresence {
 struct VeerCommands: Commands {
     let store: ProxyStore
     let agent: AgentStore
+    @AppStorage("proxiesShowMap") private var proxiesShowMap = false
 
     var body: some Commands {
+        // Show and Hide Sidebar, as the row's button has no other way in from the keyboard.
+        SidebarCommands()
         CommandGroup(after: .appInfo) {
             Button("检查更新…") { Updater.shared.checkForUpdates() }
         }
@@ -127,14 +130,30 @@ struct VeerCommands: Commands {
         CommandGroup(replacing: .textEditing) {
             Button("查找") { ToolbarSearchFocus.focus() }
                 .keyboardShortcut("f")
+                .disabled(!store.canSearch)
         }
         CommandGroup(after: .sidebar) {
-            ForEach(Array(Page.allCases.enumerated()), id: \.element) { index, page in
+            ForEach(Array(Page.sidebarPages.enumerated()), id: \.element) { index, page in
                 Button(page.title) { store.page = page }.keyboardShortcut(KeyEquivalent(Character(String(index + 1))))
             }
+            Menu(Page.tools.title) {
+                ForEach(Page.allCases.filter { $0.parent == .tools }) { page in
+                    Button(page.title) { store.page = page }
+                }
+            }
+            Button("后退") { if let parent = store.page.parent { store.page = parent } }
+                .keyboardShortcut("[")
+                .disabled(store.page.parent == nil)
             Divider()
             Toggle("Agent 面板", isOn: Binding(get: { store.agentPanel }, set: { store.agentPanel = $0 }))
                 .keyboardShortcut("i", modifiers: [.command, .option])
+            Divider()
+            // The top row's `GlassSwitch`, for anyone who cannot or does not Tab to it. Choosing one
+            // goes to the page, so it never changes a view that isn't showing.
+            Toggle("网格", isOn: Binding(get: { !proxiesShowMap }, set: { _ in proxiesShowMap = false; store.page = .proxies }))
+                .disabled(!store.isRunning || store.groups.isEmpty)
+            Toggle("地图", isOn: Binding(get: { proxiesShowMap }, set: { _ in proxiesShowMap = true; store.page = .proxies }))
+                .disabled(!store.isRunning || store.groups.isEmpty)
             Divider()
         }
         CommandMenu("代理") {
@@ -144,11 +163,46 @@ struct VeerCommands: Commands {
             Toggle("系统代理", isOn: Binding(get: { store.systemProxyOn }, set: { store.setSystemProxy($0) }))
                 .keyboardShortcut("p", modifiers: [.command, .shift])
                 .disabled(!store.isRunning)
+            Toggle("TUN", isOn: Binding(get: { store.settings.tun }, set: { store.setTUN($0) }))
+            Toggle("允许局域网设备连接", isOn: Binding(get: { store.settings.allowLAN }, set: { store.settings.allowLAN = $0 }))
+            Divider()
+            Picker("使用的配置", selection: Binding(get: { store.activeProfileID }, set: { if let id = $0 { store.activate(id) } })) {
+                ForEach(store.profiles) { Text($0.name).tag(Optional($0.id)) }
+            }
+            .disabled(store.profiles.isEmpty)
+            Button("更新订阅") { if let profile = store.activeProfile { store.update(profile.id) } }
+                .disabled(store.activeProfile?.isSubscription != true || store.activeProfile.map { store.updatingProfiles.contains($0.id) } == true)
             Divider()
             Picker("模式", selection: Binding(get: { store.mode }, set: { store.setMode($0) })) {
                 ForEach(ProxyStore.Mode.allCases) { Text($0.title).tag($0) }
             }
             .disabled(!store.isRunning)
+            Divider()
+            pageCommands
         }
+    }
+
+    /// The toolbar's buttons for each page, which macOS expects in the menu bar too. Disabled, not
+    /// hidden, away from their page: a menu keeps its shape.
+    @ViewBuilder private var pageCommands: some View {
+        let groups = store.groups, allCollapsed = !groups.isEmpty && groups.allSatisfy { store.collapsedGroups.contains($0.name) }
+        Button(allCollapsed ? String(localized: "menu.expandGroups", defaultValue: "展开全部策略组")
+                            : String(localized: "menu.collapseGroups", defaultValue: "收起全部策略组")) { store.setAllCollapsed(!allCollapsed) }
+            .disabled(store.page != .proxies || groups.isEmpty || proxiesShowMap)
+        Divider()
+        Button(store.connectionsPaused ? String(localized: "menu.resumeConnections", defaultValue: "继续刷新连接")
+                                       : String(localized: "menu.pauseConnections", defaultValue: "暂停刷新连接")) { store.connectionsPaused.toggle() }
+            .disabled(store.page != .connections || !store.isRunning)
+        Button("关闭全部连接…") { store.confirmingCloseAllConnections = true }
+            .disabled(store.page != .connections || store.connections.isEmpty)
+        Divider()
+        Button(String(localized: "menu.clearRequests", defaultValue: "清空请求记录")) { agent.clearRequests() }
+            .disabled(store.page != .requests || store.requests.isEmpty)
+        Divider()
+        Button(store.logsPaused ? String(localized: "menu.resumeLogs", defaultValue: "继续记录日志")
+                                : String(localized: "menu.pauseLogs", defaultValue: "暂停记录日志")) { store.logsPaused.toggle() }
+            .disabled(store.page != .logs)
+        Button(String(localized: "menu.clearLogs", defaultValue: "清空日志")) { agent.clearLogs() }
+            .disabled(store.page != .logs || store.logs.isEmpty)
     }
 }

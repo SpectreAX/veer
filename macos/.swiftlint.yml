@@ -1,0 +1,106 @@
+# Violations that predate this file are in .swiftlint-baseline.json, so only new ones fail.
+# Regenerate it only after fixing old violations, never to make a new one pass.
+included:
+  - Sources
+  - Tests
+excluded:
+  - .build
+  - dist
+  - vendor
+  - third_party
+  - scripts
+  - Package.swift
+
+strict: true
+baseline: .swiftlint-baseline.json
+
+opt_in_rules:
+  - closure_spacing
+  - contains_over_first_not_nil
+  - empty_count
+  - empty_string
+  - explicit_init
+  - first_where
+  - last_where
+  - modifier_order
+  - redundant_nil_coalescing
+  - sorted_imports
+  - toggle_bool
+  - unneeded_parentheses_in_closure_argument
+  - vertical_whitespace_closing_braces
+
+disabled_rules:
+  # Multi-line literals end in a trailing comma here; .swiftformat enforces it.
+  - trailing_comma
+
+line_length:
+  warning: 160
+  error: 200
+  ignores_comments: true
+  ignores_urls: true
+
+# Ceilings, set just above ProxyStore. Their messages quote the current size, so a baseline entry
+# stops matching on any edit: lower limits would fail every change to an oversized file. The
+# function-level limits below stay low on purpose: an oversized function may not grow.
+file_length:
+  warning: 1600
+  error: 2000
+
+type_body_length:
+  warning: 1500
+  error: 2000
+
+function_body_length:
+  warning: 60
+  error: 100
+
+identifier_name:
+  min_length:
+    warning: 2
+    error: 1
+  excluded:
+    - i
+    - id
+    - n
+    - x
+    - y
+
+# Design rules a linter can actually check. Each one comes from docs/SPEC.md or VeerUI.
+custom_rules:
+  no_glass_outside_veerui:
+    name: "Liquid Glass outside VeerUI"
+    regex: '\.(glassEffect|glassProminent|glass)\b'
+    excluded: 'Sources/VeerUI/'
+    message: "Use primaryAction(), secondaryAction() or floatingPanel(): VeerUI holds the macOS 14 fallback (SPEC 10)."
+    severity: error
+  no_raw_color_outside_veerui:
+    name: "Raw color outside VeerUI"
+    regex: '\b(Color\((red|hue|white):|Color\(\.sRGB|NSColor\((srgbRed|red|calibratedRed):|Color\(hex)'
+    excluded: 'Sources/VeerUI/'
+    message: "Use a semantic system color or a VeerUI token, so light and dark both work."
+    severity: error
+  no_fixed_font_size:
+    name: "Fixed font size"
+    regex: '\.system\(size:'
+    message: "Use a semantic text style, or say why not in a comment and disable this rule on that line."
+    severity: warning
+  no_searchable:
+    name: "SwiftUI searchable"
+    regex: '\.searchable\('
+    included: 'Sources/'
+    message: "Crashes through NSToolbar when pages switch (1.0.3). Use toolbarSearch (SPEC 5)."
+    severity: error
+  no_inspector:
+    name: "SwiftUI inspector"
+    regex: '\.inspector\('
+    included: 'Sources/'
+    message: "NSSplitViewController throws if it changes mid-animation. Use AgentPanelColumn's plain column."
+    severity: error
+  no_literal_spacing:
+    name: "Literal spacing"
+    regex: '(\.padding\((\.\w+, *)?[1-9][0-9]*\)|\bspacing: *[1-9][0-9]*\b)'
+    included: 'Sources/(VeerApp|VeerUI)/'
+    message: "Use a Spacing token."
+    severity: warning
+
+reporter: xcode

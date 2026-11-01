@@ -9,6 +9,7 @@ struct SettingsView: View {
             ProxySettings().tabItem { Label(String(localized: "代理"), systemImage: "network") }
             DNSSettings().tabItem { Label(String(localized: "DNS"), systemImage: "globe") }
             TUNSettings().tabItem { Label(String(localized: "TUN"), systemImage: "shield.lefthalf.filled") }
+            CoreSettings().tabItem { Label(String(localized: "内核"), systemImage: "cpu") }
             AISettingsPane().tabItem { Label("AI", systemImage: "sparkles") }
             PrivacySettingsPane().tabItem { Label(String(localized: "隐私"), systemImage: "hand.raised") }
             HotKeySettings().tabItem { Label(String(localized: "快捷键"), systemImage: "keyboard") }
@@ -32,6 +33,7 @@ struct GeneralSettings: View {
                 Picker(String(localized: "语言"), selection: $language) {
                     ForEach(AppLanguage.allCases) { Text($0.title).tag($0) }
                 }
+                .neutralControl()
                 .onChange(of: language) { _, value in
                     value.apply()
                     languageChanged = value != AppLanguage.launched
@@ -94,6 +96,7 @@ struct ProxySettings: View {
                 Picker(String(localized: "日志级别"), selection: $store.settings.logLevel) {
                     ForEach(["error", "warning", "info", "debug"], id: \.self) { Text(verbatim: $0).tag($0) }
                 }
+                .neutralControl()
             } header: {
                 Text(String(localized: "内核"))
             } footer: {
@@ -159,6 +162,112 @@ enum AppLanguage: String, CaseIterable, Identifiable {
                              String(ProcessInfo.processInfo.processIdentifier), Bundle.main.bundleURL.path]
         try? process.run()
         NSApp.terminate(nil)
+    }
+}
+
+/// Which Mihomo runs, and getting a newer one from upstream.
+struct CoreSettings: View {
+    @Environment(ProxyStore.self) private var store
+    @State private var version: String?
+    @State private var phase = Phase.idle
+
+    enum Phase: Equatable {
+        case idle, checking, upToDate, installing, installed
+        case available(CoreRelease)
+        case failed(String)
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                LabeledContent(String(localized: "当前内核")) {
+                    let source = store.reportedBinary == store.binary ? String(localized: "随附版本") : String(localized: "已更新")
+                    Text(verbatim: [version ?? "—", source].joined(separator: " · "))
+                        .monospacedDigit()
+                }
+                HStack(spacing: Spacing.sm) {
+                    action
+                    Spacer()
+                    if phase == .checking || phase == .installing { ProgressView().controlSize(.small) }
+                    if store.hasUpdatedCore {
+                        Button(String(localized: "恢复随附版本")) {
+                            store.useBundledCore()
+                            phase = .idle
+                        }
+                        .disabled(phase == .installing)
+                    }
+                }
+                .neutralControl()
+                status
+            } footer: {
+                VStack(alignment: .leading, spacing: Spacing.xs) {
+                    Text(String(localized: "从 Mihomo 的官方发布下载，校验后保存在 Veer 自己的文件夹里，随附版本不变。"))
+                    Text(String(localized: "TUN 始终使用随附版本：后台服务只运行 Veer 自己签名的内核。"))
+                }
+                .font(.caption).foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .formStyle(.grouped)
+        .task(id: "\(store.coreRevision)-\(store.settings.tun)") { version = await AboutSettings.coreVersion(store.reportedBinary) }
+    }
+
+    @ViewBuilder private var action: some View {
+        if case .available(let release) = phase {
+            Button(String(localized: "更新到 \(release.version)")) { install(release) }.primaryAction(.regular)
+        } else {
+            Button(String(localized: "检查更新"), action: check)
+                .disabled(phase == .checking || phase == .installing)
+        }
+    }
+
+    @ViewBuilder private var status: some View {
+        switch phase {
+        case .upToDate:
+            StatusBadge(kind: .success, text: String(localized: "已是最新版本"), compact: true)
+        case .installing:
+            Text(String(localized: "正在下载并校验…")).font(.caption).foregroundStyle(.secondary)
+        case .installed:
+            Text(store.settings.tun ? String(localized: "关闭 TUN 后生效。") : String(localized: "启动内核时生效。"))
+                .font(.caption).foregroundStyle(.secondary)
+        case .failed(let message):
+            StatusBadge(kind: .failure, text: message, compact: true).fixedSize(horizontal: false, vertical: true)
+        default:
+            EmptyView()
+        }
+        // Whatever else is going on: a check shouldn't take the way to use what was just installed.
+        if store.coreNeedsRestart {
+            HStack(spacing: Spacing.sm) {
+                Text(String(localized: "重启内核后生效。")).font(.caption).foregroundStyle(.secondary)
+                Button(String(localized: "重启内核")) { store.restart() }.neutralControl()
+            }
+        }
+    }
+
+    private func check() {
+        phase = .checking
+        let port = store.isRunning ? store.proxyPort : nil
+        Task {
+            do {
+                let release = try await CoreUpdater.latestRelease(proxyPort: port)
+                let isAhead = CoreUpdater.isNewer(release.version, than: version)
+                phase = isAhead ? .available(release) : .upToDate
+            } catch {
+                phase = .failed(store.message(for: error))
+            }
+        }
+    }
+
+    private func install(_ release: CoreRelease) {
+        phase = .installing
+        Task {
+            do {
+                try await store.installCore(release)
+                phase = store.isRunning && !store.tunActive ? .idle : .installed
+            } catch {
+                phase = .failed(store.message(for: error))
+            }
+        }
     }
 }
 
@@ -263,6 +372,7 @@ struct DNSSettings: View {
                     Text(verbatim: "fake-ip").tag(RuntimeSettings.DNSMode.fakeIP)
                     Text(verbatim: "redir-host").tag(RuntimeSettings.DNSMode.redirHost)
                 }
+                .neutralControl()
             } footer: {
                 Text(String(localized: "大多数订阅自带 DNS 设置，默认沿用它们。fake-ip 解析更快，开启 TUN 时需要；redir-host 返回真实地址。"))
                     .font(.caption).foregroundStyle(.secondary)

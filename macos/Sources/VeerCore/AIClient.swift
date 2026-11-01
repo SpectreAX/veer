@@ -162,7 +162,6 @@ public final class URLSessionTransport: NSObject, AITransport, URLSessionTaskDel
                            newRequest request: URLRequest) async -> URLRequest? { nil }
 }
 
-
 /// A service request plus the wire format needed to read its answer.
 public struct AIRequest: Sendable {
     public let urlRequest: URLRequest

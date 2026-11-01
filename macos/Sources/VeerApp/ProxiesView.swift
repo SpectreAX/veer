@@ -2,7 +2,7 @@ import SwiftUI
 import VeerCore
 import VeerProxy
 
-/// Policy groups and their members: pick a node for a select group, test delays.
+/// The profiles, then policy groups and their members: pick a node for a select group, test delays.
 struct ProxiesView: View {
     @Environment(ProxyStore.self) private var store
     @State private var query = ""
@@ -20,14 +20,18 @@ struct ProxiesView: View {
     }
 
     var body: some View {
-        content
+        VStack(spacing: 0) {
+            if !store.profiles.isEmpty { ProfileBar() }
+            content.frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
             .pageToolbar(.proxies) {
-                Picker(String(localized: "显示方式"), selection: $showMap) {
-                    Label("网格", systemImage: "square.grid.2x2").tag(false)
-                    Label("地图", systemImage: "map").tag(true)
-                }
-                .pickerStyle(.segmented)
-                .help(String(localized: "按策略组或在地图上查看节点"))
+                Button { store.openImport() } label: { Label("导入配置", systemImage: "plus") }.help("导入配置（⌘O）")
+                GlassSwitch(label: String(localized: "显示方式"), selection: $showMap, options: [
+                    .init(value: false, title: String(localized: "网格"), symbol: "square.grid.2x2"),
+                    .init(value: true, title: String(localized: "地图"), symbol: "map"),
+                ])
+                // Neither shows anything until there are groups to show.
+                .disabled(!store.isRunning || store.groups.isEmpty)
                 let allCollapsed = !store.groups.isEmpty && store.groups.allSatisfy { store.collapsedGroups.contains($0.name) }
                 Button { store.setAllCollapsed(!allCollapsed) } label: {
                     allCollapsed ? Label("全部展开", systemImage: "rectangle.expand.vertical")
@@ -35,16 +39,18 @@ struct ProxiesView: View {
                 }
                 .help(allCollapsed ? String(localized: "展开全部策略组") : String(localized: "收起全部策略组"))
                 .disabled(store.groups.isEmpty || showMap)
+            } content: {
                 ToolbarSearchField(text: $query, prompt: Text("搜索节点或策略组"))
             }
     }
 
     @ViewBuilder private var content: some View {
-        if !store.isRunning {
-            StateView(symbol: "point.3.connected.trianglepath.dotted",
-                      title: store.phase == .starting ? String(localized: "内核正在启动…") : String(localized: "内核没有运行"),
-                      message: store.activeProfile == nil ? String(localized: "先导入一个配置。") : String(localized: "启动后可以在这里切换节点和测试延迟。"),
-                      actionTitle: store.activeProfile == nil || store.phase == .starting ? nil : String(localized: "启动")) { store.start() }
+        if store.profiles.isEmpty {
+            StateView(symbol: "tray.and.arrow.down", title: String(localized: "还没有配置"),
+                      message: String(localized: "支持订阅链接、Mihomo / Clash 配置文件、Base64 订阅内容和节点分享链接。"),
+                      actionTitle: String(localized: "导入配置…")) { store.openImport() }
+        } else if !store.isRunning {
+            CoreNotRunningView(symbol: "point.3.connected.trianglepath.dotted", message: String(localized: "启动后可以在这里切换节点和测试延迟。"))
         } else if store.groups.isEmpty {
             StateView(symbol: "square.stack.3d.up.slash", title: String(localized: "这个配置没有策略组"),
                       message: String(localized: "所有流量按规则直接发往节点或直连。"))
@@ -59,7 +65,6 @@ struct ProxiesView: View {
                         .frame(minHeight: 320)
                 }
                 LazyVStack(alignment: .leading, spacing: Spacing.lg) {
-                    if let notice = store.notice { StatusBadge(kind: .warning, text: notice) }
                     ForEach(shownGroups) { GroupSection(group: $0) }
                 }
                 .padding(Spacing.xl)
@@ -221,19 +226,29 @@ private struct NodeTile: View {
 
 /// Sets where a node exits when its name does not say, or goes back to reading the name.
 private struct RegionMarkMenu: View {
+    let node: String
+
+    var body: some View {
+        Menu("标记地区") { RegionMarkItems(node: node) }
+    }
+}
+
+struct RegionMarkItems: View {
     @Environment(ProxyStore.self) private var store
     let node: String
 
     var body: some View {
         let marked = store.regionMarks[node]
-        Menu("标记地区") {
-            Button { store.markRegion(node, code: nil) } label: {
-                if marked == nil { Label("按名称识别", systemImage: "checkmark") } else { Text("按名称识别") }
-            }
-            Divider()
-            ForEach(NodeLocator.places.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) { place in
-                Button { store.markRegion(node, code: place.code) } label: {
-                    if marked == place.code { Label("\(place.flag) \(place.name)", systemImage: "checkmark") } else { Text(verbatim: "\(place.flag) \(place.name)") }
+        Button { store.markRegion(node, code: nil) } label: {
+            if marked == nil { Label("按名称识别", systemImage: "checkmark") } else { Text("按名称识别") }
+        }
+        Divider()
+        ForEach(NodeLocator.places.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) { place in
+            Button { store.markRegion(node, code: place.code) } label: {
+                if marked == place.code {
+                    Label("\(place.flag) \(place.name)", systemImage: "checkmark")
+                } else {
+                    Text(verbatim: "\(place.flag) \(place.name)")
                 }
             }
         }

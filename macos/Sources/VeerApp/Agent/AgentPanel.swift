@@ -43,6 +43,8 @@ struct AgentPanel: View {
                     .truncationMode(.tail)
             }
             .menuStyle(.borderlessButton)
+            // A title, not an action: the green stays on the small areas that are.
+            .tint(.primary)
             .disabled(agent.sessions.isEmpty)
             .help(String(localized: "切换对话"))
             .accessibilityLabel(String(localized: "切换对话"))

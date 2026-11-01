@@ -38,6 +38,8 @@ final class AgentStore {
     var editingGroup: GroupEditTarget?
     var pendingDeletion: Session?
     var toast: Toast?
+    /// Edit → Undo and Redo. `MainView` gives it the window's undo manager.
+    @ObservationIgnored let changes = ReversibleChanges()
     /// Turns whose candidate is being rebuilt after an accept/reject toggle; writing waits.
     var revalidating: Set<UUID> = []
 
@@ -96,6 +98,7 @@ final class AgentStore {
             selectedID = sessions.first?.id
             turnBaseline = sessions.first?.turns.count ?? 0
         }
+        proxy.editsRemoved = { [weak self] ids in self?.editsWereRemoved(ids) }
     }
 
     // MARK: Derived state
@@ -184,6 +187,7 @@ final class AgentStore {
     func select(_ id: UUID) { selectedID = id }
 
     func delete(_ session: Session) {
+        changes.forget(group: session.id)
         tasks[session.id]?.cancel()
         sessions.removeAll { $0.id == session.id }
         sessionStore.delete(session.id)
@@ -476,6 +480,7 @@ final class AgentStore {
         current = session
         showToast(applyMessage(count: proposal.accepted.count), undoable: true)
         announce(String(localized: "已应用"))
+        recordApplied(turnID: id, in: session.id)
     }
 
     private func applyMessage(count: Int) -> String {
@@ -541,6 +546,12 @@ final class AgentStore {
             }
             if let run = self?.runtimeRun(sessionID, turnID), run.canUndo {
                 self?.showToast(String(localized: "已执行，可以撤销"), undoable: true)
+                // Once: there is no redo for a node or mode put back.
+                self?.changes.made(String(localized: "切换节点或模式"), id: turnID, group: sessionID, undoTo: false) { [weak self] _ in
+                    if self?.selectedID != sessionID { self?.select(sessionID) }
+                    self?.undoRuntime(sessionID: sessionID, turnID: turnID)
+                    return false
+                }
             }
         }
     }
@@ -596,6 +607,7 @@ final class AgentStore {
                     }
                 }
                 self?.showToast(String(localized: "已撤销"))
+                self?.announce(String(localized: "已撤销"))
             } catch {
                 self?.updateRun(sessionID, turnID) { $0.undone = false }
                 self?.showToast(self?.message(for: error) ?? "")
@@ -603,35 +615,137 @@ final class AgentStore {
         }
     }
 
+    /// Emptied, with Edit → Undo to bring it back: history the core can't send again, and a quiet
+    /// way back is less of an interruption than asking first.
+    func clearLogs() {
+        guard !proxy.logs.isEmpty else { return }
+        var saved = proxy.logs
+        proxy.clearLogs()
+        recordClear(String(localized: "menu.clearLogs", defaultValue: "清空日志")) { [weak self] restored in
+            guard let proxy = self?.proxy else { return false }
+            if restored {
+                proxy.restoreLogs(saved)
+            } else {
+                saved = proxy.logs
+                proxy.clearLogs()
+            }
+            return true
+        }
+    }
+
+    func clearRequests() {
+        guard !proxy.requests.isEmpty else { return }
+        var saved = proxy.requests
+        proxy.clearRequests()
+        recordClear(String(localized: "menu.clearRequests", defaultValue: "清空请求记录")) { [weak self] restored in
+            guard let proxy = self?.proxy else { return false }
+            if restored {
+                proxy.restoreRequests(saved)
+            } else {
+                saved = proxy.requests
+                proxy.clearRequests()
+            }
+            return true
+        }
+    }
+
+    private func recordClear(_ name: String, change: @escaping @MainActor (Bool) -> Bool) {
+        changes.made(name, id: UUID(), group: Self.historyGroup, undoTo: true, change: change)
+        showToast(String(localized: "已清空，可以用“撤销”恢复。"))
+        announce(String(localized: "已清空，可以用“撤销”恢复。"))
+    }
+
+    /// For what belongs to no conversation, so that deleting one leaves these alone.
+    private static let historyGroup = UUID()
+
     /// The last applied change of this conversation, turned off in "my routing"; or, when the
     /// latest thing done was a runtime action, that action put back.
     func undo() {
-        guard var session = current, let profileID = session.profileID, !isRunning else { return }
+        guard let session = current, !refusedWhileBusy else { return }
         let lastRuntime = session.turns.lastIndex { if case .runtime(let run) = $0.outcome { run.canUndo } else { false } }
         let lastWrite = session.turns.lastIndex { $0.proposal?.status == .written }
         if let lastRuntime, lastRuntime > (lastWrite ?? -1) {
-            undoRuntime(sessionID: session.id, turnID: session.turns[lastRuntime].id)
+            undoRuntime(turnID: session.turns[lastRuntime].id)
             return
         }
         guard let index = lastWrite else { return }
-        proxy.setEdit(session.turns[index].id, enabled: false, in: profileID)
-        session.turns[index].proposal?.status = .undone
-        session.turns.append(Turn(prompt: "", mode: .local, steps: [], outcome: .note(String(localized: "已撤销这项修改，分流恢复到之前的状态。"))))
-        session.draftText = (try? proxy.effectiveText(of: profileID)) ?? session.draftText
-        current = session
-        showToast(String(localized: "已撤销"))
+        let id = session.turns[index].id
+        // As the menu would, so that it moves on to Redo. Else something else is next there, and this
+        // change's own item goes, as it would no longer do anything.
+        if !changes.undoIfNext(id), setApplied(false, turnID: id, in: session.id) { changes.forget(id) }
     }
 
     /// Turns the most recently undone change back on.
     func redo() {
-        guard var session = current, let profileID = session.profileID, !isRunning,
+        guard let session = current, !refusedWhileBusy,
               let index = session.turns.lastIndex(where: { $0.proposal?.status == .undone }) else { return }
-        proxy.setEdit(session.turns[index].id, enabled: true, in: profileID)
-        session.turns[index].proposal?.status = .written
-        session.turns.append(Turn(prompt: "", mode: .local, steps: [], outcome: .note(String(localized: "已重新应用这项修改。"))))
+        let id = session.turns[index].id
+        guard !changes.redoIfNext(id), setApplied(true, turnID: id, in: session.id) else { return }
+        changes.forget(id)
+        recordApplied(turnID: id, in: session.id)
+    }
+
+    private var refusedWhileBusy: Bool {
+        if isRunning { showToast(String(localized: "Agent 正在处理，完成后再试。")) }
+        return isRunning
+    }
+
+    /// Gone from "my routing", so nothing can turn these on or off: no menu item or button offers to.
+    private func editsWereRemoved(_ ids: [UUID]) {
+        for id in ids { changes.forget(id) }
+        for index in sessions.indices {
+            var changed = false
+            for turn in sessions[index].turns.indices where ids.contains(sessions[index].turns[turn].id) {
+                let status = sessions[index].turns[turn].proposal?.status
+                guard status == .written || status == .undone else { continue }
+                sessions[index].turns[turn].proposal?.status = .discarded
+                changed = true
+            }
+            if changed { scheduleSave(sessions[index], immediately: true) }
+        }
+    }
+
+    private func recordApplied(turnID: UUID, in sessionID: UUID) {
+        changes.made(String(localized: "分流修改"), id: turnID, group: sessionID, undoTo: false) { [weak self] applied in
+            self?.setApplied(applied, turnID: turnID, in: sessionID) ?? false
+        }
+    }
+
+    /// A change on or off in "my routing", shown in its own conversation, as Edit → Undo works from
+    /// any page and conversation. False when it can't be done now.
+    private func setApplied(_ applied: Bool, turnID: UUID, in sessionID: UUID) -> Bool {
+        guard sessions.contains(where: { $0.id == sessionID }) else { return false }
+        if selectedID != sessionID { select(sessionID) }
+        // Not refused: the menu has already moved on, and a later undo would take an older change.
+        if let task = tasks[sessionID] {
+            showToast(applied ? String(localized: "Agent 正在处理，完成后会重做。") : String(localized: "Agent 正在处理，完成后会撤销。"))
+            Task { [weak self] in
+                await task.value
+                _ = self?.setApplied(applied, turnID: turnID, in: sessionID)
+            }
+            return true
+        }
+        guard var session = current, let profileID = session.profileID,
+              let index = session.turns.firstIndex(where: { $0.id == turnID }),
+              session.turns[index].proposal?.status == (applied ? .undone : .written) else { return false }
+        // Deleted from "my routing" since: there is nothing left to turn on or off.
+        guard proxy.setEdit(turnID, enabled: applied, in: profileID) else {
+            editsWereRemoved([turnID])
+            showToast(String(localized: "这项修改已经从“我的分流”里删除。"))
+            return false
+        }
+        session.turns[index].proposal?.status = applied ? .written : .undone
+        if applied {
+            session.turns.append(Turn(prompt: "", mode: .local, steps: [], outcome: .note(String(localized: "已重新应用这项修改。"))))
+        } else {
+            session.turns.append(Turn(prompt: "", mode: .local, steps: [], outcome: .note(String(localized: "已撤销这项修改，分流恢复到之前的状态。"))))
+        }
         session.draftText = (try? proxy.effectiveText(of: profileID)) ?? session.draftText
         current = session
-        showToast(String(localized: "已重做"))
+        let done = applied ? String(localized: "已重做") : String(localized: "已撤销")
+        showToast(done)
+        announce(done)
+        return true
     }
 
     var canUndo: Bool {
@@ -644,8 +758,9 @@ final class AgentStore {
 
     /// Undoes one runtime turn from its own card.
     func undoRuntime(turnID: UUID) {
-        guard let id = current?.id else { return }
+        guard let id = current?.id, !changes.undoIfNext(turnID) else { return }
         undoRuntime(sessionID: id, turnID: turnID)
+        changes.forget(turnID)
     }
     var canRedo: Bool { current?.turns.contains { $0.proposal?.status == .undone } == true && !isRunning }
 

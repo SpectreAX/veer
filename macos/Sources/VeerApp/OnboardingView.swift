@@ -20,12 +20,7 @@ struct OnboardingView: View {
         }
         .padding(Spacing.xxl)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background {
-            // A quiet wash of the accent for the glass to pick up.
-            LinearGradient(colors: [Color.veerAccent.opacity(0.16), Color.surface, Color.statusInfo.opacity(0.10)],
-                           startPoint: .topLeading, endPoint: .bottomTrailing)
-                .ignoresSafeArea()
-        }
+        .background(Color.surface.ignoresSafeArea())
     }
 }
 
@@ -143,7 +138,13 @@ private struct StartStep: View {
                 Spacer()
                 if store.phase == .starting { ProgressView().controlSize(.small) }
                 Toggle("开启代理", isOn: Binding(get: { store.isRunning && store.systemProxyOn }, set: { on in
-                    if on { store.startWithSystemProxy() } else { store.stop() }
+                    if on {
+                        store.startWithSystemProxy()
+                    } else {
+                        // Off here means the proxy too, not only for this run.
+                        store.setSystemProxy(false)
+                        store.stop()
+                    }
                 }))
                 .toggleStyle(.switch)
                 .controlSize(.large)
@@ -151,14 +152,23 @@ private struct StartStep: View {
                 .disabled(store.phase == .starting)
             }
             .panel()
-            if case .failed(let message, _) = store.phase {
-                StatusBadge(kind: .failure, text: message).fixedSize(horizontal: false, vertical: true)
+            // With a way forward: another proxy app holding the port is likely at this point. The
+            // notice is why the switch went back off when the core did start.
+            if case .failed(let message, let log) = store.phase {
+                // Short, as this step has no scroll of its own for the smallest window.
+                FailurePanel(message: message, log: log, logHeight: 72, retryIsDefault: true)
             }
+            if let notice = store.notice { StatusBadge(kind: .warning, text: notice).fixedSize(horizontal: false, vertical: true) }
             Text("可以随时在菜单栏关闭。").font(.caption).foregroundStyle(.secondary)
             HStack {
                 Button("返回") { store.onboarding = .routing }.neutralControl()
                 Spacer()
-                Button("完成") { store.onboarding = nil }.keyboardShortcut(.defaultAction).primaryAction()
+                // Done is still there after a failure, but trying again is what comes next.
+                if case .failed = store.phase {
+                    Button("完成") { store.onboarding = nil }.neutralControl()
+                } else {
+                    Button("完成") { store.onboarding = nil }.keyboardShortcut(.defaultAction).primaryAction()
+                }
             }
         }
     }

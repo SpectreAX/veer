@@ -62,7 +62,7 @@ struct ComposerView: View {
                             highlighted = (highlighted + delta + completions.count) % completions.count
                         },
                         onPick: { pick(completions[min(highlighted, completions.count - 1)]) },
-                        onSubmit: { store.send() }
+                        onSubmit: { store.send() },
                     )
                     .frame(height: height)
                     .disabled(store.isRunning)

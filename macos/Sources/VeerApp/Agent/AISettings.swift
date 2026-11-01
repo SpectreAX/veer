@@ -1,7 +1,6 @@
 import SwiftUI
 import VeerCore
 
-
 struct AISettingsPane: View {
     @Environment(AgentStore.self) private var store
     @State private var key = ""
@@ -64,8 +63,6 @@ struct AISettingsPane: View {
                         status(fetchState, passed: String(localized: "已获取 \(store.settings.fetchedModels.count) 个模型"))
                     }
                 }
-                Text(String(localized: "深度思考让模型先推理再回答，更擅长理解复杂指令；强度越高越慢、费用越高。DeepSeek V4、Claude、Gemini 2.5 Flash、GPT-5 可选强度，GLM 只能开关，o4-mini、R1 等推理模型始终深度思考。"))
-                    .font(.caption).foregroundStyle(.secondary)
             }
             SearchSettingsSection()
             Section {
@@ -75,7 +72,7 @@ struct AISettingsPane: View {
             }
         }
         .formStyle(.grouped)
-        .toggleStyle(.checkbox)
+        .accentCheckbox()
     }
 
     @ViewBuilder private var keyRow: some View {
@@ -162,7 +159,7 @@ struct SearchSettingsSection: View {
         @Bindable var store = store
         Section {
             Toggle(String(localized: "允许 AI 联网搜索"), isOn: $store.searchSettings.enabled)
-                .toggleStyle(.checkbox)
+                .accentCheckbox()
             Picker(String(localized: "搜索服务"), selection: $store.searchSettings.provider) {
                 ForEach(SearchProvider.allCases) { Text($0.title).tag($0) }
             }
@@ -196,7 +193,7 @@ struct SearchSettingsSection: View {
                         .onSubmit(save)
                     HStack {
                         Spacer()
-                        Button(String(localized: "保存"), action: save).buttonStyle(.borderedProminent).tint(.veerAccent)
+                        Button(String(localized: "保存"), action: save).buttonStyle(.borderedProminent).tint(.accentFill)
                             .disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
                 }
@@ -242,11 +239,11 @@ struct KeyEntryRow: View {
         VStack(alignment: .leading, spacing: Spacing.xs) {
             HStack(spacing: Spacing.md) {
                 Toggle(String(localized: "记住 API Key"), isOn: $remember)
-                    .toggleStyle(.checkbox)
+                    .accentCheckbox()
                 Spacer()
                 Button(String(localized: "保存"), action: save)
                     .buttonStyle(.borderedProminent)
-                    .tint(.veerAccent)
+                    .tint(.accentFill)
                     .disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             if let error {
@@ -302,7 +299,7 @@ struct PrivacySettingsPane: View {
             }
             Section {
                 Toggle(String(localized: "发送现有规则中的具体域名和 IP"), isOn: Binding(get: { store.shareRuleLiterals }, set: { store.shareRuleLiterals = $0 }))
-                    .toggleStyle(.checkbox)
+                    .accentCheckbox()
                 Text(String(localized: "关闭时这些值显示为 <域名N>、<IPN>。打开后 AI 能看到你现有的分流目标，可能包含内网或个人常用域名。")).font(.caption).foregroundStyle(.secondary)
             }
             Section {

@@ -1,7 +1,7 @@
 import Foundation
 import Testing
-@testable import VeerProxy
 import VeerCore
+@testable import VeerProxy
 
 struct MapCountryTests {
     static let countries: [MapCountry] = {

@@ -24,6 +24,26 @@ public enum HelperState: Equatable, Sendable {
     /// Installed, but an older version than this Veer expects.
     case outdated
     case unavailable(String)
+
+    /// What the person has to agree to before TUN can use the helper.
+    public enum TUNConsent: Equatable, Sendable {
+        case install, approve
+    }
+
+    /// Whether this state is the helper becoming usable while TUN waits for it, so that the running
+    /// core should start again through it. Only on the change: a ready helper that failed would
+    /// otherwise restart the core every time this is asked.
+    public func finishesTUNSetup(from previous: HelperState?, tunEnabled: Bool, tunActive: Bool, running: Bool) -> Bool {
+        self == .ready && previous != nil && previous != .ready && tunEnabled && !tunActive && running
+    }
+
+    public var tunConsent: TUNConsent? {
+        switch self {
+        case .notInstalled: .install
+        case .needsApproval: .approve
+        case .ready, .outdated, .unavailable: nil
+        }
+    }
 }
 
 /// Talks to the privileged helper: registers it with SMAppService (or installs it by hand when

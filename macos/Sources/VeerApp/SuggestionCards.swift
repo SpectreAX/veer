@@ -47,7 +47,9 @@ struct SuggestionCards: View {
                 Image(systemName: "lightbulb").foregroundStyle(Color.veerAccent).font(.title3)
                 VStack(alignment: .leading, spacing: Spacing.xxs) {
                     Text(text.title).font(.headline).lineLimit(1).truncationMode(.middle)
-                    Text(text.detail).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    // Held to a few lines, as in the side panel: at its full height, this card pushed the
+                    // Agent page, which has no scroll of its own, past the window's top edge.
+                    Text(text.detail).font(.callout).foregroundStyle(.secondary).lineLimit(3)
                 }
                 Spacer(minLength: Spacing.sm)
                 askButton(suggestion, prompt: text.prompt)

@@ -4,37 +4,43 @@ import UniformTypeIdentifiers
 import VeerCore
 import VeerProxy
 
-/// Profiles: which one runs, updating subscriptions, importing and removing.
-struct ProfilesView: View {
+/// The top of the proxies page: every profile as a card, a click from running. It stays there with the
+/// core stopped. In a row while they fit, else one above the other, scrolling past a few so that the
+/// nodes below keep the room.
+struct ProfileBar: View {
     @Environment(ProxyStore.self) private var store
     @State private var pendingDeletion: Profile?
     @State private var details: Profile?
 
+    private static let tileWidth: CGFloat = 320
+    private static let stackedHeight: CGFloat = 220
+
     var body: some View {
-        Group {
-            if store.profiles.isEmpty {
-                StateView(symbol: "tray.and.arrow.down", title: String(localized: "还没有配置"),
-                          message: String(localized: "支持订阅链接、Mihomo / Clash 配置文件、Base64 订阅内容和节点分享链接。"),
-                          actionTitle: String(localized: "导入配置…")) { store.openImport() }
-            } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: Spacing.md) {
-                        if let notice = store.notice { StatusBadge(kind: .warning, text: notice).fixedSize(horizontal: false, vertical: true) }
-                        if let effective = store.effective { EffectiveWarnings(effective: effective) }
-                        ForEach(store.profiles) { profile in
-                            ProfileRow(profile: profile, active: profile.id == store.activeProfileID,
-                                       showDetails: { details = profile }, delete: { pendingDeletion = profile })
-                        }
-                    }
-                    .padding(Spacing.xl)
-                    .frame(maxWidth: Metrics.readingWidth)
-                    .frame(maxWidth: .infinity)
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: Spacing.sm) {
+                    tiles(width: Self.tileWidth)
                 }
+                ScrollViewReader { reader in
+                    ScrollView {
+                        VStack(spacing: Spacing.sm) { tiles(width: nil) }
+                    }
+                    .onAppear { if let active = store.activeProfileID { reader.scrollTo(active) } }
+                    .onChange(of: store.activeProfileID) { _, active in if let active { reader.scrollTo(active) } }
+                }
+                .frame(maxHeight: Self.stackedHeight)
             }
+            // Cards as tall as each other, and the stack as tall as it needs up to its limit.
+            .fixedSize(horizontal: false, vertical: true)
+            // Which would otherwise center a row with room to spare.
+            .frame(maxWidth: .infinity, alignment: .leading)
+            // Held to a few lines, with the rest in a tooltip: this page has no scroll of its own up
+            // here, and wrapped text at its full height pushes the whole window out of place.
+            if let notice = store.notice { StatusBadge(kind: .warning, text: notice).lineLimit(3).help(notice) }
+            if let effective = store.effective { EffectiveWarnings(effective: effective) }
         }
-        .pageToolbar(.profiles) {
-            Button { store.openImport() } label: { Label("导入配置", systemImage: "plus") }.help("导入配置（⌘O）")
-        }
+        .padding(.horizontal, Spacing.xl)
+        .padding(.top, Spacing.sm)
         .sheet(item: $details) { ProfileDetailSheet(profile: $0) }
         .alert("删除配置？", isPresented: Binding(get: { pendingDeletion != nil }, set: { if !$0 { pendingDeletion = nil } })) {
             Button("删除", role: .destructive) { if let profile = pendingDeletion { store.delete(profile.id) } }
@@ -45,6 +51,14 @@ struct ProfilesView: View {
                  : String(localized: "配置文件、订阅链接和“我的分流”会从本机删除。"))
         }
     }
+
+    private func tiles(width: CGFloat?) -> some View {
+        ForEach(store.profiles) { profile in
+            ProfileTile(profile: profile, active: profile.id == store.activeProfileID, width: width,
+                        showDetails: { details = profile }, delete: { pendingDeletion = profile })
+                .id(profile.id)
+        }
+    }
 }
 
 /// What the layer could not do for the profile in use.
@@ -53,87 +67,129 @@ private struct EffectiveWarnings: View {
 
     var body: some View {
         if effective.conflictCount > 0 {
-            StatusBadge(kind: .warning, text: String(localized: "“我的分流”里有 \(effective.conflictCount) 项修改未能用到更新后的订阅上，打开“节点与分流”查看原因。"))
-                .fixedSize(horizontal: false, vertical: true)
+            let text = String(localized: "“我的分流”里有 \(effective.conflictCount) 项修改未能用到更新后的订阅上，打开“节点与分流”查看原因。")
+            StatusBadge(kind: .warning, text: text)
+                .lineLimit(3)
+                .help(text)
         }
         if !effective.emptiedGroups.isEmpty {
             let groups = effective.emptiedGroups.formatted(.list(type: .and))
-            StatusBadge(kind: .warning, text: String(localized: "取消勾选节点后，这些策略组没有节点了，暂时改为直连：\(groups)"))
-                .fixedSize(horizontal: false, vertical: true)
+            let text = String(localized: "取消勾选节点后，这些策略组没有节点了，暂时改为直连：\(groups)")
+            StatusBadge(kind: .warning, text: text)
+                .lineLimit(3)
+                .help(text)
         }
         if !effective.keptNodes.isEmpty {
             let nodes = effective.keptNodes.formatted(.list(type: .and))
-            StatusBadge(kind: .info, text: String(localized: "有规则直接使用这些节点，所以它们没有被去掉：\(nodes)"))
-                .fixedSize(horizontal: false, vertical: true)
+            let text = String(localized: "有规则直接使用这些节点，所以它们没有被去掉：\(nodes)")
+            StatusBadge(kind: .info, text: text)
+                .lineLimit(3)
+                .help(text)
         }
     }
 }
 
-private struct ProfileRow: View {
+/// One profile: the card chooses it, as a node's does, and updating and the rest sit beside that.
+private struct ProfileTile: View {
     @Environment(ProxyStore.self) private var store
     let profile: Profile
     let active: Bool
+    /// Fixed in a row; the whole width when stacked.
+    let width: CGFloat?
     let showDetails: () -> Void
     let delete: () -> Void
+    @State private var hovering = false
 
-    var body: some View {
-        HStack(spacing: Spacing.md) {
-            Button { store.activate(profile.id) } label: {
-                Image(systemName: active ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(active ? Color.veerAccent : Color.secondary)
-                    .font(.title3)
-                    .contentShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .disabled(active)
-            .help(active ? String(localized: "正在使用这个配置") : String(localized: "使用这个配置"))
-            .accessibilityLabel(active ? String(localized: "正在使用这个配置") : String(localized: "使用这个配置"))
-            VStack(alignment: .leading, spacing: Spacing.xxs) {
-                HStack(spacing: Spacing.xs) {
-                    Text(profile.name).font(.headline).lineLimit(1).truncationMode(.middle)
-                    Tag(text: profile.isSubscription ? String(localized: "订阅") : String(localized: "本地"))
-                    if active { Tag(text: String(localized: "使用中"), tint: .statusSuccess) }
-                }
-                Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                if let error = profile.updateError {
-                    StatusBadge(kind: .warning, text: String(localized: "自动更新失败：\(error)"), compact: true)
-                        .lineLimit(1)
-                }
-            }
-            Spacer(minLength: Spacing.sm)
-            if store.updatingProfiles.contains(profile.id) { ProgressView().controlSize(.small) }
-            if profile.isSubscription {
-                Button("更新") { store.update(profile.id) }
-                    .secondaryAction()
-                    .disabled(store.updatingProfiles.contains(profile.id))
-                    .help(String(localized: "下次自动更新：\(profile.nextUpdate.formatted(date: .abbreviated, time: .shortened))"))
-            }
-            if !active {
-                Button("使用") { store.activate(profile.id) }.secondaryAction()
-            }
-            Menu {
-                Button("节点与分流…", action: showDetails)
-                Button("导出配置…") { ConfigExport.run(profile, store: store) }
-                Divider()
-                Button("删除…", role: .destructive, action: delete)
-            } label: { Image(systemName: "ellipsis") }
-            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().neutralControl()
-            .accessibilityLabel(String(localized: "更多操作"))
-        }
-        .panel(padding: Spacing.md)
-        .contentShape(Rectangle())
-        .onTapGesture(count: 2, perform: showDetails)
+    private static let nameBesideTag: CGFloat = 96
+
+    private var updating: Bool { store.updatingProfiles.contains(profile.id) }
+
+    private var name: some View {
+        Text(profile.name).font(.headline).lineLimit(1).truncationMode(.middle).help(profile.name)
     }
 
-    private var detail: String {
-        var parts = [String(localized: "\(profile.nodeCount) 个节点"), String(localized: "更新于 \(Format.relative(profile.updatedAt))")]
+    var body: some View {
+        HStack(spacing: Spacing.xs) {
+            Button { if !active { store.activate(profile.id) } } label: { summary }
+                .buttonStyle(.plain)
+                .help(profile.updateError ?? (active ? String(localized: "正在使用这个配置") : String(localized: "使用这个配置")))
+                .accessibilityLabel(String(localized: "\(profile.name)，\(profile.updateError ?? usageLine ?? nodeLine)"))
+                .accessibilityAddTraits(active ? .isSelected : [])
+            if profile.isSubscription {
+                Group {
+                    if updating {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Button { store.update(profile.id) } label: { Image(systemName: "arrow.clockwise") }
+                            .buttonStyle(.borderless)
+                            .help(String(localized: "下次自动更新：\(profile.nextUpdate.formatted(date: .abbreviated, time: .shortened))"))
+                            .accessibilityLabel(String(localized: "更新订阅"))
+                    }
+                }
+                .frame(width: Spacing.xl)
+            }
+            Menu { actions } label: { Image(systemName: "ellipsis") }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().neutralControl()
+                .help("更多操作")
+                .accessibilityLabel(String(localized: "更多操作"))
+        }
+        .padding(.horizontal, Spacing.md)
+        .padding(.vertical, Spacing.sm)
+        .frame(minWidth: width, maxWidth: width ?? .infinity)
+        .frame(maxHeight: .infinity)
+        .background(active ? Color.veerAccent.opacity(0.12) : hovering ? Color.subtleFill : Color.clear,
+                    in: RoundedRectangle(cornerRadius: Radius.medium, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Radius.medium, style: .continuous)
+            .strokeBorder(active ? Color.veerAccent.opacity(0.5) : Color.separatorLine))
+        .onHover { hovering = $0 }
+        .contextMenu { actions }
+    }
+
+    private var summary: some View {
+        HStack(spacing: Spacing.sm) {
+            Image(systemName: active ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(active ? Color.veerAccent : Color.secondary)
+            VStack(alignment: .leading, spacing: Spacing.xxs) {
+                // The tag gives way to the name when there is no room for both.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: Spacing.xs) {
+                        name.frame(minWidth: Self.nameBesideTag, alignment: .leading)
+                        Tag(text: profile.isSubscription ? String(localized: "订阅") : String(localized: "本地")).fixedSize()
+                    }
+                    name
+                }
+                if let error = profile.updateError {
+                    StatusBadge(kind: .warning, text: String(localized: "自动更新失败：\(error)"), compact: true).lineLimit(2)
+                } else {
+                    Text(nodeLine).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                if let usageLine { Text(usageLine).font(.caption).foregroundStyle(.secondary).monospacedDigit().lineLimit(1) }
+            }
+            Spacer(minLength: 0)
+        }
+        .contentShape(Rectangle())
+    }
+
+    @ViewBuilder private var actions: some View {
+        Button("节点与分流…", action: showDetails)
+        Button("导出配置…") { ConfigExport.run(profile, store: store) }
+        Divider()
+        Button("删除…", role: .destructive, action: delete)
+    }
+
+    private var nodeLine: String {
+        [String(localized: "\(profile.nodeCount) 个节点"), String(localized: "更新于 \(Format.relative(profile.updatedAt))")].joined(separator: " · ")
+    }
+
+    private var usageLine: String? {
+        var parts: [String] = []
         if let usage = profile.usage, let total = usage.total, total > 0 {
             parts.append(String(localized: "已用 \(Format.bytes(usage.used ?? 0)) / \(Format.bytes(total))"))
         }
         if let expire = profile.usage?.expire {
             parts.append(String(localized: "\(expire.formatted(date: .numeric, time: .omitted)) 到期"))
         }
-        return parts.joined(separator: " · ")
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 }
 
@@ -193,13 +249,26 @@ struct ProfileDetailSheet: View {
                 StateView(symbol: "circle.dashed", title: String(localized: "这个配置里没有节点"))
             } else {
                 List(shownNodes, id: \.self) { name in
-                    Toggle(isOn: Binding(get: { !layer.excludedNodes.contains(name) }, set: { included in
-                        store.setNode(name, included: included, in: profile.id)
-                        reload()
-                    })) {
-                        Text(name).lineLimit(1).truncationMode(.middle)
+                    HStack(spacing: Spacing.sm) {
+                        Toggle(isOn: Binding(get: { !layer.excludedNodes.contains(name) }, set: { included in
+                            store.setNode(name, included: included, in: profile.id)
+                            reload()
+                        })) {
+                            Text(name).lineLimit(1).truncationMode(.middle)
+                        }
+                        .accentCheckbox()
+                        Spacer(minLength: 0)
+                        // Marks belong to the profile in use, the one whose nodes it can locate.
+                        if profile.id == store.activeProfileID, !NodeMapView.builtins.contains(name), !NodeCleanup.isInfoNode(name) {
+                            Menu { RegionMarkItems(node: name) } label: {
+                                Image(systemName: store.regionMarks[name] == nil ? "mappin" : "mappin.circle.fill")
+                            }
+                            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().neutralControl()
+                            .help("标记地区")
+                            .accessibilityLabel(String(localized: "标记“\(name)”的地区"))
+                            .accessibilityValue(store.regionMarks[name].flatMap(NodeLocator.place)?.name ?? "")
+                        }
                     }
-                    .toggleStyle(.checkbox)
                 }
                 .listStyle(.bordered)
             }
@@ -216,6 +285,7 @@ struct ProfileDetailSheet: View {
                 Text(RuleTemplate.title(RuleTemplate.standard)).tag(RuleTemplate.standard)
             }
             .fixedSize()
+            .neutralControl()
             Text("模板按地区为这份配置的节点分组，并用内核自带的 GEOSITE 和 GEOIP 数据分流：AI 服务优先走美国，国内网站和苹果服务直连，广告拦截。下面的修改在模板之上重新应用。")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             edits
@@ -255,10 +325,11 @@ private struct EditRow: View {
     let conflicts: [String]
     let setEnabled: (Bool) -> Void
     let delete: () -> Void
+    @State private var confirmingDelete = false
 
     var body: some View {
         HStack(alignment: .top, spacing: Spacing.md) {
-            Toggle("启用", isOn: Binding(get: { edit.enabled }, set: setEnabled)).toggleStyle(.checkbox).labelsHidden()
+            Toggle("启用", isOn: Binding(get: { edit.enabled }, set: setEnabled)).accentCheckbox().labelsHidden()
             VStack(alignment: .leading, spacing: Spacing.xxs) {
                 Text(edit.prompt).lineLimit(2)
                 HStack(spacing: Spacing.xs) {
@@ -268,11 +339,19 @@ private struct EditRow: View {
                 ForEach(conflicts, id: \.self) { StatusBadge(kind: .warning, text: $0, compact: true) }
             }
             Spacer(minLength: 0)
-            Button(role: .destructive, action: delete) { Image(systemName: "trash") }
+            Button(role: .destructive) { confirmingDelete = true } label: { Image(systemName: "trash") }
                 .buttonStyle(.borderless)
                 .help("删除这项修改")
+                .accessibilityLabel(String(localized: "删除这项修改"))
         }
         .opacity(edit.enabled ? 1 : 0.6)
+        // Asked each time: it can't be undone, and unchecking the box is there to set one aside.
+        .alert("删除这项修改？", isPresented: $confirmingDelete) {
+            Button("删除", role: .destructive, action: delete)
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("这项修改会从“我的分流”里删除，无法撤销。只想暂时不用的话，取消勾选就可以。")
+        }
     }
 }
 
@@ -306,7 +385,7 @@ enum ConfigExport {
             let text = try store.exportText(of: profile.id, withOverrides: overrides.state == .on)
             try Data(text.utf8).write(to: url, options: .atomic)
         } catch {
-            store.notice = String(localized: "导出失败：\(store.message(for: error))")
+            BackupFlow.show(error)
         }
     }
 }

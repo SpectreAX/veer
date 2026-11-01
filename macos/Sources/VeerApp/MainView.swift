@@ -3,7 +3,18 @@ import SwiftUI
 import VeerProxy
 
 enum Page: String, CaseIterable, Identifiable, Hashable {
-    case overview, proxies, profiles, connections, requests, logs, dns, agent
+    case overview, proxies, connections, tools, requests, logs, dns, agent
+
+    /// What the sidebar lists, in order, for ⌘1 onward. The rest are subpages of Tools.
+    static let sidebarPages: [Page] = [.overview, .proxies, .connections, .tools, .agent]
+
+    /// The page a subpage goes back to.
+    var parent: Page? {
+        switch self {
+        case .requests, .logs, .dns: .tools
+        default: nil
+        }
+    }
 
     enum Section: CaseIterable {
         case proxy, ai
@@ -22,8 +33,8 @@ enum Page: String, CaseIterable, Identifiable, Hashable {
         case .overview: String(localized: "概览")
         // "代理" also names the sidebar section; the page needs its own key.
         case .proxies: String(localized: "page.proxies", defaultValue: "代理")
-        case .profiles: String(localized: "配置")
         case .connections: String(localized: "连接")
+        case .tools: String(localized: "工具")
         case .requests: String(localized: "请求")
         case .logs: String(localized: "日志")
         case .dns: String(localized: "DNS")
@@ -34,8 +45,8 @@ enum Page: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .overview: "gauge.with.dots.needle.33percent"
         case .proxies: "point.3.connected.trianglepath.dotted"
-        case .profiles: "doc.text"
         case .connections: "arrow.left.arrow.right"
+        case .tools: "wrench.and.screwdriver"
         case .requests: "clock.arrow.circlepath"
         case .logs: "text.alignleft"
         case .dns: "globe"
@@ -49,7 +60,14 @@ struct MainView: View {
     @Environment(AgentStore.self) private var agent
     @Environment(\.openSettings) private var openSettings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.undoManager) private var undoManager
     @State private var sidebarVisibility = NavigationSplitViewVisibility.all
+    @State private var isFullScreen = false
+    @State private var windowWidth: CGFloat = 1080
+
+    /// The window's top row, which the sidebar button, the title and the capsule float in.
+    static let topRowHeight: CGFloat = 52
+    private static let roomyWidth: CGFloat = 960
 
     var body: some View {
         @Bindable var store = store
@@ -68,6 +86,7 @@ struct MainView: View {
             return true
         }
         .onAppear { DockPresence.windowOpened() }
+        .onChange(of: undoManager, initial: true) { _, manager in agent.changes.manager = manager }
         .onDisappear { DockPresence.windowClosed() }
     }
 
@@ -83,6 +102,9 @@ struct MainView: View {
             // AppKit raise over a view it has already removed, ending the app.
             if store.agentPanel && store.page != .agent {
                 AgentPanelColumn()
+                    .padding(.top, fullScreenTopInset)
+                    .background(Color.surface)
+                    .overlay(alignment: .top) { dragRow }
                     .transition(.move(edge: .trailing))
             }
         }
@@ -94,19 +116,23 @@ struct MainView: View {
         // sidebar opens the toolbar runs short of room for a few frames, whatever the window's
         // width, and any item it holds lands in an overflow button that throws the rest aside. An
         // item's content also snaps to a new page rather than animating.
-        .background(EmptyWindowToolbar())
-        // Over the pages, which scroll under the row: a click here is the window's, not theirs.
-        .overlay(alignment: .top) {
-            WindowDragArea()
-                .frame(height: 52)
-                .ignoresSafeArea(.container, edges: .top)
-        }
+        .background(EmptyWindowToolbar(isFullScreen: $isFullScreen))
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
         .overlay(alignment: .topLeading) {
             sidebarButton
                 .padding(.top, 6)
-                .padding(.leading, Self.windowButtonsWidth)
+                .padding(.leading, sidebarButtonLeading)
                 .ignoresSafeArea(.container, edges: .top)
         }
+        // The Agent shows these itself. Elsewhere Edit → Undo would otherwise change routing with no sign.
+        .overlay(alignment: .bottom) {
+            if store.page != .agent, !store.agentPanel, let toast = agent.toast {
+                ToastView(toast: toast) { agent.undo() }
+                    .padding(.bottom, Spacing.xl)
+                    .transition(reduceMotion ? AnyTransition.opacity : .move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(reduceMotion ? nil : Motion.standard, value: agent.toast)
         .overlayPreferenceValue(PageToolbarKey.self) { content in
             // Hidden until there is a profile: without one they do nothing.
             if !store.profiles.isEmpty {
@@ -118,10 +144,52 @@ struct MainView: View {
         }
     }
 
-    /// Room for the close, minimize and zoom buttons, which the sidebar button sits beside.
-    private static let windowButtonsWidth: CGFloat = 88
+    /// Full screen has no toolbar to start the columns below the row (see `EmptyWindowToolbar`). For
+    /// each column: a split view passes no safe area from outside it on to them.
+    private var fullScreenTopInset: CGFloat { isFullScreen ? Self.topRowHeight : 0 }
+
+    /// Room for the close, minimize and zoom buttons, which the sidebar button sits beside. Full
+    /// screen hides them, and the button takes their place.
+    private var sidebarButtonLeading: CGFloat { isFullScreen ? Spacing.sm : 88 }
 
     private var sidebarHidden: Bool { sidebarVisibility == .detailOnly }
+
+    /// Over a column, which scrolls under the row: a click here is the window's, not the column's.
+    /// In each column rather than over them all, so that the page's title can sit above it and take
+    /// clicks on its menu. A full-screen window does not move.
+    @ViewBuilder private var dragRow: some View {
+        if !isFullScreen {
+            WindowDragArea()
+                .frame(height: Self.topRowHeight)
+                .ignoresSafeArea(.container, edges: .top)
+        }
+    }
+
+    /// The back button, page and profile, in the page's column and so moving with it as the sidebar
+    /// opens and closes: its position can't be measured from outside, as a split view reports wild
+    /// values for the column while it animates. Clear of the sidebar button when there is no sidebar.
+    private var titleRow: some View {
+        HStack(spacing: Spacing.sm) {
+            if let parent = store.page.parent { backButton(to: parent) }
+            pageTitle
+        }
+        .frame(height: Self.topRowHeight)
+        // In line with the page's cards, which start this far in.
+        .padding(.leading, sidebarHidden ? sidebarButtonLeading + 52 : Spacing.xl)
+        .animation(reduceMotion ? nil : Motion.standard, value: sidebarHidden)
+        .ignoresSafeArea(.container, edges: .top)
+    }
+
+    private func backButton(to parent: Page) -> some View {
+        Button { store.page = parent } label: {
+            Label(String(localized: "返回“\(parent.title)”"), systemImage: "chevron.left")
+        }
+        .buttonStyle(ToolbarCapsuleButtonStyle())
+        .labelStyle(.iconOnly)
+        .help(String(localized: "返回“\(parent.title)”（⌘[）"))
+        .padding(Spacing.xs)
+        .glassSurface(in: Circle())
+    }
 
     private var sidebarButton: some View {
         Button {
@@ -136,50 +204,61 @@ struct MainView: View {
         .glassSurface(in: Circle())
     }
 
-    /// The page and profile, over the toolbar at the top of the page, clear of the sidebar button
-    /// when there is no sidebar.
+    /// The page, which a click on goes through to the window, and the profile's menu.
     private var pageTitle: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(store.page.title).font(.headline)
-            if !profileName.isEmpty {
-                Text(profileName).font(.caption).foregroundStyle(.secondary)
-            }
+            Text(store.page.title).font(.headline).allowsHitTesting(false)
+            if !profileName.isEmpty { ProfileMenu(name: profileName) }
         }
         .lineLimit(1)
-        .frame(height: 52)
-        .padding(.leading, sidebarHidden ? Self.windowButtonsWidth + 52 : Spacing.lg)
-        .animation(reduceMotion ? nil : Motion.standard, value: sidebarHidden)
-        .allowsHitTesting(false)
     }
 
-    /// Short enough to stay clear of the capsule in the narrowest window; the foot of the sidebar
-    /// has it in full.
+    /// Short enough to stay clear of the toolbar, which leaves little room in a small window. The menu
+    /// it opens has it in full.
     private var profileName: String {
         let name = store.activeProfile?.name ?? ""
-        return name.count > 18 ? name.prefix(17) + "…" : name
+        let limit = windowWidth < Self.roomyWidth ? 12 : 16
+        return name.count > limit ? name.prefix(limit - 1) + "…" : name
     }
 
     private var sidebarAndPage: some View {
         NavigationSplitView(columnVisibility: $sidebarVisibility) {
-            List(selection: Binding<Page?>(get: { store.page }, set: { if let page = $0 { store.page = page } })) {
+            List(selection: Binding<Page?>(get: { store.page.parent ?? store.page }, set: { if let page = $0 { store.page = page } })) {
                 ForEach(Page.Section.allCases, id: \.self) { section in
                     Section(section.title) {
-                        ForEach(Page.allCases.filter { $0.section == section }) { page in
-                            Label(page.title, systemImage: page.symbol).tag(page)
+                        ForEach(Page.sidebarPages.filter { $0.section == section }) { page in
+                            Label {
+                                Text(page.title)
+                            } icon: {
+                                // By hand: the list's own tint stays on it when the row isn't what it thinks is selected.
+                                Image(systemName: page.symbol)
+                                    .foregroundStyle((store.page.parent ?? store.page) == page ? Color.onAccent : Color.accentColor)
+                            }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                                .selectionHighlight((store.page.parent ?? store.page) == page)
+                                // The list reports no change for the row already selected, which
+                                // a subpage's parent is, and a click there should go back to it.
+                                .simultaneousGesture(TapGesture().onEnded {
+                                    if store.page.parent == page { store.page = page }
+                                })
+                                .tag(page)
                         }
                     }
                 }
             }
-            .safeAreaInset(edge: .bottom) { profileFooter }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 260)
+            .safeAreaInset(edge: .bottom) { appFooter }
+            .safeAreaPadding(.top, fullScreenTopInset)
+            .overlay(alignment: .top) { dragRow }
             .toolbar(removing: .sidebarToggle)
+            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 260)
         } detail: {
             Group {
                 switch store.page {
                 case .overview: OverviewView()
                 case .proxies: ProxiesView()
-                case .profiles: ProfilesView()
                 case .connections: ConnectionsView()
+                case .tools: ToolsView()
                 case .requests: RequestsView()
                 case .logs: LogsView()
                 case .dns: DNSView()
@@ -189,35 +268,30 @@ struct MainView: View {
             .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             // The toolbar has no band, so nothing may scroll under the title and window buttons.
             .clipped()
+            .padding(.top, fullScreenTopInset)
             .background(Color.surface)
-            .overlay(alignment: .topLeading) {
-                pageTitle.ignoresSafeArea(.container, edges: .top)
-            }
+            .overlay(alignment: .top) { dragRow }
+            .overlay(alignment: .topLeading) { titleRow }
         }
         .agentPresentations(agent)
         // For the window's name elsewhere, such as the Window menu; `pageTitle` shows it here.
         .navigationTitle(store.page.title)
     }
 
-    /// The profile in use, at the foot of the sidebar (a click opens the profiles page), and the
-    /// way into Settings.
-    private var profileFooter: some View {
+    /// What this is and which version, at the foot of the sidebar, and the way into Settings. The
+    /// profile is under the page's title.
+    private var appFooter: some View {
         HStack(spacing: Spacing.sm) {
-            if let profile = store.activeProfile {
-                Button { store.page = .profiles } label: {
-                    HStack(spacing: Spacing.sm) {
-                        Image(systemName: profile.isSubscription ? "antenna.radiowaves.left.and.right" : "doc")
-                            .foregroundStyle(.secondary)
-                        Text(profile.name).lineLimit(1).truncationMode(.middle)
-                        Spacer(minLength: 0)
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help(String(localized: "当前配置：\(profile.name)"))
-            } else {
-                Spacer(minLength: 0)
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: Spacing.xxl, height: Spacing.xxl)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(verbatim: "Veer").font(.headline)
+                Text(verbatim: AboutSettings.version).font(.caption).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
             }
+            .accessibilityElement(children: .combine)
+            Spacer(minLength: 0)
             // A plain button rather than SettingsLink, which leaves VoiceOver with only "button".
             Button { openSettings() } label: {
                 Label(String(localized: "设置"), systemImage: "gearshape").labelStyle(.iconOnly).imageScale(.large)
@@ -232,20 +306,113 @@ struct MainView: View {
     }
 }
 
+/// The profile in use, under the page's title on every page, where the HIG keeps a document's menu:
+/// how much of it is left, every profile to switch to, and the way to manage them.
+private struct ProfileMenu: View {
+    @Environment(ProxyStore.self) private var store
+    let name: String
+
+    var body: some View {
+        Menu {
+            if let usage {
+                Text(usage)
+                Divider()
+            }
+            Picker(String(localized: "使用的配置"), selection: Binding(get: { store.activeProfileID }, set: { if let id = $0 { store.activate(id) } })) {
+                ForEach(store.profiles) { Text($0.name).tag(Optional($0.id)) }
+            }
+            .pickerStyle(.inline)
+            Divider()
+            if let profile = store.activeProfile, profile.isSubscription {
+                Button("更新订阅") { store.update(profile.id) }
+                    .disabled(store.updatingProfiles.contains(profile.id))
+            }
+            Button("管理配置") { store.page = .proxies }
+            Button("导入配置…") { store.openImport() }
+        } label: {
+            HStack(spacing: Spacing.xs) {
+                Text(verbatim: name)
+                Image(systemName: "chevron.down").font(.caption2.weight(.semibold))
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .contentShape(Rectangle())
+        }
+        // Not the borderless style, which insets its label and so can't line up with the title above.
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(String(localized: "当前配置：\(store.activeProfile?.name ?? "—")"))
+        .accessibilityLabel(String(localized: "使用的配置"))
+        .accessibilityValue(store.activeProfile?.name ?? "")
+    }
+
+    private var usage: String? {
+        guard let usage = store.activeProfile?.usage, let total = usage.total, total > 0 else { return nil }
+        let used = String(localized: "已用 \(Format.bytes(usage.used ?? 0)) / \(Format.bytes(total))")
+        guard let expire = usage.expire else { return used }
+        let days = max(0, Calendar.current.dateComponents([.day], from: .now, to: expire).day ?? 0)
+        return [used, String(localized: "剩 \(days) 天")].joined(separator: " · ")
+    }
+}
+
 /// Keeps the toolbar's height, which centres the window's buttons on the row and starts the pages
 /// below it, with no items for it to rearrange.
+///
+/// In full screen AppKit moves a toolbar to a window of its own, in front of this one, and it would
+/// cover everything floating in the row. So the toolbar comes off for full screen and the row is
+/// `MainView`'s to keep: hiding it is not enough, as entering full screen shows it again. AppKit,
+/// because `windowToolbarFullScreenVisibility` needs macOS 15 and this runs on 14.
 private struct EmptyWindowToolbar: NSViewRepresentable {
+    @Binding var isFullScreen: Bool
+
     final class Host: NSView {
+        var onFullScreen: ((Bool) -> Void)?
+        private let toolbar = NSToolbar(identifier: "Veer")
+
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            guard let window, window.toolbar == nil else { return }
-            window.toolbar = NSToolbar(identifier: "Veer")
-            window.toolbarStyle = .unified
+            let center = NotificationCenter.default
+            center.removeObserver(self)
+            guard let window else { return }
+            center.addObserver(self, selector: #selector(enteringFullScreen), name: NSWindow.willEnterFullScreenNotification, object: window)
+            center.addObserver(self, selector: #selector(leavingFullScreen), name: NSWindow.willExitFullScreenNotification, object: window)
+            // A window restored to full screen is there before this view is.
+            setToolbar(fullScreen: window.styleMask.contains(.fullScreen))
+            // Later, and read then: this can run while SwiftUI is updating the view that owns the
+            // state, and the window can already be on its way into full screen.
+            Task { @MainActor [weak self] in
+                guard let self, let window = self.window else { return }
+                onFullScreen?(window.styleMask.contains(.fullScreen))
+            }
+        }
+
+        @objc private func enteringFullScreen() {
+            setToolbar(fullScreen: true)
+            onFullScreen?(true)
+        }
+
+        @objc private func leavingFullScreen() {
+            setToolbar(fullScreen: false)
+            onFullScreen?(false)
+        }
+
+        private func setToolbar(fullScreen: Bool) {
+            window?.toolbar = fullScreen ? nil : toolbar
+            window?.toolbarStyle = .unified
         }
     }
 
-    func makeNSView(context: Context) -> Host { Host() }
-    func updateNSView(_ view: Host, context: Context) {}
+    func makeNSView(context: Context) -> Host {
+        let host = Host()
+        host.onFullScreen = { isFullScreen = $0 }
+        return host
+    }
+
+    func updateNSView(_ view: Host, context: Context) {
+        view.onFullScreen = { isFullScreen = $0 }
+    }
 }
 
 /// The top row of the window, which moves it as a title bar does. With no items in the toolbar,

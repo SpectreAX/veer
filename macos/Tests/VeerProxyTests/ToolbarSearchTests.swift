@@ -27,4 +27,20 @@ struct ToolbarSearchTests {
         #expect(!source.contains("ToolbarItem("))
         #expect(source.contains(".toolbar(removing: .sidebarToggle)"))
     }
+
+    /// In full screen AppKit puts the toolbar in a window of its own, over this one, which hid every
+    /// control floating in the top row. It comes off there, with the row kept by `MainView`.
+    @Test func theToolbarGetsOutOfTheWayInFullScreen() throws {
+        let folder = LocalizationTests.root.appendingPathComponent("Sources/VeerApp")
+        let main = try String(contentsOf: folder.appendingPathComponent("MainView.swift"), encoding: .utf8)
+        #expect(main.contains("window?.toolbar = fullScreen ? nil : toolbar"))
+        #expect(main.contains("isFullScreen ? Self.topRowHeight : 0"))
+    }
+
+    /// ⌘F found the field by the content area's top, which in full screen is the window's own.
+    @Test func searchFocusDoesNotDependOnTheToolbar() throws {
+        let file = LocalizationTests.root.appendingPathComponent("Sources/VeerApp/ToolbarSearch.swift")
+        let source = try String(contentsOf: file, encoding: .utf8)
+        #expect(!source.contains("contentLayoutRect"))
+    }
 }

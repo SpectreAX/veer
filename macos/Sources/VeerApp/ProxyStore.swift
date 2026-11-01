@@ -57,7 +57,17 @@ final class ProxyStore {
     var agentPanel: Bool { didSet { defaults.set(agentPanel, forKey: "agentPanel") } }
     /// Its width, which the user drags.
     var agentPanelWidth: Double { didSet { defaults.set(agentPanelWidth, forKey: "agentPanelWidth") } }
-    var phase: Phase = .stopped
+    var phase: Phase = .stopped {
+        didSet {
+            if phase == .starting { runningCoreRevision = coreRevision }
+            // The proxy must not point at a core that failed: every app would lose the network. A
+            // restart on its own can get here, with no one watching. It comes back with the next start.
+            if case .failed = phase, systemProxyOn {
+                setSystemProxy(false, remember: false)
+                systemProxyIsFallback = false
+            }
+        }
+    }
     var profiles: [Profile] = []
     var activeProfileID: UUID? {
         didSet {
@@ -134,7 +144,11 @@ final class ProxyStore {
     /// Close open connections after a profile switch, a routing change or a node switch, so they
     /// reconnect the new way instead of staying on the old route.
     var reconnectAfterChanges: Bool { didSet { defaults.set(reconnectAfterChanges, forKey: "reconnectAfterChanges") } }
-    @ObservationIgnored private var systemProxyBusy = false
+    @ObservationIgnored private let systemProxyWork = SerialWork()
+    /// Changes gone from "my routing", for the Agent, whose conversations can still undo them.
+    @ObservationIgnored var editsRemoved: (([UUID]) -> Void)?
+    /// On only because TUN could not start, not because anyone asked for it.
+    @ObservationIgnored private var systemProxyIsFallback = false
     /// Groups folded on the Proxies page, by name; remembered across launches.
     var collapsedGroups: Set<String> { didSet { defaults.set(Array(collapsedGroups), forKey: "collapsedGroups") } }
     /// The active profile with its "my routing" layer applied, as the core last loaded it.
@@ -153,6 +167,12 @@ final class ProxyStore {
     let stateStore: StateStore
     let systemProxy: SystemProxy
     let binary: URL?
+    /// A newer core installed from Settings, which runs in place of `binary`.
+    var hasUpdatedCore: Bool
+    /// Changes with each core installed or removed, for what shows its version.
+    var coreRevision = 0
+    /// `coreRevision` when the core running now started.
+    @ObservationIgnored var runningCoreRevision = 0
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var core: CoreRunning?
     @ObservationIgnored private var controller: MihomoController?
@@ -179,6 +199,8 @@ final class ProxyStore {
     /// Live connections, newest first, while the connections page is open.
     var connections: [ConnectionRow] = []
     var connectionsPaused = false
+    /// Here rather than on the page, as the menu bar asks too.
+    var confirmingCloseAllConnections = false
     /// Found on this Mac from logs, connections and delay tests; shown on the overview and Agent pages.
     var suggestions: [Suggestion] = []
     @ObservationIgnored private lazy var detector = SuggestionDetector(ignoredHosts: Set(defaults.stringArray(forKey: "ignoredSuggestionHosts") ?? []))
@@ -212,6 +234,7 @@ final class ProxyStore {
         self.stateStore = StateStore(paths: paths)
         self.systemProxy = systemProxy
         self.binary = binary
+        hasUpdatedCore = CoreUpdater(paths: paths).hasInstalled
         self.defaults = defaults
         settings = defaults.data(forKey: "runtimeSettings").flatMap { try? JSONDecoder().decode(RuntimeSettings.self, from: $0) } ?? RuntimeSettings()
         restoreLastState = defaults.object(forKey: "restoreLastState") as? Bool ?? true
@@ -285,7 +308,11 @@ final class ProxyStore {
         watchNetwork()
         scheduleSubscriptionUpdates()
         for profile in profiles { alertAboutUsage(of: profile) }
-        if restoreLastState, state.running, activeProfile != nil { start() }
+        // After a stale update has gone, so that it isn't what starts.
+        Task {
+            await dropStaleCoreUpdate()
+            if restoreLastState, state.running, activeProfile != nil { start() }
+        }
     }
 
     /// When Veer last quit without cleaning up, the system proxy still points at its port with
@@ -312,6 +339,12 @@ final class ProxyStore {
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { _ in
             Task { @MainActor in self.coverNewServices() }
         }
+        // Coming back from System Settings, with the helper TUN was waiting for allowed.
+        NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
+            Task { @MainActor in
+                if self.settings.tun, !self.tunActive { await self.refreshHelperState() }
+            }
+        }
     }
 
     private func coverNewServices() {
@@ -328,7 +361,7 @@ final class ProxyStore {
         guard phase != .starting, phase != .running else { return }
         notice = nil
         guard let profile = activeProfile else { return }
-        guard let binary else {
+        guard let binary = activeBinary else {
             phase = .failed(String(localized: "应用包里缺少 Mihomo 内核，请重新安装 Veer。"), log: [])
             return
         }
@@ -405,20 +438,36 @@ final class ProxyStore {
                 startTraffic()
                 startLogs()
                 trackConnections()
-                checkExit()
+                recheckExit()
                 testEverythingOnce()
                 if let tunFailure {
                     // After the switch, which clears notices.
-                    if !systemProxyOn { setSystemProxy(true) }
+                    if !systemProxyOn { fallBackToSystemProxy() }
                     notice = String(localized: "TUN 未能启动，已改用系统代理。\(tunFailure)")
-                } else if state.systemProxy, !systemProxyOn {
-                    setSystemProxy(true)
+                } else if systemProxyIsFallback || (state.systemProxy && !systemProxyOn) {
+                    settleSystemProxy()
                 }
             } catch {
                 core?.stop()
                 tunActive = false
                 phase = .failed(message(for: error), log: core?.tail ?? [])
             }
+        }
+    }
+
+    /// Standing in for TUN, which is what was asked for, so not remembered as a choice of its own.
+    private func fallBackToSystemProxy() {
+        systemProxyIsFallback = !state.systemProxy
+        setSystemProxy(true, remember: false)
+    }
+
+    /// Once the core runs without trouble: what stood in for TUN goes, what was chosen comes back.
+    private func settleSystemProxy() {
+        if systemProxyIsFallback {
+            setSystemProxy(false, remember: false)
+            systemProxyIsFallback = false
+        } else {
+            setSystemProxy(true)
         }
     }
 
@@ -450,9 +499,11 @@ final class ProxyStore {
     func setTUN(_ on: Bool) {
         notice = nil
         Task {
-            if on, !HelperClient.shared.isInstalledManually, await HelperClient.shared.state() == .notInstalled {
+            if on, let consent = await HelperClient.shared.state().tunConsent {
+                // Nothing is registered, and TUN stays off, until the person agrees.
+                guard HelperPrompt.ask(consent) else { return await refreshHelperState() }
                 do {
-                    try HelperClient.shared.register()
+                    if consent == .install { try HelperClient.shared.register() }
                     if await HelperClient.shared.state() == .needsApproval { HelperClient.shared.openApprovalSettings() }
                 } catch {
                     notice = message(for: error)
@@ -464,7 +515,13 @@ final class ProxyStore {
     }
 
     func refreshHelperState() async {
-        helperState = await helperProbe()
+        let previous = helperState
+        let current = await helperProbe()
+        helperState = current
+        if current.finishesTUNSetup(from: previous, tunEnabled: settings.tun, tunActive: tunActive, running: isRunning) {
+            notice = nil
+            restart()
+        }
     }
 
     /// Settings' TUN page: register with SMAppService, install by hand, or remove the helper.
@@ -517,16 +574,24 @@ final class ProxyStore {
         }
     }
 
+    /// Whether the system proxy comes on with the core.
+    var systemProxyRemembered: Bool {
+        get { state.systemProxy }
+        set { state.systemProxy = newValue }
+    }
+
     /// Starts the core and turns the system proxy on once it runs, as onboarding's one switch does.
     func startWithSystemProxy() {
         state.systemProxy = true
         start()
     }
 
-    /// The user stopping the core; the next launch stays stopped.
+    /// The user stopping the core; the next launch stays stopped. The system proxy goes off with it
+    /// and comes back with the next start: stopping says nothing about wanting it off.
     func stop() {
         state.running = false
-        if systemProxyOn { setSystemProxy(false) }
+        systemProxyIsFallback = false
+        if systemProxyOn { setSystemProxy(false, remember: false) }
         tearDownCore()
         phase = .stopped
     }
@@ -641,18 +706,23 @@ final class ProxyStore {
         }
     }
 
-    /// The user turning the system proxy on or off; remembered for the next launch.
+    /// The user turning the system proxy on or off; remembered for the next start unless `remember` is false.
     /// `networksetup` runs once per service and setting, which takes long enough to stall the
-    /// switch; it runs in the background while the switch already shows the new state.
-    func setSystemProxy(_ on: Bool) {
+    /// switch; it runs in the background while the switch already shows the new state. One change at
+    /// a time and none dropped: a stop during a turn-on that skipped its restore would leave the Mac's
+    /// proxy pointing at a core that has gone.
+    func setSystemProxy(_ on: Bool, remember: Bool = true) {
         notice = nil
-        guard !on || isRunning, !systemProxyBusy else { return }
-        systemProxyBusy = true
+        guard !on || isRunning else { return }
         systemProxyOn = on
-        state.systemProxy = on
-        let proxy = systemProxy, port = proxyPort, snapshot = state.snapshot
-        Task {
-            defer { systemProxyBusy = false }
+        if remember {
+            state.systemProxy = on
+            systemProxyIsFallback = false
+        }
+        let proxy = systemProxy, port = proxyPort
+        systemProxyWork.add { [self] in
+            // Read now: the change before this one may have just recorded it.
+            let snapshot = state.snapshot
             do {
                 if on {
                     // Record what each service had first, so turning off puts it back.
@@ -671,7 +741,7 @@ final class ProxyStore {
                 }
             } catch {
                 systemProxyOn = !on
-                state.systemProxy = !on
+                if remember { state.systemProxy = !on }
                 notice = message(for: error)
             }
         }
@@ -833,17 +903,33 @@ final class ProxyStore {
 
     // MARK: Exit IP
 
-    /// Asks a public IP service, through Veer's own port, where traffic leaves; a second service
-    /// answers when the first fails. Runs again after a node or mode switch.
+    /// Asks public IP services, through Veer's own port, where traffic leaves, until one answers or
+    /// `ExitProbe` runs out of time. Runs again after a node or mode switch.
     func checkExit(after delay: Duration = .zero) {
         exitCheck?.cancel()
-        guard showExitIP, isRunning else { exit = nil; return }
+        guard showExitIP, isRunning else { exit = nil; exitCheck = nil; return }
+        // A failure is not the answer to a new question; what is known stays until it is replaced.
+        if exit == .unknown { exit = nil }
         let port = proxyPort
         exitCheck = Task {
             if delay > .zero { try? await Task.sleep(for: delay) }
             guard !Task.isCancelled else { return }
-            exit = await ExitInfo.lookUp(throughPort: port) ?? ExitInfo.unknown
+            let found = await ExitProbe.run { await ExitInfo.lookUp(throughPort: port) }
+            guard !Task.isCancelled else { return }
+            exit = found ?? ExitInfo.unknown
+            exitCheck = nil
         }
+    }
+
+    /// The person asked: back to detecting, so the page shows that something is happening.
+    func recheckExit() {
+        exit = nil
+        checkExit()
+    }
+
+    /// Opening the dashboard must not start the time over on a check already under way.
+    func checkExitIfNeeded() {
+        if exit == nil, exitCheck == nil { checkExit() }
     }
 
     // MARK: Connections and logs
@@ -914,6 +1000,9 @@ final class ProxyStore {
     }
 
     func clearRequests() { requests = [] }
+
+    /// What Undo brings back, behind anything that has ended since, up to the usual limit.
+    func restoreRequests(_ saved: [ClosedRequest]) { requests = Array((requests + saved).prefix(Self.requestLimit)) }
 
     // MARK: Suggestions
 
@@ -995,6 +1084,9 @@ final class ProxyStore {
     }
 
     func clearLogs() { logs = [] }
+
+    /// What Undo brings back, before anything logged since, up to the usual limit.
+    func restoreLogs(_ saved: [LogEntry]) { logs = Array((saved + logs).suffix(Self.logLimit)) }
 
     /// Group and node names a manual rule can send traffic to: groups first, then built-ins.
     /// Parsed off the main thread; call once, not while drawing.
@@ -1252,11 +1344,13 @@ final class ProxyStore {
         _ = try? await effectiveTextInBackground(of: id)
     }
 
-    func setEdit(_ editID: UUID, enabled: Bool, in id: UUID) {
+    /// False when the change has gone.
+    @discardableResult func setEdit(_ editID: UUID, enabled: Bool, in id: UUID) -> Bool {
         var layer = routingStore.load(id)
-        guard let index = layer.edits.firstIndex(where: { $0.id == editID }) else { return }
+        guard let index = layer.edits.firstIndex(where: { $0.id == editID }) else { return false }
         layer.edits[index].enabled = enabled
         saveLayer(layer, for: id)
+        return true
     }
 
     /// Uses a built-in rule template for a profile, or with nil goes back to its own rules.
@@ -1271,6 +1365,7 @@ final class ProxyStore {
         var layer = routingStore.load(id)
         layer.edits.removeAll { $0.id == editID }
         saveLayer(layer, for: id)
+        editsRemoved?([editID])
     }
 
     @discardableResult private func saveLayer(_ layer: RoutingLayer, for id: UUID) -> Bool {
@@ -1320,9 +1415,11 @@ final class ProxyStore {
             stop()
             activeProfileID = profiles.first { $0.id != id }?.id
         }
+        let edits = routingStore.load(id).edits.map(\.id)
         profileStore.delete(id)
         routingStore.delete(id)
         forgetEffective(id)
+        editsRemoved?(edits)
         profiles = profileStore.loadAll()
         if profiles.isEmpty { onboarding = .addProfile }
     }
@@ -1458,7 +1555,7 @@ final class ProxyStore {
     func diagnosticItems() async -> [Diagnostics.Item] {
         var config: String?
         if let id = activeProfileID { config = try? await effectiveTextInBackground(of: id) }
-        let coreVersion = await AboutSettings.coreVersion(binary)
+        let coreVersion = await CoreUpdater.version(of: reportedBinary ?? URL(fileURLWithPath: "/nonexistent"))
         let state = (try? Data(contentsOf: paths.state)).map { String(decoding: $0, as: UTF8.self) }
         let logs = logs.map { "\($0.time.formatted(.iso8601)) [\($0.level)] \($0.message)" }
         let settings = settings, tail = core?.tail ?? [], version = AboutSettings.version

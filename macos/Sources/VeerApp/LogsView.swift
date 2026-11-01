@@ -5,9 +5,14 @@ import VeerProxy
 /// The core's log while it runs: filter by level, search, pause, copy.
 struct LogsView: View {
     @Environment(ProxyStore.self) private var store
-    @State private var level = Level.all
+    @Environment(AgentStore.self) private var agent
+    @State private var level: Level
     @State private var query = ""
     @State private var selection = Set<LogEntry.ID>()
+
+    init(level: Level = .all) {
+        _level = State(initialValue: level)
+    }
 
     enum Level: String, CaseIterable, Identifiable {
         case all, info, warning, error, debug
@@ -40,33 +45,49 @@ struct LogsView: View {
                 Button { copy(shown) } label: { Label("复制", systemImage: "doc.on.doc") }
                     .help("复制显示的日志")
                     .disabled(shown.isEmpty)
-                Button { store.clearLogs() } label: { Label("清空", systemImage: "trash") }
+                Button { agent.clearLogs() } label: { Label("清空", systemImage: "trash") }
                     .help("清空日志")
                     .disabled(store.logs.isEmpty)
+            } content: {
                 ToolbarSearchField(text: $query, prompt: Text("搜索日志"))
             }
     }
 
     @ViewBuilder private var content: some View {
         if !store.isRunning && store.logs.isEmpty {
-            StateView(symbol: Page.logs.symbol, title: String(localized: "内核没有运行"), message: String(localized: "启动后，内核的日志会实时显示在这里。"))
-        } else if shown.isEmpty {
-            StateView(symbol: Page.logs.symbol,
-                      title: store.logs.isEmpty ? String(localized: "还没有日志") : String(localized: "没有匹配的日志"),
-                      message: store.logs.isEmpty ? String(localized: "日志级别是“\(store.settings.logLevel)”，可以在设置中调整。") : nil)
+            CoreNotRunningView(symbol: Page.logs.symbol, message: String(localized: "启动后，内核的日志会实时显示在这里。"))
         } else {
             VStack(spacing: 0) {
+                // Above the empty state too: a level with no entries must not take away the way back.
                 HStack {
-                    SegmentedControl(label: String(localized: "级别"), selection: $level,
-                                     options: Level.allCases.map { .init(value: $0, title: $0.title) })
+                    // A menu when the segments don't fit, beside the Agent panel in a small window.
+                    ViewThatFits(in: .horizontal) {
+                        SegmentedControl(label: String(localized: "级别"), selection: $level,
+                                         options: Level.allCases.map { .init(value: $0, title: $0.title) })
+                            .fixedSize()
+                        Picker(String(localized: "级别"), selection: $level) {
+                            ForEach(Level.allCases) { Text($0.title).tag($0) }
+                        }
+                        .labelsHidden()
                         .fixedSize()
+                        .neutralControl()
+                    }
                     Spacer()
                     Text("\(shown.count) 条").font(.callout).foregroundStyle(.secondary).monospacedDigit()
                 }
                 .padding(.horizontal, Spacing.lg)
                 .padding(.vertical, Spacing.sm)
                 Divider()
-                logList
+                if shown.isEmpty {
+                    StateView(symbol: Page.logs.symbol,
+                              title: store.logs.isEmpty ? String(localized: "还没有日志") : String(localized: "没有匹配的日志"),
+                              // The core sends only what its level lets through, which may be why this one is empty.
+                              message: query.trimmingCharacters(in: .whitespaces).isEmpty
+                                  ? String(localized: "日志级别是“\(store.settings.logLevel)”，可以在设置中调整。") : nil,
+                              actionTitle: level != .all && !store.logs.isEmpty ? String(localized: "显示全部级别") : nil) { level = .all }
+                } else {
+                    logList
+                }
             }
         }
     }
@@ -76,7 +97,7 @@ struct LogsView: View {
             ScrollViewReader { proxy in
                 List(shown, selection: $selection) { entry in
                     HStack(alignment: .firstTextBaseline, spacing: Spacing.sm) {
-                        Text(entry.time.formatted(date: .omitted, time: .standard)).foregroundStyle(.tertiary)
+                        Text(entry.time.formatted(date: .omitted, time: .standard)).foregroundStyle(.secondary)
                         Text(verbatim: entry.level.uppercased()).foregroundStyle(color(entry.level)).frame(width: 56, alignment: .leading)
                         Text(entry.message).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                     }
@@ -85,6 +106,11 @@ struct LogsView: View {
                 }
                 .contextMenu(forSelectionType: LogEntry.ID.self) { ids in
                     Button("复制") { copy(shown.filter { ids.contains($0.id) }) }
+                }
+                // Edit → Copy, as the toolbar's: what is selected, or everything shown.
+                .onCopyCommand {
+                    let selected = shown.filter { selection.contains($0.id) }
+                    return [NSItemProvider(object: text(of: selected.isEmpty ? shown : selected) as NSString)]
                 }
                 .onChange(of: store.logs.last?.id) { _, last in
                     if !store.logsPaused, let last { proxy.scrollTo(last, anchor: .bottom) }
@@ -103,8 +129,11 @@ struct LogsView: View {
     }
 
     private func copy(_ entries: [LogEntry]) {
-        let text = entries.map { "\($0.time.formatted(date: .omitted, time: .standard)) \($0.level.uppercased()) \($0.message)" }.joined(separator: "\n")
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
+        NSPasteboard.general.setString(text(of: entries), forType: .string)
+    }
+
+    private func text(of entries: [LogEntry]) -> String {
+        entries.map { "\($0.time.formatted(date: .omitted, time: .standard)) \($0.level.uppercased()) \($0.message)" }.joined(separator: "\n")
     }
 }

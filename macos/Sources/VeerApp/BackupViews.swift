@@ -59,7 +59,7 @@ enum BackupFlow {
         return container
     }
 
-    private static func show(_ error: Error) {
+    static func show(_ error: Error) {
         let alert = NSAlert()
         alert.messageText = String(localized: "操作没有完成")
         alert.informativeText = (error as? EditorError)?.message ?? error.localizedDescription

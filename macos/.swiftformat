@@ -1,0 +1,23 @@
+# Only rules the code already follows, so the post-edit hook never rewrites unrelated lines.
+# Veer's house style (one-line bodies, `nonisolated public`, long test names) stays as it is:
+# the default rule set would reformat 130 of 135 files.
+--swiftversion 6.2
+--exclude .build,dist,vendor,third_party,scripts,Package.swift
+
+--rules consecutiveBlankLines
+--rules leadingDelimiters
+--rules linebreakAtEndOfFile
+--rules sortImports
+--rules spaceAroundComments
+--rules spaceInsideBraces
+--rules spaceInsideBrackets
+--rules spaceInsideParens
+--rules trailingCommas
+--rules trailingSpace
+--rules void
+
+--commas always
+--indent 4
+--linebreaks lf
+--trimwhitespace always
+--header ignore

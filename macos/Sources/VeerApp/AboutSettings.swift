@@ -69,7 +69,7 @@ struct AboutSettings: View {
             }
         }
         .formStyle(.grouped)
-        .task { coreVersion = await Self.coreVersion(store.binary) }
+        .task(id: store.coreRevision) { coreVersion = await Self.coreVersion(store.reportedBinary) }
         .sheet(isPresented: $showingDiagnostics) { DiagnosticsSheet() }
     }
 

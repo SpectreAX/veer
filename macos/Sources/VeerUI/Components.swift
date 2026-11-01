@@ -242,9 +242,33 @@ public struct PrimaryActionStyle: ViewModifier {
                 content.buttonStyle(.borderedProminent)
             }
         }
-        .tint(.veerAccent)
+        .tint(.accentFill)
         .controlSize(size)
     }
+}
+
+/// A selected row in a sidebar or list, the same whether the list or something else has the focus. The
+/// system dims it when the focus leaves, and a page that moves the focus to its own field makes that
+/// flash between the two. Only a window in the background still looks dimmed, as it should.
+private struct SelectionHighlight: ViewModifier {
+    let isSelected: Bool
+    @Environment(\.controlActiveState) private var activeState
+
+    private var isShown: Bool { isSelected && activeState != .inactive }
+
+    func body(content: Content) -> some View {
+        content
+            .foregroundStyle(isShown ? AnyShapeStyle(Color.onAccent) : AnyShapeStyle(.primary))
+            .listRowBackground(
+                RoundedRectangle(cornerRadius: Radius.medium, style: .continuous)
+                    .fill(isShown ? Color.selectionFill : .clear)
+                    .padding(.horizontal, Spacing.sm + Spacing.xxs),
+            )
+    }
+}
+
+public extension View {
+    func selectionHighlight(_ isSelected: Bool) -> some View { modifier(SelectionHighlight(isSelected: isSelected)) }
 }
 
 /// Secondary action beside content (Update, Test, Use): clear Liquid Glass on macOS 26, the
@@ -291,17 +315,38 @@ public extension View {
     }
 }
 
+/// Neighbouring glass shapes: `GlassEffectContainer` on macOS 26, its content before it. Shapes
+/// closer than `spacing` blend.
+public struct GlassGroup<Content: View>: View {
+    public init(spacing: CGFloat, @ViewBuilder content: () -> Content) {
+        self.spacing = spacing
+        self.content = content()
+    }
 
+    let spacing: CGFloat
+    let content: Content
 
-public extension View {
-    /// The native, uncolored look for selection controls and secondary buttons. The accent is
-    /// kept for the one primary action of a view, so it stays easy to find.
-    func neutralControl() -> some View { tint(nil) }
+    public var body: some View {
+        if #available(macOS 26, *) {
+            GlassEffectContainer(spacing: spacing) { content }
+        } else {
+            content
+        }
+    }
 }
 
-/// The standard SwiftUI segmented picker with the selected segment in neutral gray
-/// (`Color.selectionNeutral`), so the accent stays on primary actions (impeccable review,
-/// 2026-10-19).
+public extension View {
+    /// The system's own look for selection controls and secondary buttons, rather than Veer's
+    /// green, which is kept for the one primary action of a view so it stays easy to find.
+    func neutralControl() -> some View { tint(nil) }
+
+    /// A checkbox whose white check reads in dark too, as it doesn't on the accent everything else
+    /// inherits. Not by changing that tint: the text caret takes it, and would be dark green on dark.
+    func accentCheckbox() -> some View { toggleStyle(.checkbox).tint(.accentFill) }
+}
+
+/// The standard SwiftUI segmented picker, with the selected segment in the system's own color (the
+/// accent the person chose) rather than Veer's green, as in any other Mac app.
 public struct SegmentedControl<Value: Hashable>: View {
     public init(label: String, selection: Binding<Value>, options: [Option]) {
         self.label = label
@@ -340,7 +385,81 @@ public struct SegmentedControl<Value: Hashable>: View {
         }
         .pickerStyle(.segmented)
         .labelsHidden()
-        .tint(Color.selectionNeutral)
+        .neutralControl()
+    }
+}
+
+/// A switch that stands alone in the window's top row, on glass that the toolbar gives it. Custom because the system's segmented picker draws its own track there, and only takes on glass
+/// inside a real toolbar, which Veer leaves empty (see DESIGN_SPEC). Selection is a shape, not a
+/// color, and buttons keep it reachable from the keyboard and VoiceOver.
+public struct GlassSwitch<Value: Hashable>: View {
+    public init(label: String, selection: Binding<Value>, options: [Option]) {
+        self.label = label
+        _selection = selection
+        self.options = options
+    }
+
+    public struct Option {
+        public init(value: Value, title: String, symbol: String? = nil) {
+            self.value = value
+            self.title = title
+            self.symbol = symbol
+        }
+
+        public let value: Value
+        public let title: String
+        public let symbol: String?
+    }
+
+    public let label: String
+    @Binding public var selection: Value
+    public let options: [Option]
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var indicator
+
+    public var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(options.enumerated()), id: \.offset) { _, option in
+                let isSelected = option.value == selection
+                Button { selection = option.value } label: {
+                    if let symbol = option.symbol {
+                        Label(option.title, systemImage: symbol).labelStyle(.iconOnly).font(.title3)
+                    } else {
+                        Text(option.title).font(.callout.weight(.medium)).padding(.horizontal, Spacing.md)
+                    }
+                }
+                .buttonStyle(GlassSwitchButtonStyle())
+                .background {
+                    if isSelected {
+                        Capsule().fill(Color.primary.opacity(0.14)).matchedGeometryEffect(id: "selection", in: indicator)
+                    }
+                }
+                // A word says it already; a symbol needs the tooltip.
+                .help(option.symbol == nil ? "" : option.title)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            }
+        }
+        .animation(reduceMotion ? nil : Motion.standard, value: selection)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(label)
+    }
+}
+
+/// A segment of `GlassSwitch`: a soft highlight on hover and press, under the selection's own.
+private struct GlassSwitchButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var hovering = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(Color.primary)
+            .opacity(isEnabled ? 1 : 0.35)
+            .frame(minWidth: 44, minHeight: 32)
+            .background(Color.primary.opacity(configuration.isPressed ? 0.12 : hovering ? 0.06 : 0), in: Capsule())
+            .contentShape(Capsule())
+            .onHover { hovering = $0 && isEnabled }
+            .animation(Motion.quick, value: configuration.isPressed)
+            .animation(Motion.quick, value: hovering)
     }
 }
 

@@ -169,7 +169,7 @@ public struct ConfigDocument: Sendable {
             warnings: warnings,
             counts: Counts(nodes: proxies.count, groups: groups.count, rules: rules.count, providers: proxyProviderNames.count + ruleProviderCount),
             groupMembers: children,
-            topLevelKeys: keys
+            topLevelKeys: keys,
         )
     }
 

@@ -99,13 +99,6 @@ struct ExitInfo: Equatable {
     /// Through the proxy on `port`. Several services are asked at once and the first answer
     /// wins: any one of them can be blocked, slow, or rate-limited on a given node.
     static func lookUp(throughPort port: Int) async -> ExitInfo? {
-        if let found = await race(port: port) { return found }
-        // The first try can come right after a node switch, before the node answers.
-        try? await Task.sleep(for: .seconds(2))
-        return await race(port: port)
-    }
-
-    private static func race(port: Int) async -> ExitInfo? {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.connectionProxyDictionary = [
             kCFNetworkProxiesHTTPEnable: true, kCFNetworkProxiesHTTPProxy: "127.0.0.1", kCFNetworkProxiesHTTPPort: port,

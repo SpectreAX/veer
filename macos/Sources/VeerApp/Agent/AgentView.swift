@@ -29,6 +29,9 @@ struct AgentView: View {
             Button { agent.newThread() } label: { Label(String(localized: "新对话"), systemImage: "square.and.pencil") }
                 .help(String(localized: "新对话（⌘N）"))
                 .disabled(proxy.activeProfile == nil)
+            Button { agent.pendingDeletion = agent.current } label: { Label(String(localized: "删除对话…"), systemImage: "trash") }
+                .help(String(localized: "删除对话…"))
+                .disabled(agent.current == nil)
         }
     }
 }
@@ -140,15 +143,21 @@ private struct ThreadList: View {
             ForEach(agent.sessions) { session in
                 VStack(alignment: .leading, spacing: Spacing.xxs) {
                     Text(session.title).lineLimit(1)
-                    Text(subtitle(session)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    // Not secondary when selected: it fades too far on the selection's color.
+                    Text(subtitle(session)).font(.caption)
+                        .foregroundStyle(agent.selectedID == session.id ? AnyShapeStyle(Color.onAccent) : AnyShapeStyle(.secondary))
+                        .lineLimit(1)
                 }
                 .padding(.vertical, Spacing.xxs)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .selectionHighlight(agent.selectedID == session.id)
                 .tag(session.id)
                 .contextMenu {
                     Button(String(localized: "删除对话…"), role: .destructive) { agent.pendingDeletion = session }
                 }
             }
         }
+        .onDeleteCommand(perform: agent.current == nil ? nil : { agent.pendingDeletion = agent.current })
         .overlay {
             if agent.sessions.isEmpty {
                 Text(String(localized: "还没有对话")).font(.callout).foregroundStyle(.secondary)
