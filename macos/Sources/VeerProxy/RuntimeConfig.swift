@@ -71,6 +71,8 @@ public enum RuntimeConfig {
     /// `hot`: Veer's in-place rule sets (`HotRuleSets`), for the core Veer runs; never in exports.
     public static func build(profile: String, settings: RuntimeSettings, controllerPort: Int, secret: String,
                              hot: HotRuleSets? = nil) throws -> String {
+        // Plain configs only need their groups parsed; keep the large node/rule sections fast.
+        try ConfigDocument.requireGroupMembers(in: TopLevelBlocks(profile)?["proxy-groups"] ?? profile)
         if let fast = try buildKeepingSections(profile: profile, settings: settings, controllerPort: controllerPort, secret: secret, hot: hot) {
             return fast
         }

@@ -1314,3 +1314,4 @@
 "添加图片或文件…" = "Add Images or Files…";
 "附件未保存，请重新添加后发送。" = "Attachments weren't saved. Add them again to send this request.";
 "“%@”未能切换到 %@，请在代理页重试。" = "Couldn't switch “%@” to %@. Try again on the Proxies page.";
+"策略组“%@”没有节点或 Provider，无法启动。请更新订阅或换用有效配置；本地配置可在“编辑成员”中修复。" = "Group “%@” has no nodes or providers and can't start. Update the subscription or choose a valid profile; a local profile can be repaired under Edit Members.";

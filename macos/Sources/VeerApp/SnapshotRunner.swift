@@ -190,6 +190,12 @@ enum SnapshotRunner {
                 ])
                 return store
             }, view: AnyView(MainView())),
+            // A subscription that came back with a group and no nodes: stopped before the core starts.
+            Scene(name: "07g-failed-empty-group", size: CGSize(width: 860, height: 560), store: {
+                let store = sample()
+                store.phase = .failed(String(localized: "策略组“\("♻️ 自动选择")”没有节点或 Provider，无法启动。请更新订阅或换用有效配置；本地配置可在“编辑成员”中修复。"), log: [])
+                return store
+            }, view: AnyView(MainView())),
             Scene(name: "08-proxies-stopped", store: {
                 let store = sample()
                 store.page = .proxies

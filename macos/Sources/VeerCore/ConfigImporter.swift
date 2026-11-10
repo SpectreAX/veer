@@ -79,6 +79,7 @@ public enum ConfigImporter {
     public static func normalize(_ raw: String, options: ImportOptions = .init()) throws -> Result {
         switch try detect(raw) {
         case .config(let text, let count):
+            try ConfigDocument.requireGroupMembers(in: text)
             return Result(text: text, format: .mihomoYAML, nodeCount: count, skipped: [:])
         case .nodes(let format, let proxies, let skipped):
             return try build(proxies: proxies, format: format, skipped: skipped, options: options)

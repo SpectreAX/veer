@@ -357,6 +357,13 @@ final class ProxyStore {
         try? systemProxy.enable(host: "127.0.0.1", port: proxyPort, services: added)
     }
 
+    /// Validate before helper/TUN setup; the editor may still open damaged groups for repair.
+    private func startableText(of id: UUID) async throws -> String {
+        let text = try await effectiveTextInBackground(of: id)
+        try await Task.detached { try ConfigDocument.requireGroupMembers(in: text) }.value
+        return text
+    }
+
     func start() {
         guard phase != .starting, phase != .running else { return }
         notice = nil
@@ -375,7 +382,7 @@ final class ProxyStore {
                 try paths.prepare()
                 guard let port = Ports.free() else { throw EditorError(String(localized: "找不到可用的本机端口来控制内核。")) }
                 let secret = RuntimeConfig.makeSecret()
-                let text = try await effectiveTextInBackground(of: profile.id)
+                let text = try await startableText(of: profile.id)
                 let path = paths.runtimeConfig, home = paths.core
                 // TUN needs the helper; without it the core runs as the user and the system
                 // proxy carries the traffic instead.
