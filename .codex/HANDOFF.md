@@ -3,7 +3,7 @@
 ## Scope
 
 Shared progress summary: [`macos/docs/PLAN.md`](../macos/docs/PLAN.md), section
-“本轮开发收尾（2026-11-01，Codex）”. Update that document and this handoff after meaningful progress,
+“边栏动画与启动错误”. Update that document and this handoff after meaningful progress,
 as the user requested, so Claude can resume through its usual development-plan entrypoint.
 
 2026-11-01: after workflow migration the user authorized finishing Claude's remaining development.
@@ -12,8 +12,14 @@ system proxy, and TUN tests on the real Mac remain outside authorization.
 
 ## Current state (2026-11-10, Claude)
 
-The 2026-11-03 round is finished and committed locally; see PLAN's “边栏动画与启动错误” section.
-Nothing is pushed or published. Version stays 1.0.4 / build 5.
+The empty-group guard and sidebar-title fixes are committed; the page-content clipping remains
+unresolved, so the full sidebar-glitch request is not finished. See PLAN's “边栏动画与启动错误”
+section. Version stays 1.0.4 / build 5.
+
+Codex status audit on 2026-11-10: the worktree was clean at `e085c98`; a read-only `git ls-remote`
+confirmed the remote feature branch also points there. Both `d19cf01` (empty groups) and `e085c98`
+(sidebar title) are therefore present remotely, superseding the earlier “not pushed” claim.
+No push, build, app launch, test rerun or release was performed during this status audit.
 
 - Empty-group guard (Codex's implementation) kept as written. The affected subscription still needs
   valid nodes from its provider.
@@ -21,14 +27,21 @@ Nothing is pushed or published. Version stays 1.0.4 / build 5.
   narrowed the sidebar and misaligned the title. The title now stays in the detail column and
   `ClearOfSidebarButton` sets its padding from the column's measured position. The detail-column
   `transaction` override was removed, as the frames showed no effect from it.
-- Checks run in this session: full verify PASS, 12 + 105 + 294 + 6 = 417 tests; isolated build with
+- Claude's completion-session checks (not rerun by the later status audit): full verify PASS,
+  12 + 105 + 294 + 6 = 417 tests; isolated build with
   hide/show frame sheets for Overview, Proxies and Connections viewed; all scenes re-rendered and the
   related ones viewed; independent design review Critical 0 / Major 0, two Minor fixed.
 - Known and left: content clips at the window's right edge for a frame or two while the sidebar
   shows (same before the change); the failure card's buttons don't match the empty-group advice.
 - NOT VERIFIED: the real app window, full screen with the sidebar hidden, launch with the sidebar
   hidden, keyboard, VoiceOver, macOS 14 VM. Codex's temp logs and motion harness no longer exist.
-- `dist/Veer.app` was not rebuilt: it is still the 2026-11-01 development build without this round.
+- Later binary inspection supersedes the earlier old-build statement: `dist/Veer.app` contains
+  `ClearOfSidebarButton`, `requireGroupMembers` and `startableText` symbols and the empty-group error
+  text. Deep strict codesign verification PASS; minimum macOS 14.0 / SDK 27.2. Executable SHA-256:
+  `58fc88f0883fe74d4f705298503077f5cbbce9860586af7467974732de8411dd`.
+  Symbol checks establish that these fixes are included, not exact source/build correspondence.
+- Next: fix page-content clipping during sidebar show, then verify full screen, rapid reversals
+  and Reduce Motion using isolated sample data. Keep the outstanding manual checks above explicit.
 
 ## Latest feature completion (2026-11-01)
 
