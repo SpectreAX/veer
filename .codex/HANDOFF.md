@@ -10,6 +10,26 @@ as the user requested, so Claude can resume through its usual development-plan e
 The feature and workflow are being recorded as separate local commits. Publishing, enabling the
 system proxy, and TUN tests on the real Mac remain outside authorization.
 
+## Current state (2026-11-10, Claude)
+
+The 2026-11-03 round is finished and committed locally; see PLAN's “边栏动画与启动错误” section.
+Nothing is pushed or published. Version stays 1.0.4 / build 5.
+
+- Empty-group guard (Codex's implementation) kept as written. The affected subscription still needs
+  valid nodes from its provider.
+- Sidebar title: Codex's uncommitted fix was replaced after frame-by-frame evidence showed it
+  narrowed the sidebar and misaligned the title. The title now stays in the detail column and
+  `ClearOfSidebarButton` sets its padding from the column's measured position. The detail-column
+  `transaction` override was removed, as the frames showed no effect from it.
+- Checks run in this session: full verify PASS, 12 + 105 + 294 + 6 = 417 tests; isolated build with
+  hide/show frame sheets for Overview, Proxies and Connections viewed; all scenes re-rendered and the
+  related ones viewed; independent design review Critical 0 / Major 0, two Minor fixed.
+- Known and left: content clips at the window's right edge for a frame or two while the sidebar
+  shows (same before the change); the failure card's buttons don't match the empty-group advice.
+- NOT VERIFIED: the real app window, full screen with the sidebar hidden, launch with the sidebar
+  hidden, keyboard, VoiceOver, macOS 14 VM. Codex's temp logs and motion harness no longer exist.
+- `dist/Veer.app` was not rebuilt: it is still the 2026-11-01 development build without this round.
+
 ## Latest feature completion (2026-11-01)
 
 - Completed the inherited attachments, dedicated-group DIRECT handling, suggestion and proxy UI work.
