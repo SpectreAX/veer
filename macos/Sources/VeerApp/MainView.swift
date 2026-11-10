@@ -165,17 +165,17 @@ struct MainView: View {
     }
 
     /// The back button, page and profile, in the page's column and so moving with it as the sidebar
-    /// opens and closes: its position can't be measured from outside, as a split view reports wild
-    /// values for the column while it animates. Clear of the sidebar button when there is no sidebar.
+    /// opens and closes. Its padding keeps it clear of the sidebar button and comes from where the
+    /// column is, frame by frame: animated on a curve of its own, it fell behind the column and the
+    /// title crossed the window's buttons.
     private var titleRow: some View {
-        HStack(spacing: Spacing.sm) {
-            if let parent = store.page.parent { backButton(to: parent) }
-            pageTitle
+        ClearOfSidebarButton(clearance: sidebarButtonLeading + 52) {
+            HStack(spacing: Spacing.sm) {
+                if let parent = store.page.parent { backButton(to: parent) }
+                pageTitle
+            }
+            .frame(height: Self.topRowHeight)
         }
-        .frame(height: Self.topRowHeight)
-        // In line with the page's cards, which start this far in.
-        .padding(.leading, sidebarHidden ? sidebarButtonLeading + 52 : Spacing.xl)
-        .animation(reduceMotion ? nil : Motion.standard, value: sidebarHidden)
         .ignoresSafeArea(.container, edges: .top)
     }
 
@@ -300,6 +300,22 @@ struct MainView: View {
         .font(.callout)
         .padding(.horizontal, Spacing.lg)
         .padding(.vertical, Spacing.md)
+    }
+}
+
+/// Content at the leading edge of the page's column, in line with the page's cards, or further in
+/// while the column sits under the sidebar button. It measures where it is itself, so only this
+/// view is drawn again as the split view moves the column, and not the page beside it.
+private struct ClearOfSidebarButton<Content: View>: View {
+    let clearance: CGFloat
+    @ViewBuilder let content: Content
+    @State private var leading: CGFloat = Metrics.sidebarWidth
+
+    var body: some View {
+        content
+            .padding(.leading, max(Spacing.xl, clearance - leading))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minX } action: { leading = $0 }
     }
 }
 

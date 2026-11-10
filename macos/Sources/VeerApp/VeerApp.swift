@@ -114,6 +114,12 @@ struct VeerCommands: Commands {
         CommandGroup(replacing: .newItem) {
             Button("新对话") { agent.open(fresh: true) }
                 .keyboardShortcut("n")
+            Button("添加图片或文件…") {
+                agent.open()
+                agent.choosingAttachments = true
+            }
+            .keyboardShortcut("a", modifiers: [.command, .shift])
+            .disabled(!agent.effectiveUseAI)
             Divider()
             Button("导入配置…") { store.openImport() }.keyboardShortcut("o")
             Button("用剪贴板内容导入…") { store.openImport(prefill: NSPasteboard.general.string(forType: .string) ?? "") }

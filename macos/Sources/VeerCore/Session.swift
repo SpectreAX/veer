@@ -114,6 +114,8 @@ public struct Turn: Codable, Identifiable, Sendable, Equatable {
         /// Draft before and after writing, for per-turn diffs.
         public var writtenFrom: String?
         public var writtenTo: String?
+        /// The node replaced when adding DIRECT to a dedicated group, for undo and redo.
+        public var previousDirectNode: String?
 
         public init(plan: EditPlan, items: [ChangeItem], accepted: Set<Int>, baseDraft: String, candidate: String,
                     validation: ValidationResult, status: ProposalStatus) {
@@ -166,6 +168,9 @@ public struct Turn: Codable, Identifiable, Sendable, Equatable {
     public var executionMode: ExecutionMode?
     /// The proposal was written into the draft by the mode, without review.
     public var autoWritten: Bool?
+    /// Files and images sent with the instruction. Images and original files are not kept; the
+    /// cleaned text is, in `sentPayload`, to show what was sent.
+    public var attachments: [AttachmentInfo]?
 
     public init(prompt: String, mode: Mode, steps: [Step], outcome: Outcome = .running, now: Date = .now) {
         id = UUID()

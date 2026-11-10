@@ -97,6 +97,7 @@ public struct PillButtonStyle: ButtonStyle {
     private struct PillBody: View {
         let configuration: Configuration
         let tint: Color?
+        @Environment(\.isEnabled) private var isEnabled
         @State private var hovering = false
 
         var body: some View {
@@ -104,9 +105,10 @@ public struct PillButtonStyle: ButtonStyle {
             configuration.label
                 .font(.callout)
                 .foregroundStyle(tint ?? .primary)
+                .opacity(isEnabled ? 1 : 0.4)
                 .padding(.horizontal, Spacing.sm + Spacing.xxs)
                 .padding(.vertical, Spacing.xs)
-                .background((tint ?? .primary).opacity(configuration.isPressed ? base + 0.08 : hovering ? base + 0.04 : base), in: Capsule())
+                .background((tint ?? .primary).opacity(configuration.isPressed ? base + 0.08 : hovering && isEnabled ? base + 0.04 : base), in: Capsule())
                 .contentShape(Capsule())
                 .onHover { hovering = $0 }
                 .animation(Motion.quick, value: hovering)

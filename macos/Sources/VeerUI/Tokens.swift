@@ -30,6 +30,7 @@ nonisolated public enum Metrics {
     public static let compactBreakpoint: CGFloat = 1100
     /// Below this the page title leaves the profile's name less room beside the toolbar.
     public static let roomyTitleWidth: CGFloat = 960
+    public static let attachmentWidth: CGFloat = 220
 }
 
 nonisolated public enum Motion {

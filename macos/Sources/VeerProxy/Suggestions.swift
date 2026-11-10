@@ -1,4 +1,5 @@
 import Foundation
+import VeerCore
 
 /// Something worth suggesting, found on this Mac without the AI. The AI is asked only when the
 /// user opens a suggestion.
@@ -52,6 +53,7 @@ public struct SuggestionDetector: Sendable {
     public init(ignoredHosts: Set<String> = []) { self.ignoredHosts = ignoredHosts }
 
     public mutating func connectionFailed(host: String, at time: Date = .now) -> Suggestion? {
+        guard !Self.isIPv6Only(host) else { return nil }
         guard let count = count(host, at: time, in: &failures, window: Self.failureWindow), count >= Self.failureCount else { return nil }
         return raise(Suggestion(kind: .failing(host: host, count: count)))
     }
@@ -63,6 +65,8 @@ public struct SuggestionDetector: Sendable {
 
     /// A delay test of the node `group` uses: nil or 0 is a timeout, anything else resets.
     public mutating func tested(node: String, in group: String, delay: Int?) -> Suggestion? {
+        // REJECT and DIRECT are policies, not nodes: there is nothing to replace them with.
+        guard !ConfigDocument.builtinPolicies.contains(node) else { return nil }
         let key = "\(group)\u{0}\(node)"
         guard delay == nil || delay == 0 else {
             timeouts[key] = nil
@@ -71,6 +75,13 @@ public struct SuggestionDetector: Sendable {
         timeouts[key, default: 0] += 1
         guard timeouts[key]! >= Self.timeoutCount else { return nil }
         return raise(Suggestion(kind: .slowNode(group: group, node: node)))
+    }
+
+    /// An IPv6 address, or a name saying it answers over IPv6 only (ipv6.itdog.cn, test-ipv6.com).
+    /// It fails on any node without IPv6, which is no fault of the route and no reason to change it.
+    public static func isIPv6Only(_ host: String) -> Bool {
+        if host.contains(":") { return true }
+        return host.lowercased().split(whereSeparator: { $0 == "." || $0 == "-" }).contains { ["ipv6", "ip6", "v6"].contains($0) }
     }
 
     /// The user closed it; it may come back when its condition holds again.

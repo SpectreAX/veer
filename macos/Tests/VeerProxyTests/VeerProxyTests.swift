@@ -105,6 +105,29 @@ struct ProfileStoreTests {
         func delete(for provider: String) { keys[provider] = nil }
     }
 
+    @Test func policiesAreNotNodesToReplace() {
+        var detector = SuggestionDetector()
+        for policy in ["REJECT", "REJECT-DROP", "DIRECT", "PASS"] {
+            for _ in 0..<3 { #expect(detector.tested(node: policy, in: "广告拦截", delay: 0) == nil) }
+        }
+        _ = detector.tested(node: "节点 1", in: "节点选择", delay: 0)
+        #expect(detector.tested(node: "节点 1", in: "节点选择", delay: 0) != nil)
+    }
+
+    @Test(arguments: ["ipv6.itdog.cn", "test-ipv6.com", "ipv6.google.com", "v6.ident.me", "ip6.me", "2001:db8::1", "IPV6.example.com"])
+    func hostsOnlyReachableOverIPv6AreNotSuggested(host: String) {
+        var detector = SuggestionDetector()
+        for _ in 0..<5 { #expect(detector.connectionFailed(host: host) == nil) }
+    }
+
+    @Test(arguments: ["example.com", "sipv6.example.com", "v6news.com", "chatgpt.com"])
+    func otherHostsStillAre(host: String) {
+        var detector = SuggestionDetector()
+        _ = detector.connectionFailed(host: host)
+        _ = detector.connectionFailed(host: host)
+        #expect(detector.connectionFailed(host: host) != nil)
+    }
+
     @Test func onlyASignedBuildOnItsRealFolderUsesTheKeychain() {
         let real = VeerPaths()
         #expect(real.usesKeychain(team: "TEAM", environment: [:]))

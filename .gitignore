@@ -2,4 +2,7 @@
 /android/
 # Local Claude Code settings and worktrees.
 /.claude/
+# Machine-local migration archives, environment inventory and check logs.
+/.codex/local/
+/.codex/**/__pycache__/
 .DS_Store
