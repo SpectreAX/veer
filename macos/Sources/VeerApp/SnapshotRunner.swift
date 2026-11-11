@@ -233,6 +233,13 @@ enum SnapshotRunner {
             Scene(name: "09v-attachments-wide", size: CGSize(width: 1440, height: 900), store: { running(page: .agent) },
                   view: AnyView(MainView()), agent: attachmentThread),
             // What Veer asks when a domain with its own group is to go direct.
+            Scene(name: "09w-agent-archived", store: { running(page: .agent) }, view: AnyView(MainView()), agent: archivedThread),
+            Scene(name: "09y-agent-archived-folded", store: { running(page: .agent) }, view: AnyView(MainView()), agent: { agent in
+                archivedThread(agent)
+                agent.selectedID = agent.sessions.first?.id
+            }),
+            Scene(name: "09x-agent-archived-narrow", size: CGSize(width: 860, height: 560), store: { running(page: .agent) },
+                  view: AnyView(MainView()), agent: archivedThread),
             Scene(name: "09r-agent-own-group", store: { running(page: .agent) }, view: AnyView(MainView()), agent: { agent in
                 agent.settings.provider = .ollama
                 agent.newThread()
@@ -436,7 +443,7 @@ enum SnapshotRunner {
                 store.helperProbe = { .ready }
                 return store
             }, view: AnyView(TUNSettings())),
-        ]
+        ] + sidebarScenes()
     }
 
     static func sampleConnections() -> [ConnectionRow] {
@@ -474,6 +481,16 @@ enum SnapshotRunner {
     }
 
     /// A conversation about the sample profile with one proposal: Netflix to the Japan node.
+    /// A conversation whose profile was deleted, selected, below a current one.
+    private static func archivedThread(_ agent: AgentStore) {
+        agent.settings.provider = .ollama
+        sampleThread(agent, status: .pending)
+        guard let archived = agent.sessions.first?.id else { return }
+        agent.sessions[0].profileID = UUID()
+        agent.newThread()
+        agent.selectedID = archived
+    }
+
     static func sampleThread(_ agent: AgentStore, status: Turn.ProposalStatus) {
         guard let profile = agent.proxy.activeProfile, let text = try? agent.proxy.effectiveText(of: profile.id),
               let document = try? ConfigDocument.parse(text), let target = document.target(named: "🇯🇵 日本 大阪 02") else { return }

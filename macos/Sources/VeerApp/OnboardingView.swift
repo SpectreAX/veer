@@ -157,8 +157,7 @@ private struct StartStep: View {
             if case .failed(let message, let log) = store.phase {
                 // Short, as this step has no scroll of its own for the smallest window.
                 FailurePanel(message: message, log: log, logHeight: 72, retryIsDefault: true)
-            }
-            if let notice = store.notice { StatusBadge(kind: .warning, text: notice).fixedSize(horizontal: false, vertical: true) }
+            } else if let notice = store.notice { StatusBadge(kind: .warning, text: notice).fixedSize(horizontal: false, vertical: true) }
             Text("可以随时在菜单栏关闭。").font(.caption).foregroundStyle(.secondary)
             HStack {
                 Button("返回") { store.onboarding = .routing }.neutralControl()

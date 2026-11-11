@@ -86,9 +86,9 @@ struct AssistantTurn: View {
             case .noChange(let text):
                 Text(text).foregroundStyle(.secondary)
             case let .clarify(question, options):
-                ClarificationView(question: question, options: options, enabled: isLatest, fromPlan: turn.executionMode == .plan)
+                ClarificationView(question: question, options: options, enabled: isLatest && !store.isArchived, fromPlan: turn.executionMode == .plan)
             case let .clarification(question, suggestions):
-                ClarificationView(question: question, options: suggestions.map { ClarifyOption(label: $0) }, enabled: isLatest)
+                ClarificationView(question: question, options: suggestions.map { ClarifyOption(label: $0) }, enabled: isLatest && !store.isArchived)
             case .outOfScope(let text):
                 VStack(alignment: .leading, spacing: Spacing.sm) {
                     StatusBadge(kind: .info, text: String(localized: "超出编辑范围"), compact: true)
@@ -236,7 +236,7 @@ struct ProposalView: View {
     let proposal: Turn.Proposal
 
     private var acceptedCount: Int { proposal.accepted.count }
-    private var editable: Bool { proposal.status == .pending && proposal.baseDraft == store.current?.draftText }
+    private var editable: Bool { proposal.status == .pending && !store.isArchived && proposal.baseDraft == store.current?.draftText }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.md) {
@@ -264,6 +264,7 @@ struct ProposalView: View {
 
     private var summary: String {
         switch proposal.status {
+        case .pending where store.isArchived: String(localized: "准备了 \(proposal.items.count) 项分流修改，没有应用。")
         case .pending where !editable: String(localized: "这组修改基于之前的分流生成。")
         case .pending: acceptedCount == proposal.items.count
             ? String(localized: "准备了 \(proposal.items.count) 项分流修改，等待你确认。")
@@ -296,19 +297,20 @@ struct ProposalView: View {
                 }
             case .undone:
                 StatusBadge(kind: .neutral, text: String(localized: "已撤销"))
-                if store.current?.turns.last(where: { $0.proposal?.status == .undone })?.id == turn.id {
+                if store.canRedo, store.current?.turns.last(where: { $0.proposal?.status == .undone })?.id == turn.id {
                     Button(String(localized: "重做")) { store.redo() }.buttonStyle(.link).foregroundStyle(Color.veerAccent)
                 }
             case .written:
                 StatusBadge(kind: .success, text: turn.autoWritten == true
                             ? String(localized: "已按\(turn.executionMode?.title ?? "")模式直接应用") : String(localized: "已应用"))
-                if store.current?.turns.last(where: { $0.proposal?.status == .written })?.id == turn.id {
+                if !store.isArchived, store.current?.turns.last(where: { $0.proposal?.status == .written })?.id == turn.id {
                     Button(String(localized: "撤销")) { store.undo() }.buttonStyle(.link).foregroundStyle(Color.veerAccent)
                 }
             case .discarded:
                 StatusBadge(kind: .neutral, text: String(localized: "已放弃"))
             case .pending, .stale:
-                StatusBadge(kind: .warning, text: store.canRetry(turn) ? String(localized: "已失效 · 分流已变化，请重新生成")
+                StatusBadge(kind: .warning, text: store.isArchived ? String(localized: "未应用 · 配置已删除")
+                            : store.canRetry(turn) ? String(localized: "已失效 · 分流已变化，请重新生成")
                             : String(localized: "附件未保存，请重新添加后发送。"))
                 if store.canRetry(turn) {
                     Button(String(localized: "重新生成")) { store.retry(turnID: turn.id) }.buttonStyle(.link).foregroundStyle(Color.veerAccent)
@@ -485,13 +487,15 @@ struct FailureView: View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
             StatusBadge(kind: .failure, text: message).fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
-            if !store.canRetry(turn) {
+            if !store.canRetry(turn), !store.isArchived {
                 Text(String(localized: "附件未保存，请重新添加后发送。")).font(.callout).foregroundStyle(.secondary)
             }
             HStack(spacing: Spacing.sm) {
                 if opensSettings { Button(String(localized: "打开设置")) { openSettings() } }
                 // Local parsing can't read attachments, and a turn's files last only as long as this launch.
-                if canUseLocal, turn.attachments?.isEmpty != false { Button(String(localized: "改用本地解析")) { store.retry(turnID: turn.id, useLocal: true) } }
+                if canUseLocal, !store.isArchived, turn.attachments?.isEmpty != false {
+                    Button(String(localized: "改用本地解析")) { store.retry(turnID: turn.id, useLocal: true) }
+                }
                 if store.canRetry(turn) { Button(String(localized: "重试")) { store.retry(turnID: turn.id) } }
             }
             .buttonStyle(.bordered)
@@ -816,10 +820,13 @@ struct LookupHintsView: View {
                             if let network = entry.network {
                                 HStack(spacing: Spacing.sm) {
                                     Text(String(localized: "这一轮只写这个地址。")).font(.caption).foregroundStyle(.secondary)
-                                    Button(String(localized: "按网段 \(network) 分流…")) { store.draftInstruction(String(localized: "\(network) 走 ")) }
-                                        .buttonStyle(.link).foregroundStyle(Color.veerAccent).font(.caption)
-                                        .disabled(store.isRunning)
-                                        .help(String(localized: "在输入框写好“\(network) 走 ”，再选择出口"))
+                                    // An archived conversation has no composer to write into.
+                                    if !store.isArchived {
+                                        Button(String(localized: "按网段 \(network) 分流…")) { store.draftInstruction(String(localized: "\(network) 走 ")) }
+                                            .buttonStyle(.link).foregroundStyle(Color.veerAccent).font(.caption)
+                                            .disabled(store.isRunning)
+                                            .help(String(localized: "在输入框写好“\(network) 走 ”，再选择出口"))
+                                    }
                                 }
                             }
                         }
@@ -927,7 +934,7 @@ struct RuntimeRunView: View {
                 } else if run.finished {
                     StatusBadge(kind: run.items.allSatisfy { $0.state == .done } ? .success : .warning,
                                 text: run.items.allSatisfy { $0.state == .done } ? String(localized: "已执行") : String(localized: "部分没有完成"))
-                    if run.canUndo {
+                    if run.canUndo, !store.isArchived {
                         Button(String(localized: "撤销")) { store.undoRuntime(turnID: turn.id) }.buttonStyle(.link).foregroundStyle(Color.veerAccent)
                     }
                 }

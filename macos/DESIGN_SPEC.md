@@ -34,8 +34,8 @@ Brand expression must not damage native usability.
 - Icon-only buttons have accessibility labels and tooltips.
 - Controls are grouped by what they do, each group in its own glass, and at most three groups: up to
   two for the page, with search on its own, then the Agent toggle and start/stop together.
-- The last group stays fixed. A group grows out of its neighbour on the same spring rather than
-  appearing on its own.
+- The last group stays fixed. On a page switch a group that comes or goes fades and blurs in place,
+  glass and all, the same way in and out; one that stays springs to its new width.
 - The profile's name under the title is the profile menu, as the HIG places a document menu.
 - A toggle in the toolbar fills when on, and says its state to VoiceOver.
 - Search is `⌘F`; Esc clears it and leaves the field.
@@ -93,6 +93,7 @@ as a violation unless its reason no longer holds. Anything not listed here is no
 | "Later" instead of "Cancel" in the TUN helper alert | It puts the install off rather than calling anything off, and Esc still works. The wording is the product owner's | SPEC 4.1, `HelperPrompt` |
 | Sidebar selection stays in the accent color when the focus moves | Pages put the cursor in their own field, and the system's dimming then flashes between two looks on every click. The product owner asked for one look | SPEC 5, `selectionHighlight` |
 | Own search field instead of `.searchable` | Several `.searchable` pages crash `NSToolbar` with a duplicate identifier on page switch (1.0.3 crash) | SPEC 5, `ToolbarSearchField` |
+| Sidebar hides and shows by moving the native split view's divider, not through `NavigationSplitView`'s own collapse | Its collapse reused a stale page image, and reversing it mid-way in an 860-wide window grew the window to 1040. SwiftUI has no control of the divider, so `SidebarAnimator` drives the split view item it already has; with Reduce Motion it switches at once | `SidebarAnimator`, `MainView` |
 | Plain Agent column instead of `.inspector` | `NSSplitViewController` throws if the inspector changes mid-animation (crash on 2026-10-30) | `AgentPanelColumn` |
 | Veer green tint instead of the system accent color | Brand color, used only on small areas. Custom accent colors are out of scope for v1 | `Color.veerAccent` |
 | Fixed chart palette | Categorical colors need stable, color-blind-checked pairs that the system colors do not give. Every chart has a legend with exact counts | `ChartPalette` |

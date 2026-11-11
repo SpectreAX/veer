@@ -36,7 +36,7 @@ struct ProfileBar: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             // Held to a few lines, with the rest in a tooltip: this page has no scroll of its own up
             // here, and wrapped text at its full height pushes the whole window out of place.
-            if let notice = store.notice { StatusBadge(kind: .warning, text: notice).lineLimit(3).help(notice) }
+            if let notice = store.notice, !store.phase.isFailed { StatusBadge(kind: .warning, text: notice).lineLimit(3).help(notice) }
             if let effective = store.effective { EffectiveWarnings(effective: effective) }
         }
         .padding(.horizontal, Spacing.xl)

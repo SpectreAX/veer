@@ -19,6 +19,11 @@ final class ProxyStore {
         case running
         /// Why the core could not start or stopped on its own, with its last output lines.
         case failed(String, log: [String])
+
+        var isFailed: Bool {
+            if case .failed = self { return true }
+            return false
+        }
     }
 
     enum Mode: String, CaseIterable, Identifiable {

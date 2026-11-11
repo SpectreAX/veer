@@ -38,11 +38,17 @@ struct FailurePanel: View {
     var logHeight: CGFloat = 180
     /// Where this is what to do next, and Return should do it.
     var retryIsDefault = false
-    @State private var retries = 0
+    /// Retries that failed again at once. A port in use or a missing core fails without passing
+    /// through starting, so the panel stays exactly as it was and says nothing unless counted here.
+    /// A retry that does start goes through starting, which the start button's ring announces.
+    @State private var immediateFailures = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.md) {
             StatusBadge(kind: .failure, text: message).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+            if let notice = store.notice {
+                StatusBadge(kind: .warning, text: notice).fixedSize(horizontal: false, vertical: true)
+            }
             if !log.isEmpty {
                 ScrollView {
                     Text(log.suffix(12).joined(separator: "\n"))
@@ -66,17 +72,25 @@ struct FailurePanel: View {
                 }
                 .neutralControl()
             }
+            if let profile = store.activeProfile, store.page != .proxies || profile.isSubscription {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: Spacing.sm) { profileActions(profile) }
+                    VStack(alignment: .leading, spacing: Spacing.sm) { profileActions(profile) }
+                }
+            }
             HStack {
                 SettingsLink { Text("打开设置…") }.neutralControl()
                 Spacer()
-                // A cause that hasn't gone fails at once with the same words, which looks like nothing happened.
-                if retries > 0 {
+                if immediateFailures > 0 {
                     Text(retryResult).font(.caption).foregroundStyle(.secondary).monospacedDigit()
                 }
                 Button("重试") {
-                    retries += 1
                     store.start()
-                    AccessibilityNotification.Announcement(retryResult).post()
+                    // Only once the result is in: a start that is under way has not failed yet.
+                    if case .failed = store.phase {
+                        immediateFailures += 1
+                        AccessibilityNotification.Announcement(retryResult).post()
+                    }
                 }
                 .primaryAction(.regular)
                 .keyboardShortcut(retryIsDefault ? .defaultAction : nil)
@@ -85,5 +99,20 @@ struct FailurePanel: View {
         .panel()
     }
 
-    private var retryResult: String { String(localized: "仍然失败（第 \(String(retries)) 次重试）") }
+    private var retryResult: String { String(localized: "仍然失败（第 \(String(immediateFailures)) 次重试）") }
+
+    @ViewBuilder private func profileActions(_ profile: Profile) -> some View {
+        // On Proxies the profiles are already above this panel.
+        if store.page != .proxies { Button("管理配置") { store.manageProfiles() }.neutralControl() }
+        if profile.isSubscription {
+            Button { store.update(profile.id) } label: {
+                HStack(spacing: Spacing.xs) {
+                    if store.updatingProfiles.contains(profile.id) { ProgressView().controlSize(.small) }
+                    Text("更新订阅")
+                }
+            }
+            .neutralControl()
+            .disabled(store.updatingProfiles.contains(profile.id))
+        }
+    }
 }

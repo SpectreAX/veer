@@ -3,17 +3,64 @@
 ## Scope
 
 Shared progress summary: [`macos/docs/PLAN.md`](../macos/docs/PLAN.md), section
-“本轮开发收尾（2026-11-01，Codex）”. Update that document and this handoff after meaningful progress,
+“边栏动画与启动错误”. Update that document and this handoff after meaningful progress,
 as the user requested, so Claude can resume through its usual development-plan entrypoint.
 
 2026-11-01: after workflow migration the user authorized finishing Claude's remaining development.
 The feature and workflow are being recorded as separate local commits. Publishing, enabling the
 system proxy, and TUN tests on the real Mac remain outside authorization.
 
-## Current state (2026-11-10, Claude)
+## Current state (2026-11-11, Claude)
 
-The 2026-11-03 round is finished and committed locally; see PLAN's “边栏动画与启动错误” section.
-Nothing is pushed or published. Version stays 1.0.4 / build 5.
+Codex's 2026-11-10/11 continuation is finished and committed locally on `feat/macos-agent-attachments`.
+Not pushed (PR #3 is already merged, so this needs a new PR). See PLAN's “续修边栏与失败恢复”.
+
+- Kept Codex's native divider animator (`SidebarAnimator`), detail viewport and failure recovery.
+- Menu command now uses `@FocusedValue(\.sidebar)` from `MainView`; the window-notification
+  availability flag was removed. The "always disabled" finding was a probe artifact: the probe never
+  sent `menuNeedsUpdate`. With it, the item is enabled, its title follows the state, and ⌃⌘S toggles.
+- Design review Major fixed: a retry that fails again synchronously (port in use, missing core) now
+  shows and announces “仍然失败（第 N 次重试）”. Manage Profiles is hidden on Proxies.
+- Checks run: full verify PASS 15 + 105 + 294 + 13 = 427; isolated probe frames viewed for 860 dark,
+  1080 light, panel, hidden start, Reduce Motion and full screen; static re-render viewed.
+- Probe used here (in-process window capture, no screen-recording permission):
+  `/private/tmp/claude-501/-Users-spectreax-Developer-Veer-macos/a188dafe-3258-4a69-9054-4bbe0446c8cf/scratchpad/probe/`.
+  It adapts Codex's `.codex/local/sidebar-followup/prepare.py` and `Probe.swift`.
+- Follow-up from the user: closing toolbar groups ended as two thin glass lines. `RevealLayout` is
+  gone; groups are inserted and removed inside the `GlassGroup` with `glassEffectID`, so they flow
+  into and out of the neighbouring glass, matching the switch to Agent (opacity has no effect on
+  glass drawn by the container). No official macOS 27 toolbar-transition guidance was found. Selected sidebar icons stay white only while the accent fill shows, so a
+  background window no longer shows a white icon on grey. Frames and a background capture viewed
+  (light); dark background NOT VERIFIED.
+- Then the user asked for the closing groups to fade out like they fade in, not slide into the
+  neighbour (seen switching to Tools). The groups' glass now uses `glassEffectTransition(.materialize)`:
+  in and out both fade and blur in place. Frames viewed for Connections→Tools, Tools→Connections and
+  Connections→Agent (1080, light, zh); verify.sh passed. Dark/en/narrow for this change and the
+  real window NOT VERIFIED. dist/ rebuilt afterwards (SDK 27.2, minos 14.0, codesign ok); not launched.
+- User request: an Agent conversation whose profile was deleted is archived and closed. `AgentStore.isArchived`
+  is derived from whether the profile exists (no stored flag). Send, apply, discard, undo, redo, retry,
+  clarification choices and the "split by network" link are blocked; the list has an "Archived" section and
+  the composer is replaced by `ArchivedNotice` with "New Conversation". On the Agent page an archived chat
+  stays readable even with no profile left (not rendered: NOT VERIFIED). Tests: `ArchivedConversationTests`.
+  Snapshot scenes 09w/09x viewed (zh/en, light/dark, 1080/860) from an isolated copy with its own bundle id;
+  verify.sh passed; apple-design-review: 2 Major fixed. Keyboard, VoiceOver, real window, macOS 14 NOT
+  VERIFIED. Then archived chats fold into an "Archived (N)" `DisclosureGroup`, closed by default and open
+  when the shown chat is archived (scene 09y added; viewed). dist/ rebuilt after quitting Veer; committed and pushed to PR #4.
+- Known: a hidden system “Hide Sidebar ⌥⌘S” in the Help menu uses native toggleSidebar (present
+  before too). The probe cannot see “Enter Full Screen” before or after the change.
+- NOT VERIFIED: real app window, keyboard/VoiceOver, clicking a synchronously failing retry,
+  macOS 14 VM, system proxy/TUN. `dist/Veer.app` was not rebuilt.
+
+## Earlier state (2026-11-10, Claude)
+
+The empty-group guard and sidebar-title fixes are committed; the page-content clipping remains
+unresolved, so the full sidebar-glitch request is not finished. See PLAN's “边栏动画与启动错误”
+section. Version stays 1.0.4 / build 5.
+
+Codex status audit on 2026-11-10: the worktree was clean at `e085c98`; a read-only `git ls-remote`
+confirmed the remote feature branch also points there. Both `d19cf01` (empty groups) and `e085c98`
+(sidebar title) are therefore present remotely, superseding the earlier “not pushed” claim.
+No push, build, app launch, test rerun or release was performed during this status audit.
 
 - Empty-group guard (Codex's implementation) kept as written. The affected subscription still needs
   valid nodes from its provider.
@@ -21,14 +68,21 @@ Nothing is pushed or published. Version stays 1.0.4 / build 5.
   narrowed the sidebar and misaligned the title. The title now stays in the detail column and
   `ClearOfSidebarButton` sets its padding from the column's measured position. The detail-column
   `transaction` override was removed, as the frames showed no effect from it.
-- Checks run in this session: full verify PASS, 12 + 105 + 294 + 6 = 417 tests; isolated build with
+- Claude's completion-session checks (not rerun by the later status audit): full verify PASS,
+  12 + 105 + 294 + 6 = 417 tests; isolated build with
   hide/show frame sheets for Overview, Proxies and Connections viewed; all scenes re-rendered and the
   related ones viewed; independent design review Critical 0 / Major 0, two Minor fixed.
 - Known and left: content clips at the window's right edge for a frame or two while the sidebar
   shows (same before the change); the failure card's buttons don't match the empty-group advice.
 - NOT VERIFIED: the real app window, full screen with the sidebar hidden, launch with the sidebar
   hidden, keyboard, VoiceOver, macOS 14 VM. Codex's temp logs and motion harness no longer exist.
-- `dist/Veer.app` was not rebuilt: it is still the 2026-11-01 development build without this round.
+- Later binary inspection supersedes the earlier old-build statement: `dist/Veer.app` contains
+  `ClearOfSidebarButton`, `requireGroupMembers` and `startableText` symbols and the empty-group error
+  text. Deep strict codesign verification PASS; minimum macOS 14.0 / SDK 27.2. Executable SHA-256:
+  `58fc88f0883fe74d4f705298503077f5cbbce9860586af7467974732de8411dd`.
+  Symbol checks establish that these fixes are included, not exact source/build correspondence.
+- Next: fix page-content clipping during sidebar show, then verify full screen, rapid reversals
+  and Reduce Motion using isolated sample data. Keep the outstanding manual checks above explicit.
 
 ## Latest feature completion (2026-11-01)
 

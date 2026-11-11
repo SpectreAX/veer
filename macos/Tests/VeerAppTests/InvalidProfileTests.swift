@@ -7,6 +7,26 @@ import VeerProxy
 @MainActor struct InvalidProfileTests {
     static let invalid = "proxy-groups:\n  - {name: Auto, type: url-test, proxies: []}\n"
 
+    @Test func managingProfilesLeavesTheFailedOnboardingStepWithoutStartingOrChangingAProfile() throws {
+        let store = SnapshotRunner.sample()
+        defer { try? FileManager.default.removeItem(at: store.paths.root) }
+        store.onboarding = .start
+        store.phase = .failed("invalid config", log: [])
+        let active = store.activeProfileID
+        let profiles = store.profiles
+        let settings = store.settings
+        store.manageProfiles()
+        #expect(store.onboarding == nil && store.page == .proxies)
+        #expect(store.phase.isFailed && store.activeProfileID == active && store.profiles == profiles)
+        #expect(store.settings == settings && !store.systemProxyOn && !store.tunActive)
+    }
+
+    @Test func managingProfilesWithNoProfileKeepsTheImportOnboarding() {
+        let store = SnapshotRunner.sample(profiles: false)
+        store.manageProfiles()
+        #expect(store.onboarding == .addProfile && store.phase == .stopped)
+    }
+
     @Test func importingAnEmptySubscriptionDoesNotReplaceTheExistingProfile() throws {
         let store = SnapshotRunner.sample()
         defer { try? FileManager.default.removeItem(at: store.paths.root) }

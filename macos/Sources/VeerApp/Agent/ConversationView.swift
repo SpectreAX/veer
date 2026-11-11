@@ -1,5 +1,6 @@
 import SwiftUI
 import VeerCore
+import VeerProxy
 
 struct ConversationView: View {
     @Environment(AgentStore.self) private var store
@@ -18,7 +19,7 @@ struct ConversationView: View {
                 // bottom while the window is still settling at launch never creates its rows, which left
                 // the first session blank until another one was selected.
                 VStack(alignment: .leading, spacing: Spacing.xl) {
-                    if turns.isEmpty { emptyState }
+                    if turns.isEmpty && !store.isArchived { emptyState }
                     if hidden > 0, let first = turns.first?.id {
                         Button {
                             followsBottom = false
@@ -64,7 +65,7 @@ struct ConversationView: View {
             .onChange(of: store.selectedID) { followsBottom = true }
             .onAppear { proxy.scrollTo("bottom", anchor: .bottom) }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                ComposerView()
+                composer
                     .frame(maxWidth: Metrics.readingWidth)
                     // Floats just above the composer without taking layout space: if it changed the
                     // inset, its own appearance would move the view off the bottom and keep it shown.
@@ -95,6 +96,11 @@ struct ConversationView: View {
             }
         }
         .background(Color.surface)
+    }
+
+    /// An archived conversation can be read but not continued, so it says why in the composer's place.
+    @ViewBuilder private var composer: some View {
+        if store.isArchived { ArchivedNotice() } else { ComposerView() }
     }
 
     /// Within 40 pt of the end, or everything fits. The visible area runs under the toolbar and the
@@ -209,5 +215,31 @@ struct FlowLayout: Layout {
             }
             y += (row.map(\.size.height).max() ?? 0) + spacing
         }
+    }
+}
+
+/// In place of the composer when the conversation's profile was deleted: its changes would have
+/// nowhere to go, so it stays to read, and a new conversation is one click away.
+private struct ArchivedNotice: View {
+    @Environment(AgentStore.self) private var agent
+    @Environment(ProxyStore.self) private var proxy
+
+    var body: some View {
+        HStack(spacing: Spacing.md) {
+            Image(systemName: "archivebox").font(.title3).foregroundStyle(.secondary).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: Spacing.xxs) {
+                Text(String(localized: "对话已归档")).font(.headline)
+                Text(String(localized: "它所属的配置已删除，只能查看记录。"))
+                    .font(.callout).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .accessibilityElement(children: .combine)
+            Spacer(minLength: Spacing.sm)
+            Button(String(localized: "新对话")) { agent.newThread() }
+                .secondaryAction()
+                .help(String(localized: "在正在使用的配置上开始新对话（⌘N）"))
+                .disabled(proxy.activeProfile == nil)
+        }
+        .panel(padding: Spacing.md)
     }
 }
