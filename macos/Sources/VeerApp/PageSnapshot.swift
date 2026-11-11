@@ -53,3 +53,17 @@ struct PageSnapshotAnchor: NSViewRepresentable {
 
     func updateNSView(_ view: NSView, context: Context) { source.anchor = view }
 }
+
+/// The page's picture going: it blurs as it fades. Faded alone, the old layout's text stays sharp over
+/// the new one's, and two sets of table columns over each other read as a fault.
+struct PictureLeaving: ViewModifier {
+    let progress: Double
+
+    func body(content: Content) -> some View {
+        content.blur(radius: 12 * progress).opacity(1 - progress)
+    }
+
+    static var transition: AnyTransition {
+        .modifier(active: PictureLeaving(progress: 1), identity: PictureLeaving(progress: 0))
+    }
+}
