@@ -4,7 +4,7 @@
 
 ## 续修边栏与失败恢复（2026-11-10 Codex 开始，2026-11-11 Claude 收尾）
 
-**状态：已完成并本地提交，未推送、未发布。** 版本仍为 1.0.4 / build 5。
+**状态：已合并（PR #4，`0fb5108`），2026-11-11 发布为 1.0.5 / build 6（未公证测试版，tag `macos-v1.0.5`）。** 线上 appcast 已确认为 1.0.5；Sparkle 从 1.0.4 升级、RELEASE.md 第 2 节的实机检查和 macOS 14 VM 均 NOT VERIFIED。
 
 - **边栏动画（Codex 实现，Claude 验证）：** 不再用 `NavigationSplitView` 自带的收起，`SidebarAnimator`
   逐帧移动原生分栏的分隔条；页面按途中实际可见的宽度排版，右缘不再被裁切；快速反向不再把

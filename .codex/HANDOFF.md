@@ -12,6 +12,12 @@ system proxy, and TUN tests on the real Mac remain outside authorization.
 
 ## Current state (2026-11-11, Claude)
 
+- Released 1.0.5 (build 6) on 2026-11-11: PR #4 merged as `0fb5108`, tag `macos-v1.0.5`, GitHub release
+  v1.0.5 on SpectreAX/veer-releases with the DMG and appcast. Checked: verify.sh (with VEER_MIHOMO_BIN)
+  passed; dist app SDK 27.2 / minos 14.0, codesign strict ok, DMG verifies and mounts with a signed 1.0.5;
+  the live appcast serves 1.0.5 and the DMG downloads (HTTP 200, same length). NOT VERIFIED: Sparkle
+  update from 1.0.4, RELEASE.md section 2 hands-on checks, macOS 14 VM. Not notarized.
+
 Codex's 2026-11-10/11 continuation is finished and committed locally on `feat/macos-agent-attachments`.
 Not pushed (PR #3 is already merged, so this needs a new PR). See PLAN's “续修边栏与失败恢复”.
 
