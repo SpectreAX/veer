@@ -42,8 +42,11 @@
     新增 `ArchivedConversationTests`，快照场景 09w、09x（中英、深浅、1080 和 860）已看过；verify.sh 通过。
     键盘、VoiceOver、真实窗口、macOS 14 NOT VERIFIED。
   - 随后改为“已归档（N）”折叠组（`DisclosureGroup`，默认收起，选中归档对话时展开）；快照 09y/09w/09x 已看过，verify.sh 通过。
-- **已知、未处理：** 系统自动在“帮助”菜单放了一个隐藏的“隐藏边栏 ⌥⌘S”，走原生切换，不经过
-  动画器；改动前就存在。探针看不到“进入全屏幕”（它在菜单真正打开时才插入），改动前后相同，
+- **已修（1.0.5 之后）：** SwiftUI 自动在“帮助”菜单放的隐藏“隐藏边栏 ⌥⌘S”（走原生 `toggleSidebar:`，
+  绕过动画器）现在由 `StraySidebarItems` 在加入或变化时立即去掉快捷键和动作，再移出菜单。隔离副本确认：
+  帮助菜单只剩“Veer 帮助”，⌥⌘S 不再响应，⌃⌘S 照常切换；verify.sh 通过，新增 `StraySidebarItemsTests`。
+  真实窗口 NOT VERIFIED。
+- **已知、未处理：** 探针看不到“进入全屏幕”（它在菜单真正打开时才插入），改动前后相同，
   未能证实。
 - **NOT VERIFIED：** 真实应用窗口、键盘焦点和 VoiceOver、点击“重试”同步失败的实际效果、
   macOS 14 VM、系统代理 / TUN。`dist/Veer.app` 没有重建，不含本轮改动。
