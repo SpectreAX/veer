@@ -33,10 +33,13 @@ extension View {
 /// The window's top corner: the page's groups, then the window's own, each in glass of its own. The
 /// HIG says to group toolbar items by function and to aim for at most three groups, so a page has two
 /// and the Agent panel and start and stop, which are always there, share the last at the far end. It
-/// stays where it is, and the page's groups spring to their new widths while their controls blur.
+/// stays where it is. On a page switch a group that stays springs to its new width while its controls
+/// blur into the new ones, and one that comes or goes flows out of or back into its neighbour's glass,
+/// as Liquid Glass does: the same motion either way.
 struct ToolbarCapsule: View {
     @Environment(ProxyStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var glass
     let content: PageToolbarContent?
 
     private static let pageSlots = 2
@@ -51,11 +54,13 @@ struct ToolbarCapsule: View {
     }
 
     var body: some View {
-        // One container, as neighbouring glass should be: each samples what is behind it, not the other.
+        // One container, as neighbouring glass should be: it lets a group's glass merge into the next.
         GlassGroup(spacing: Spacing.sm) {
             HStack(spacing: Spacing.sm) {
                 ForEach(0..<Self.pageSlots, id: \.self) { slot in
-                    pageGroup(group(inSlot: slot))
+                    if let group = group(inSlot: slot), let content {
+                        pageGroup(group, page: content.page, slot: slot)
+                    }
                 }
                 HStack(spacing: Spacing.xs) {
                     if store.page != .agent {
@@ -65,7 +70,7 @@ struct ToolbarCapsule: View {
                 }
                 .padding(.horizontal, Spacing.xs)
                 .frame(height: 40)
-                .glassSurface(in: Capsule())
+                .glassSurface(in: Capsule(), id: "window", namespace: glass)
             }
             .buttonStyle(ToolbarCapsuleButtonStyle())
             .labelStyle(.iconOnly)
@@ -75,53 +80,25 @@ struct ToolbarCapsule: View {
         .animation(reduceMotion ? nil : .spring(duration: 0.38, bounce: 0.14), value: store.page)
     }
 
-    /// Always there, at no width without controls: its edge then moves with its neighbour on the
-    /// same spring, where a view that fades in sits at its final place and waits.
-    private func pageGroup(_ group: AnyView?) -> some View {
-        RevealLayout(progress: group == nil ? 0 : 1) {
-            if let group, let content {
-                HStack(spacing: Spacing.xs) { group }
-                    .padding(.horizontal, Spacing.xs)
-                    .id(content.page)
-                    .transition(swap)
-            }
+    /// The glass stays while its page's controls change, so only they blur; the glass comes and goes
+    /// with the group itself.
+    private func pageGroup(_ group: AnyView, page: Page, slot: Int) -> some View {
+        ZStack(alignment: .trailing) {
+            HStack(spacing: Spacing.xs) { group }
+                .padding(.horizontal, Spacing.xs)
+                .id(page)
+                .transition(swap)
         }
+        .frame(height: 40)
         .clipShape(Capsule())
-        .glassSurface(in: Capsule())
-        // A hairline otherwise: the material before macOS 26 strokes its edge at any width.
-        .opacity(group == nil ? 0 : 1)
+        .glassSurface(in: Capsule(), id: slot, namespace: glass)
+        .transition(swap)
     }
 
     private var panelToggle: some View {
         Button { store.agentPanel.toggle() } label: { Label(String(localized: "Agent 面板"), systemImage: "sparkles") }
             .buttonStyle(ToolbarCapsuleButtonStyle(isOn: store.agentPanel))
             .help(store.agentPanel ? String(localized: "隐藏 Agent 面板（⌥⌘I）") : String(localized: "显示 Agent 面板（⌥⌘I）"))
-    }
-}
-
-/// Its content at its own size against the trailing edge, in `progress` of that width, and never
-/// taller than it is wide: below that a group's capsule shrinks to a point. Kept at full height, its
-/// glass drew as two thin lines for the last third of the motion, which no fade reaches, as the glass
-/// container draws its members' glass itself.
-private struct RevealLayout: Layout {
-    var progress: CGFloat
-    var height: CGFloat = 40
-
-    var animatableData: CGFloat {
-        get { progress }
-        set { progress = newValue }
-    }
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let width = (subviews.map { $0.sizeThatFits(.unspecified).width }.max() ?? 0) * progress
-        return CGSize(width: width, height: min(height, max(0, width)))
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            subview.place(at: CGPoint(x: bounds.maxX - size.width, y: bounds.midY - size.height / 2), proposal: ProposedViewSize(size))
-        }
     }
 }
 

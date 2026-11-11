@@ -311,6 +311,17 @@ public extension View {
         }
     }
 
+    /// Glass that, inside a `GlassGroup`, flows out of its neighbours as it appears and back into them
+    /// as it goes, rather than appearing or shrinking on its own. Before macOS 26, the material in
+    /// `shape`, which the view's transition fades.
+    @ViewBuilder func glassSurface<S: InsettableShape>(in shape: S, id: some Hashable & Sendable, namespace: Namespace.ID) -> some View {
+        if #available(macOS 26, *) {
+            glassEffect(.regular, in: shape).glassEffectID(id, in: namespace)
+        } else {
+            glassSurface(in: shape)
+        }
+    }
+
     /// Solid content panel: no glass on content.
     func panel(padding: CGFloat = Spacing.lg) -> some View {
         self.padding(padding)
