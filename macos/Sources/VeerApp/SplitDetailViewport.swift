@@ -39,3 +39,18 @@ enum SplitDetailLayout {
         max(0, min(proposed, split - leading))
     }
 }
+
+/// Leaves `inset` free at the trailing edge, for the Agent panel lying over the page's column. Not
+/// `padding`, whose amount is animatable and would lay the page out again on every frame.
+struct TrailingInsetLayout: Layout {
+    var inset: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        proposal.replacingUnspecifiedDimensions(by: .zero)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let size = CGSize(width: max(0, bounds.width - inset), height: bounds.height)
+        subviews.first?.place(at: bounds.origin, anchor: .topLeading, proposal: ProposedViewSize(size))
+    }
+}

@@ -60,8 +60,10 @@ struct MainView: View {
     @Environment(AgentStore.self) private var agent
     @Environment(\.openSettings) private var openSettings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var panelReveal = ColumnReveal()
     @Environment(\.undoManager) private var undoManager
+    @State private var panelPlaced = false
+    @State private var pageSnapshot: NSImage?
+    @State private var snapshotSource = PageSnapshotSource()
     @Environment(\.controlActiveState) private var activeState
     @State private var isFullScreen = false
     @State private var roomyTitle = true
@@ -103,28 +105,36 @@ struct MainView: View {
     /// it past the window's edge.
     private var split: some View {
         ZStack(alignment: .trailing) {
+            // The split view keeps the window's whole width, and the page makes room for the panel
+            // inside its own column (`panelInset`), in one step under a picture of itself that fades
+            // away (`togglePanel`). Animating the page's width lays it out again on every frame.
             sidebarAndPage
                 .frame(minWidth: 0, maxWidth: .infinity)
-                // The page makes room only once the panel has slid in, and takes it back before it
-                // slides out (`ColumnReveal`), so it does not lay out again on every frame.
-                // In one step: animated, grids and tables pass through every layout in between.
-                .padding(.trailing, panelReveal.reservesSpace ? AgentPanelColumn.width(store) : 0)
             // On every page but the Agent page, which is the Agent at full size. A plain column,
             // not `.inspector`: changing an inspector again before its collapse has finished makes
             // AppKit raise over a view it has already removed, ending the app.
-            if panelReveal.progress > 0 {
+            if panelShown {
                 AgentPanelColumn()
                     .padding(.top, fullScreenTopInset)
                     .background(Color.surface)
                     .overlay(alignment: .top) { dragRow }
-                    // Narrowed from its leading edge, so it slides in from the window's edge.
-                    .frame(width: AgentPanelColumn.width(store) * panelReveal.progress, alignment: .leading)
-                    .clipped()
+                    .transition(.move(edge: .trailing))
+                    // A view on its way out of a stack otherwise drops behind the others, and the
+                    // page would cover the panel as it slides away.
+                    .zIndex(1)
             }
         }
-        // Opening and closing slide; going to and from the Agent page swaps pages at once.
-        .onChange(of: store.agentPanel) { _, open in panelReveal.animate(to: open && store.page != .agent, reduceMotion: reduceMotion) }
-        .onChange(of: store.page, initial: true) { _, page in panelReveal.jump(to: store.agentPanel && page != .agent) }
+        .onChange(of: store.agentPanel) { togglePanel() }
+        .onAppear {
+            store.agentPanelWillChange = {
+                // Asked now: this closure keeps the view as it was when it appeared.
+                guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, store.page != .agent else { return }
+                // Below the row of window controls, which stays as it is, and beside the panel.
+                snapshotSource.capturePending(insets: NSEdgeInsets(top: snapshotTop, left: 0, bottom: 0, right: panelInset))
+            }
+        }
+        // Going to and from the Agent page swaps pages at once.
+        .onChange(of: store.page, initial: true) { panelPlaced = store.agentPanel && store.page != .agent }
         // What the page shows for the panel, such as the overview's ask bar.
         .animation(reduceMotion ? nil : Motion.standard, value: store.agentPanel)
         // The band would stop at the panel, which is outside the split view; the capsule floats.
@@ -160,6 +170,36 @@ struct MainView: View {
             }
         }
     }
+
+    /// The page's picture starts below the row of window controls; in full screen the page does too.
+    private var snapshotTop: CGFloat { isFullScreen ? 0 : Self.topRowHeight }
+
+    /// Follows `store.agentPanel` a moment later, once the page's picture is up.
+    private var panelShown: Bool { panelPlaced && store.page != .agent }
+
+    /// Opening and closing: the page is drawn into a picture that stays over it while it takes its
+    /// new layout underneath, in one pass; the picture then fades as the panel slides, so nothing is
+    /// laid out while anything moves. With Reduce Motion, or no picture, it switches at once.
+    private func togglePanel() {
+        let placed = store.agentPanel && store.page != .agent
+        // Taken before the switch changed, so it holds what the page showed for the old state too.
+        let picture = snapshotSource.takePending()
+        guard !reduceMotion, placed != panelPlaced, let picture else {
+            panelPlaced = placed
+            return
+        }
+        pageSnapshot = picture
+        // After the picture has been drawn once, so it is what fades.
+        DispatchQueue.main.async {
+            withAnimation(Motion.standard) {
+                panelPlaced = store.agentPanel && store.page != .agent
+                pageSnapshot = nil
+            }
+        }
+    }
+
+    /// The room the page leaves for the Agent panel, which lies over the split view's trailing edge.
+    private var panelInset: CGFloat { panelShown ? AgentPanelColumn.width(store) : 0 }
 
     /// Full screen has no toolbar to start the columns below the row (see `EmptyWindowToolbar`). For
     /// each column: a split view passes no safe area from outside it on to them.
@@ -287,7 +327,19 @@ struct MainView: View {
                                                 max: sidebarAnimator.maximumWidth)
             } detail: {
                 SplitDetailViewport(splitWidth: split.size.width, coordinateSpace: splitCoordinateSpace) {
-                    pageContent
+                    TrailingInsetLayout(inset: panelInset) { pageContent }
+                        // The new layout is there at once; what is seen changing is the picture.
+                        .transaction { $0.animation = nil }
+                }
+                .background(PageSnapshotAnchor(source: snapshotSource))
+                .overlay(alignment: .topLeading) {
+                    if let pageSnapshot {
+                        Image(nsImage: pageSnapshot)
+                            .padding(.top, snapshotTop)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                            .transition(.opacity)
+                    }
                 }
                 .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 // The toolbar has no band, so nothing may scroll under the title and window buttons.

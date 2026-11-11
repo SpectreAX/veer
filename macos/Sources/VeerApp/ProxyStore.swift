@@ -59,7 +59,13 @@ final class ProxyStore {
 
     var page: Page = .overview
     /// The Agent beside every page but its own (`AgentPanel`). Open until the user closes it.
-    var agentPanel: Bool { didSet { defaults.set(agentPanel, forKey: "agentPanel") } }
+    var agentPanel: Bool {
+        willSet { if newValue != agentPanel { agentPanelWillChange?() } }
+        didSet { defaults.set(agentPanel, forKey: "agentPanel") }
+    }
+
+    /// Called before the panel opens or closes, while the page still shows what it showed.
+    @ObservationIgnored var agentPanelWillChange: (() -> Void)?
     /// Its width, which the user drags.
     var agentPanelWidth: Double { didSet { defaults.set(agentPanelWidth, forKey: "agentPanelWidth") } }
     var phase: Phase = .stopped {

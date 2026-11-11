@@ -12,6 +12,15 @@ system proxy, and TUN tests on the real Mac remain outside authorization.
 
 ## Current state (2026-11-11, Claude)
 
+- Panel motion, round 3 (user: 1.0.6 still not smooth). `ColumnReveal` is gone. The panel is a ZStack
+  overlay with a move transition (zIndex 1, or it drops behind while leaving); the page makes room inside
+  the detail column (`TrailingInsetLayout`). `ProxyStore.agentPanelWillChange` (willSet) lets `MainView`
+  take a picture of the page first (`PageSnapshotSource`: the window's own pixels via
+  `CGWindowListCreateImage` looked up with dlsym; `cacheDisplay` drops SwiftUI layers); the page lays out
+  once under it and the picture fades as the panel slides. Tried and dropped: animated padding (relayout
+  every frame), a non-animatable Layout (scroll content snaps). Real-core probe on copied data: 11–16 ms
+  frames during motion. Real window, full screen, second display, macOS 14 NOT VERIFIED.
+
 - Released 1.0.6 (build 7): PR #11 merged as `eac6e21`, tag `macos-v1.0.6`, GitHub release v1.0.6 on
   SpectreAX/veer-releases. Checked: verify.sh with VEER_MIHOMO_BIN; SDK 27.2 / minos 14.0; strict codesign;
   DMG mounts with signed 1.0.6; live appcast serves 1.0.6; DMG 200 with the same length. NOT VERIFIED:
