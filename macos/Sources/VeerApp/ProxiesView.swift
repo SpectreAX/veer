@@ -161,10 +161,10 @@ struct GroupSection: View {
                     }
                 }
             }
-            // A new grid when the count changes, in place at once: moved there, each tile travels on
-            // its own and they cross over each other. It then only stretches with the page.
-            .id(columns.count)
-            .transition(.identity)
+            // A new column count takes effect at once: animated, each tile travels to its new place
+            // on its own and they cross over each other. The same grid, as a new one would have to
+            // make every tile in view again, which costs a tenth of a second before anything moves.
+            .animation(nil, value: columns.count)
             .transition(.opacity)
             }
         }
