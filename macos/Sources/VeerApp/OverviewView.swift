@@ -10,6 +10,7 @@ struct OverviewView: View {
     /// window), each row's halves stack, and below the second width the quarter cards too.
     static let stackBelow: CGFloat = 720, stackPairsBelow: CGFloat = 460
     @State private var width: CGFloat = 1000
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var stacked: Bool { width < Self.stackBelow }
 
     var body: some View {
@@ -49,10 +50,12 @@ struct OverviewView: View {
                 .frame(maxWidth: 1180)
                 .frame(maxWidth: .infinity)
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { new in
-                    // The container is already moving. Animating HStack/VStack changes as well
-                    // sent traffic and connection cards across the status card's controls.
-                    var layout = Transaction(animation: nil)
-                    layout.disablesAnimations = true
+                    // The width follows the window, sidebar and panel frame by frame. Within a
+                    // layout only the cards' widths change; across a breakpoint they move to
+                    // their new rows on a short animation instead of jumping there.
+                    let crossed = [Self.stackBelow, Self.stackPairsBelow].contains { (new < $0) != (width < $0) }
+                    var layout = Transaction(animation: crossed && !reduceMotion ? Motion.standard : nil)
+                    layout.disablesAnimations = !crossed || reduceMotion
                     withTransaction(layout) { width = new }
                 }
             }
@@ -74,7 +77,9 @@ extension OverviewView {
     func row<Left: View, Right: View>(@ViewBuilder _ left: () -> Left, @ViewBuilder right: () -> Right) -> some View {
         let layout = stacked ? AnyLayout(VStackLayout(alignment: .leading, spacing: Spacing.lg)) : AnyLayout(HStackLayout(alignment: .top, spacing: Spacing.lg))
         return layout {
-            left().frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
+            // Above its neighbour: moving to its new row, the right card passes under it rather
+            // than over its controls.
+            left().frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity).zIndex(1)
             right().frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
         }
         .fixedSize(horizontal: false, vertical: true)

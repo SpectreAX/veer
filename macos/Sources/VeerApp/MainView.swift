@@ -60,6 +60,7 @@ struct MainView: View {
     @Environment(AgentStore.self) private var agent
     @Environment(\.openSettings) private var openSettings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var panelReveal = ColumnReveal()
     @Environment(\.undoManager) private var undoManager
     @Environment(\.controlActiveState) private var activeState
     @State private var isFullScreen = false
@@ -107,15 +108,20 @@ struct MainView: View {
             // On every page but the Agent page, which is the Agent at full size. A plain column,
             // not `.inspector`: changing an inspector again before its collapse has finished makes
             // AppKit raise over a view it has already removed, ending the app.
-            if store.agentPanel && store.page != .agent {
+            if panelReveal.progress > 0 {
                 AgentPanelColumn()
                     .padding(.top, fullScreenTopInset)
                     .background(Color.surface)
                     .overlay(alignment: .top) { dragRow }
-                    .transition(.move(edge: .trailing))
+                    // Narrowed from its leading edge, so it slides in from the window's edge.
+                    .frame(width: panelReveal.progress < 1 ? AgentPanelColumn.width(store) * panelReveal.progress : nil, alignment: .leading)
+                    .clipped()
             }
         }
-        // Only for opening and closing: going to and from the Agent page swaps pages at once.
+        // Opening and closing slide; going to and from the Agent page swaps pages at once.
+        .onChange(of: store.agentPanel) { _, open in panelReveal.animate(to: open && store.page != .agent, reduceMotion: reduceMotion) }
+        .onChange(of: store.page, initial: true) { _, page in panelReveal.jump(to: store.agentPanel && page != .agent) }
+        // What the page shows for the panel, such as the overview's ask bar.
         .animation(reduceMotion ? nil : Motion.standard, value: store.agentPanel)
         // The band would stop at the panel, which is outside the split view; the capsule floats.
         .toolbarBackground(.hidden, for: .windowToolbar)

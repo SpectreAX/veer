@@ -146,7 +146,7 @@ import SwiftUI
     }
 }
 
-nonisolated private final class DividerAnimation: NSAnimation, NSAnimationDelegate {
+nonisolated final class DividerAnimation: NSAnimation, NSAnimationDelegate {
     let apply: @MainActor (CGFloat) -> Void
     let completion: @MainActor () -> Void
 
