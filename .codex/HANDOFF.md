@@ -26,6 +26,11 @@ Not pushed (PR #3 is already merged, so this needs a new PR). See PLAN's “续�
 - Probe used here (in-process window capture, no screen-recording permission):
   `/private/tmp/claude-501/-Users-spectreax-Developer-Veer-macos/a188dafe-3258-4a69-9054-4bbe0446c8cf/scratchpad/probe/`.
   It adapts Codex's `.codex/local/sidebar-followup/prepare.py` and `Probe.swift`.
+- Follow-up from the user: closing toolbar groups ended as two thin glass lines; `RevealLayout` now
+  caps their height at their width so they shrink to a point (opacity has no effect on glass drawn
+  by the container). Selected sidebar icons stay white only while the accent fill shows, so a
+  background window no longer shows a white icon on grey. Frames and a background capture viewed
+  (light); dark background NOT VERIFIED.
 - Known: a hidden system “Hide Sidebar ⌥⌘S” in the Help menu uses native toggleSidebar (present
   before too). The probe cannot see “Enter Full Screen” before or after the change.
 - NOT VERIFIED: real app window, keyboard/VoiceOver, clicking a synchronously failing retry,

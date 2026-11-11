@@ -61,6 +61,7 @@ struct MainView: View {
     @Environment(\.openSettings) private var openSettings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.undoManager) private var undoManager
+    @Environment(\.controlActiveState) private var activeState
     @State private var isFullScreen = false
     @State private var roomyTitle = true
     @Namespace private var splitCoordinateSpace
@@ -246,8 +247,10 @@ struct MainView: View {
                                     Text(page.title)
                                 } icon: {
                                     // By hand: the list's own tint stays on it when the row isn't what it thinks is selected.
+                                    // White only on the accent fill, which a window in the background doesn't show.
                                     Image(systemName: page.symbol)
-                                        .foregroundStyle((store.page.parent ?? store.page) == page ? Color.onAccent : Color.accentColor)
+                                        .foregroundStyle((store.page.parent ?? store.page) == page && activeState != .inactive
+                                            ? Color.onAccent : Color.accentColor)
                                 }
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .contentShape(Rectangle())

@@ -86,7 +86,6 @@ struct ToolbarCapsule: View {
                     .transition(swap)
             }
         }
-        .frame(height: 40)
         .clipShape(Capsule())
         .glassSurface(in: Capsule())
         // A hairline otherwise: the material before macOS 26 strokes its edge at any width.
@@ -100,9 +99,13 @@ struct ToolbarCapsule: View {
     }
 }
 
-/// Its content at its own size against the trailing edge, in `progress` of that width.
+/// Its content at its own size against the trailing edge, in `progress` of that width, and never
+/// taller than it is wide: below that a group's capsule shrinks to a point. Kept at full height, its
+/// glass drew as two thin lines for the last third of the motion, which no fade reaches, as the glass
+/// container draws its members' glass itself.
 private struct RevealLayout: Layout {
     var progress: CGFloat
+    var height: CGFloat = 40
 
     var animatableData: CGFloat {
         get { progress }
@@ -110,8 +113,8 @@ private struct RevealLayout: Layout {
     }
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
-        return CGSize(width: (sizes.map(\.width).max() ?? 0) * progress, height: sizes.map(\.height).max() ?? 0)
+        let width = (subviews.map { $0.sizeThatFits(.unspecified).width }.max() ?? 0) * progress
+        return CGSize(width: width, height: min(height, max(0, width)))
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
