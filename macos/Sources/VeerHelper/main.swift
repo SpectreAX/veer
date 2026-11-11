@@ -69,6 +69,21 @@ final class Helper: NSObject, NSXPCListenerDelegate, VeerHelperProtocol, @unchec
         queue.async { [self] in reply(process?.isRunning == true, lines, exitStatus) }
     }
 
+    func writeRuleSets(_ files: Data, replacingAll: Bool, reply: @escaping @Sendable (String?) -> Void) {
+        queue.async {
+            do {
+                let checked = try HotRuleSetFiles.decode(files)
+                try Self.prepareHome()
+                try HotRuleSetFiles.write(checked, replacingAll: replacingAll, into: HelperConstants.rootHome)
+                reply(nil)
+            } catch let error as HotRuleSetFilesError {
+                reply(error.message)
+            } catch {
+                reply("后台服务无法写入规则集：\(error.localizedDescription)")
+            }
+        }
+    }
+
     // MARK: Core
 
     private func startCore(config: Data, geodata: String) -> String? {
@@ -77,8 +92,7 @@ final class Helper: NSObject, NSXPCListenerDelegate, VeerHelperProtocol, @unchec
         let manager = FileManager.default
         let home = HelperConstants.rootHome
         do {
-            try manager.createDirectory(atPath: home, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-            try manager.setAttributes([.posixPermissions: 0o700, .ownerAccountID: 0], ofItemAtPath: home)
+            try Self.prepareHome()
             let core = try coreBinary(team: team, home: home)
             copyGeodata(from: geodata, to: home)
             let configPath = home + "/runtime.yaml"
@@ -109,6 +123,13 @@ final class Helper: NSObject, NSXPCListenerDelegate, VeerHelperProtocol, @unchec
         } catch {
             return "后台服务无法启动内核：\(error.localizedDescription)"
         }
+    }
+
+    /// The root core's home, owned by root and closed to everyone else.
+    private static func prepareHome() throws {
+        let manager = FileManager.default, home = HelperConstants.rootHome
+        try manager.createDirectory(atPath: home, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        try manager.setAttributes([.posixPermissions: 0o700, .ownerAccountID: 0], ofItemAtPath: home)
     }
 
     /// The Mihomo to run: a hand-installed helper's root-owned copy, or the one inside Veer.app

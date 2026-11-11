@@ -1321,3 +1321,7 @@
 "准备了 %lld 项分流修改，没有应用。" = "Prepared %lld routing changes; they weren't applied.";
 "在正在使用的配置上开始新对话（⌘N）" = "Start a new conversation on the profile in use (⌘N)";
 "未应用 · 配置已删除" = "Not applied · Profile deleted";
+"规则集数据无法读取。" = "The rule set data couldn't be read.";
+"规则集太多。" = "Too many rule sets.";
+"规则集名称无效。" = "Invalid rule set name.";
+"规则集文件太大。" = "The rule set file is too large.";

@@ -1,5 +1,6 @@
 import Foundation
 import VeerCore
+import VeerHelperKit
 import Yams
 
 /// Rule sets Veer refreshes in place, so a new "X 走 Y" takes effect without reloading the
@@ -16,7 +17,7 @@ public struct HotRuleSets: Sendable, Equatable {
         public var path: String { "./\(HotRuleSets.folder)/\(name).yaml" }
     }
 
-    public static let folder = "veer-hot"
+    public static let folder = HotRuleSetFiles.folder
     public let sets: [RuleSet]
 
     public init(targets: [String]) {
@@ -31,6 +32,18 @@ public struct HotRuleSets: Sendable, Equatable {
     }
 
     public func set(for target: String) -> RuleSet? { sets.first { $0.target == target } }
+
+    /// The profile's rule sets, written empty where the core will read them before it reads the
+    /// config; nil when that fails, and the core then does without them.
+    public static func prepared(for profile: String, writer: HotRuleSetWriter) async -> HotRuleSets? {
+        guard let hot = await Task.detached(priority: .userInitiated, operation: { forProfile(profile) }).value else { return nil }
+        do {
+            try await writer.reset(hot)
+            return hot
+        } catch {
+            return nil
+        }
+    }
 
     /// Writes every rule set empty into `home`, before the core reads the config.
     public func resetFiles(in home: URL) throws {
@@ -82,5 +95,43 @@ public struct HotRuleSets: Sendable, Equatable {
 
     static func file(_ lines: [String]) -> String {
         lines.isEmpty ? "payload: []\n" : "payload:\n" + lines.map { "  - '\($0.replacingOccurrences(of: "'", with: "''"))'\n" }.joined()
+    }
+}
+
+/// Where the rule set files go: the core's home when Veer runs the core itself, or, under TUN, the
+/// root core's home, which only the helper can write.
+public protocol HotRuleSetWriter: Sendable {
+    /// Every set empty, and nothing else in their folder.
+    func reset(_ sets: HotRuleSets) async throws
+    func write(_ lines: [String], to set: HotRuleSets.RuleSet) async throws
+}
+
+public struct LocalRuleSetWriter: HotRuleSetWriter {
+    let home: URL
+
+    public init(home: URL) { self.home = home }
+
+    public func reset(_ sets: HotRuleSets) async throws {
+        try? FileManager.default.removeItem(at: home.appendingPathComponent(HotRuleSets.folder, isDirectory: true))
+        try sets.resetFiles(in: home)
+    }
+
+    public func write(_ lines: [String], to set: HotRuleSets.RuleSet) async throws {
+        let url = home.appendingPathComponent(HotRuleSets.folder, isDirectory: true).appendingPathComponent("\(set.name).yaml")
+        try Data(HotRuleSets.file(lines).utf8).write(to: url, options: .atomic)
+    }
+}
+
+public struct HelperRuleSetWriter: HotRuleSetWriter {
+    let client: HelperClient
+
+    public init(client: HelperClient = .shared) { self.client = client }
+
+    public func reset(_ sets: HotRuleSets) async throws {
+        try await client.writeRuleSets(Dictionary(uniqueKeysWithValues: sets.sets.map { ($0.name, HotRuleSets.file([])) }), replacingAll: true)
+    }
+
+    public func write(_ lines: [String], to set: HotRuleSets.RuleSet) async throws {
+        try await client.writeRuleSets([set.name: HotRuleSets.file(lines)], replacingAll: false)
     }
 }

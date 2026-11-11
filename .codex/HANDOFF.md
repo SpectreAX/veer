@@ -12,6 +12,12 @@ system proxy, and TUN tests on the real Mac remain outside authorization.
 
 ## Current state (2026-11-11, Claude)
 
+- Hot rule sets under TUN: helper protocol v3 adds `writeRuleSets` (payload checked by `HotRuleSetFiles`:
+  names `veer-hot-<n>`, ≤512 files, ≤1 MB each, 0600 in the root home's `veer-hot/`). `HotRuleSetWriter`
+  picks local or helper; helper v2 stays compatible (`compatibleVersions`) and falls back to reloads.
+  `start()` split for lint (no baseline change); hot code moved to `ProxyStoreHotRuleSets.swift`.
+  verify.sh with VEER_MIHOMO_BIN passed. TUN path itself NOT VERIFIED (needs the user to turn TUN on).
+
 - After 1.0.5: SwiftUI's hidden Help-menu "Hide Sidebar ⌥⌘S" (native `toggleSidebar:`, bypassing
   `SidebarAnimator`) is removed by `StraySidebarItems` (disarmed synchronously on add/change, removed
   after). Guarded probe: Help menu holds only "Veer Help"; ⌥⌘S unhandled; ⌃⌘S still toggles. verify.sh
