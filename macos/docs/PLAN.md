@@ -46,6 +46,11 @@
   绕过动画器）现在由 `StraySidebarItems` 在加入或变化时立即去掉快捷键和动作，再移出菜单。隔离副本确认：
   帮助菜单只剩“Veer 帮助”，⌥⌘S 不再响应，⌃⌘S 照常切换；verify.sh 通过，新增 `StraySidebarItemsTests`。
   真实窗口 NOT VERIFIED。
+- **TUN 下分流热更新（1.0.5 之后）：** 之前 root 内核的目录 Veer 写不了，TUN 下每次改分流都重载配置。现在后台服务
+  （版本 3）代写 `veer-hot/` 里的规则集文件（`HotRuleSetFiles` 校验名称、数量和大小），`HotRuleSetWriter` 按模式选本机
+  或后台服务；版本 2 仍兼容，退回重载。`start()` 拆出 `launchCore`、`coreDidStart`、`controllerAnswers`，热更新代码移到
+  `ProxyStoreHotRuleSets.swift`。带真实内核的 verify.sh 通过（新增 `HotRuleSetWriterTests`）。TUN 下的实际热更新
+  只能由你开 TUN 验证：NOT VERIFIED。
 - **已知、未处理：** 探针看不到“进入全屏幕”（它在菜单真正打开时才插入），改动前后相同，
   未能证实。
 - **NOT VERIFIED：** 真实应用窗口、键盘焦点和 VoiceOver、点击“重试”同步失败的实际效果、

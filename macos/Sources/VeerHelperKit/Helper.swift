@@ -8,8 +8,11 @@ public enum HelperConstants {
     public static let plistName = "com.yamax.veer.helper.plist"
     /// The only app the helper serves.
     public static let appIdentifier = "com.yamax.veer"
-    /// Bumped when the protocol or behavior changes; Veer reinstalls a helper that reports another.
-    public static let version = "2"
+    /// Bumped when the protocol or behavior changes; Veer reinstalls a helper it is not compatible with.
+    public static let version = "3"
+    /// Helpers this Veer still works with. Version 2 cannot write hot rule sets, so under TUN each
+    /// routing change reloads the config instead; asking to reinstall would turn TUN off meanwhile.
+    public static let compatibleVersions: Set<String> = ["2", "3"]
     /// The root core's home: config, geodata cache and the copy of Mihomo it runs. Root only.
     public static let rootHome = "/Library/Application Support/Veer/core"
     /// Where a hand-installed helper lives (when SMAppService cannot register it).
@@ -29,6 +32,62 @@ public enum HelperConstants {
     func stop(reply: @escaping @Sendable () -> Void)
     /// Whether the core runs, its last output lines, and its exit status when it stopped on its own.
     func status(reply: @escaping @Sendable (Bool, [String], Int32) -> Void)
+    /// Writes hot rule set files into the root core's home (version 3 and later). `files` is a
+    /// `HotRuleSetFiles` payload; with `replacingAll`, the sets already there are removed first.
+    /// The reply is nil on success, or why it failed.
+    func writeRuleSets(_ files: Data, replacingAll: Bool, reply: @escaping @Sendable (String?) -> Void)
+}
+
+/// Hot rule set files sent to the helper, which writes them where only root can: plain names and
+/// small YAML texts, checked on the way in so a caller cannot reach outside the folder.
+public enum HotRuleSetFiles {
+    /// The folder in the core's home that holds them; config paths say `./veer-hot/<name>.yaml`.
+    public static let folder = "veer-hot"
+    static let maxFiles = 512
+    static let maxBytes = 1 << 20
+
+    public static func encode(_ files: [String: String]) throws -> Data {
+        try PropertyListEncoder().encode(files)
+    }
+
+    /// The files by name, or why they are refused.
+    public static func decode(_ data: Data) throws -> [String: Data] {
+        guard let files = try? PropertyListDecoder().decode([String: String].self, from: data) else {
+            throw HotRuleSetFilesError("规则集数据无法读取。")
+        }
+        guard files.count <= maxFiles else { throw HotRuleSetFilesError("规则集太多。") }
+        return try files.reduce(into: [:]) { result, file in
+            let bytes = Data(file.value.utf8)
+            guard isValidName(file.key) else { throw HotRuleSetFilesError("规则集名称无效。") }
+            guard bytes.count <= maxBytes else { throw HotRuleSetFilesError("规则集文件太大。") }
+            result[file.key] = bytes
+        }
+    }
+
+    /// `veer-hot-<number>`, the only names Veer gives them.
+    public static func isValidName(_ name: String) -> Bool {
+        let prefix = "veer-hot-", number = name.dropFirst(prefix.count)
+        return name.hasPrefix(prefix) && (1...4).contains(number.count) && number.allSatisfy { ("0"..."9").contains($0) }
+    }
+
+    /// Writes `files` as `<name>.yaml` into `home`'s folder for them, readable by the owner only.
+    public static func write(_ files: [String: Data], replacingAll: Bool, into home: String) throws {
+        let manager = FileManager.default
+        let folder = home + "/" + Self.folder
+        if replacingAll { try? manager.removeItem(atPath: folder) }
+        try manager.createDirectory(atPath: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        for (name, contents) in files where isValidName(name) {
+            let url = URL(fileURLWithPath: folder + "/" + name + ".yaml")
+            try contents.write(to: url, options: .atomic)
+            try manager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        }
+    }
+}
+
+public struct HotRuleSetFilesError: LocalizedError, Equatable {
+    public let message: String
+    public init(_ message: String) { self.message = message }
+    public var errorDescription: String? { message }
 }
 
 /// Code signature checks shared by the app and the helper.

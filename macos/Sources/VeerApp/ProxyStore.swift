@@ -180,7 +180,7 @@ final class ProxyStore {
     @ObservationIgnored var runningCoreRevision = 0
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var core: CoreRunning?
-    @ObservationIgnored private var controller: MihomoController?
+    @ObservationIgnored private(set) var controller: MihomoController?
     /// The running core's controller port and secret, kept for reloads.
     @ObservationIgnored private var controllerAccess: (port: Int, secret: String)?
     /// The port the running core listens on; a changed setting applies at the next start.
@@ -215,9 +215,9 @@ final class ProxyStore {
     /// The connections page is open, so `connections` follows the core every second.
     @ObservationIgnored private var connectionsVisible = false
     /// The running core's in-place rule sets, and the rule lines each holds since the last full
-    /// build (see `HotRuleSets`); nil sets under TUN or before the core starts.
-    @ObservationIgnored private var hotSets: HotRuleSets?
-    @ObservationIgnored private var hotLines: [String: [String]] = [:]
+    /// build (see `HotRuleSets`); nil before the core starts, or when they could not be written.
+    @ObservationIgnored var hotSets: HotRuleSets?
+    @ObservationIgnored var hotLines: [String: [String]] = [:]
     /// The previous poll's connections, to see which closed.
     @ObservationIgnored private var previousConnections: [String: ConnectionRow] = [:]
     /// Routes from the log waiting to learn whether a poll saw them.
@@ -388,36 +388,18 @@ final class ProxyStore {
                 guard let port = Ports.free() else { throw EditorError(String(localized: "找不到可用的本机端口来控制内核。")) }
                 let secret = RuntimeConfig.makeSecret()
                 let text = try await startableText(of: profile.id)
-                let path = paths.runtimeConfig, home = paths.core
                 // TUN needs the helper; without it the core runs as the user and the system
                 // proxy carries the traffic instead.
                 var tunFailure: String?
                 if settings.tun { tunFailure = await tunProblem() }
-                let base = settings
-                func launch(tun: Bool) async throws -> (CoreRunning, HotRuleSets?) {
-                    var built = base
-                    built.tun = tun
-                    // A root core's home is not Veer's to write, so TUN goes without hot rule sets.
-                    let hot = try await Task.detached(priority: .userInitiated) { [built] () -> HotRuleSets? in
-                        let hot = tun ? nil : HotRuleSets.forProfile(text)
-                        try hot?.resetFiles(in: home)
-                        let yaml = try RuntimeConfig.build(profile: text, settings: built, controllerPort: port, secret: secret, hot: hot)
-                        try Data(yaml.utf8).write(to: path, options: .atomic)
-                        return hot
-                    }.value
-                    let core: CoreRunning = tun ? HelperCore(geodata: home) : CoreProcess(binary: binary, home: home)
-                    try await core.start(config: path) { status, log in
-                        Task { @MainActor in self.coreExited(status: status, log: log) }
-                    }
-                    return (core, hot)
-                }
+                let launch = { (tun: Bool) in try await self.launchCore(tun: tun, text: text, port: port, secret: secret, binary: binary) }
                 let useTUN = settings.tun && tunFailure == nil
                 let core: CoreRunning, hot: HotRuleSets?
                 do {
-                    (core, hot) = try await launch(tun: useTUN)
+                    (core, hot) = try await launch(useTUN)
                 } catch where useTUN {
                     tunFailure = message(for: error)
-                    (core, hot) = try await launch(tun: false)
+                    (core, hot) = try await launch(false)
                 }
                 self.core = core
                 hotSets = hot
@@ -427,13 +409,7 @@ final class ProxyStore {
                 self.controller = controller
                 controllerAccess = (port, secret)
                 runningPort = settings.mixedPort
-                // The first start can download geodata before the controller answers.
-                for _ in 0..<600 {
-                    if phase != .starting { return }
-                    if (try? await controller.version()) != nil { break }
-                    try await Task.sleep(for: .milliseconds(100))
-                }
-                guard phase == .starting else { return }
+                guard try await controllerAnswers(controller) else { return }
                 guard (try? await controller.version()) != nil else {
                     core.stop()
                     self.core = nil
@@ -441,29 +417,63 @@ final class ProxyStore {
                     phase = .failed(String(localized: "内核在 60 秒内没有就绪，可能正在下载 GeoIP 数据或网络不通。"), log: core.tail)
                     return
                 }
-                phase = .running
-                state.running = true
-                locateServersByIP()
-                await refresh()
-                // The mode and system proxy the user last chose come back with the core.
-                if let saved = state.mode.flatMap(Mode.init(rawValue:)), saved != mode { setMode(saved) }
-                startTraffic()
-                startLogs()
-                trackConnections()
-                recheckExit()
-                testEverythingOnce()
-                if let tunFailure {
-                    // After the switch, which clears notices.
-                    if !systemProxyOn { fallBackToSystemProxy() }
-                    notice = String(localized: "TUN 未能启动，已改用系统代理。\(tunFailure)")
-                } else if systemProxyIsFallback || (state.systemProxy && !systemProxyOn) {
-                    settleSystemProxy()
-                }
+                await coreDidStart(tunFailure: tunFailure)
             } catch {
                 core?.stop()
                 tunActive = false
                 phase = .failed(message(for: error), log: core?.tail ?? [])
             }
+        }
+    }
+
+    /// Waits up to a minute for the new core: the first start can download geodata before the
+    /// controller answers. False when the start was called off meanwhile.
+    private func controllerAnswers(_ controller: MihomoController) async throws -> Bool {
+        for _ in 0..<600 {
+            if phase != .starting { return false }
+            if (try? await controller.version()) != nil { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        return phase == .starting
+    }
+
+    /// Writes the runtime config, with its hot rule sets, and starts the core as root (TUN) or as
+    /// the user.
+    private func launchCore(tun: Bool, text: String, port: Int, secret: String, binary: URL) async throws -> (CoreRunning, HotRuleSets?) {
+        var built = settings
+        built.tun = tun
+        let path = paths.runtimeConfig, home = paths.core
+        let hot = await HotRuleSets.prepared(for: text, writer: hotWriter(tun: tun))
+        try await Task.detached(priority: .userInitiated) { [built] in
+            let yaml = try RuntimeConfig.build(profile: text, settings: built, controllerPort: port, secret: secret, hot: hot)
+            try Data(yaml.utf8).write(to: path, options: .atomic)
+        }.value
+        let core: CoreRunning = tun ? HelperCore(geodata: home) : CoreProcess(binary: binary, home: home)
+        try await core.start(config: path) { status, log in
+            Task { @MainActor in self.coreExited(status: status, log: log) }
+        }
+        return (core, hot)
+    }
+
+    /// The core answers: what runs alongside it starts, and the last mode and system proxy return.
+    private func coreDidStart(tunFailure: String?) async {
+        phase = .running
+        state.running = true
+        locateServersByIP()
+        await refresh()
+        // The mode and system proxy the user last chose come back with the core.
+        if let saved = state.mode.flatMap(Mode.init(rawValue:)), saved != mode { setMode(saved) }
+        startTraffic()
+        startLogs()
+        trackConnections()
+        recheckExit()
+        testEverythingOnce()
+        if let tunFailure {
+            // After the switch, which clears notices.
+            if !systemProxyOn { fallBackToSystemProxy() }
+            notice = String(localized: "TUN 未能启动，已改用系统代理。\(tunFailure)")
+        } else if systemProxyIsFallback || (state.systemProxy && !systemProxyOn) {
+            settleSystemProxy()
         }
     }
 
@@ -869,20 +879,19 @@ final class ProxyStore {
     /// Loads the active profile into the running core without restarting it. With
     /// `closingConnections` (a new profile or new rules), open connections are closed: the core
     /// keeps routing them the old way until they reconnect.
-    private func reloadRunningCore(closingConnections: Bool = false) async {
+    func reloadRunningCore(closingConnections: Bool = false) async {
         guard isRunning, let controller, let access = controllerAccess, let profile = activeProfile else { return }
         do {
             var running = settings
             running.mixedPort = proxyPort
             let text = try await effectiveTextInBackground(of: profile.id)
-            let path = paths.runtimeConfig, port = access.port, secret = access.secret, built = running, home = paths.core, tun = tunActive
+            let path = paths.runtimeConfig, port = access.port, secret = access.secret, built = running, tun = tunActive
             // The config now holds every route, so the hot rule sets start over empty.
-            let (yaml, hot) = try await Task.detached(priority: .userInitiated) { () -> (String, HotRuleSets?) in
-                let hot = tun ? nil : HotRuleSets.forProfile(text)
-                try hot?.resetFiles(in: home)
+            let hot = await HotRuleSets.prepared(for: text, writer: hotWriter(tun: tun))
+            let yaml = try await Task.detached(priority: .userInitiated) { () -> String in
                 let yaml = try RuntimeConfig.build(profile: text, settings: built, controllerPort: port, secret: secret, hot: hot)
                 try Data(yaml.utf8).write(to: path, options: .atomic)
-                return (yaml, hot)
+                return yaml
             }.value
             try await controller.apply(yaml, mode: .config)
             hotSets = hot
@@ -1295,59 +1304,6 @@ final class ProxyStore {
             return true
         }
         return saveLayer(layer, for: id)
-    }
-
-    /// The hot rule sets an edit's routes go into; nil when any part needs a full reload (a new
-    /// group, a removal, a rule set, a rule type rule sets cannot hold, a policy without a set).
-    private func hotEntries(for edit: RoutingLayer.Edit) -> [(set: HotRuleSets.RuleSet, line: String)]? {
-        guard let hot = hotSets, !tunActive else { return nil }
-        let items = edit.items.filter { edit.accepted.contains($0.id) }
-        guard !items.isEmpty else { return nil }
-        var entries: [(set: HotRuleSets.RuleSet, line: String)] = []
-        for item in items {
-            guard item.kind == .route, let target = item.targetName, let set = hot.set(for: target),
-                  let line = HotRuleSets.line(matchType: item.matchType, match: item.match) else { return nil }
-            entries.append((set, line))
-        }
-        return entries
-    }
-
-    /// Writes the routes into their rule sets, the newest winning over the same rule elsewhere,
-    /// reloads only the sets that changed, and closes the connections the routes now send
-    /// elsewhere. Anything going wrong falls back to a full reload.
-    private func applyHot(_ entries: [(set: HotRuleSets.RuleSet, line: String)], profile id: UUID) async {
-        guard let controller, let hot = hotSets else { return await reloadRunningCore(closingConnections: true) }
-        var changed = Set<String>()
-        for entry in entries {
-            for (name, lines) in hotLines where name != entry.set.name && lines.contains(entry.line) {
-                hotLines[name] = lines.filter { $0 != entry.line }
-                changed.insert(name)
-            }
-            if !(hotLines[entry.set.name] ?? []).contains(entry.line) {
-                hotLines[entry.set.name, default: []].append(entry.line)
-                changed.insert(entry.set.name)
-            }
-        }
-        do {
-            for set in hot.sets where changed.contains(set.name) {
-                try hot.write(hotLines[set.name] ?? [], to: set, in: paths.core)
-                try await controller.refreshRuleProvider(set.name)
-            }
-        } catch {
-            return await reloadRunningCore(closingConnections: true)
-        }
-        if reconnectAfterChanges, let list = try? await controller.connections() {
-            let lines = entries.map(\.line)
-            for connection in list {
-                let host = connection.metadata.host.flatMap { $0.isEmpty ? nil : $0 } ?? connection.metadata.destinationIP ?? ""
-                // An address rule has no host to compare; such a route closes every connection.
-                if lines.contains(where: { HotRuleSets.matches($0, host: host) || $0.hasPrefix("IP-CIDR") }) {
-                    try? await controller.closeConnection(connection.id)
-                }
-            }
-        }
-        // Views and the Agent read the effective config: the route is part of it now.
-        _ = try? await effectiveTextInBackground(of: id)
     }
 
     /// False when the change has gone.

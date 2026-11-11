@@ -76,7 +76,7 @@ public final class HelperClient: @unchecked Sendable {
         guard let version = try? await version() else {
             return .unavailable(String(localized: "后台服务没有回应。可以在设置里重新安装它。"))
         }
-        return version == HelperConstants.version ? .ready : .outdated
+        return HelperConstants.compatibleVersions.contains(version) ? .ready : .outdated
     }
 
     /// Registers the helper with launchd through SMAppService. Afterwards the user approves it
@@ -216,6 +216,20 @@ public final class HelperClient: @unchecked Sendable {
             guard let helper = helper({ once.resume(throwing: $0) }) else { return once.resume(throwing: Self.unreachable) }
             helper.status { once.resume(returning: ($0, $1, $2)) }
         }
+    }
+
+    /// Writes hot rule set files into the root core's home. A helper older than this Veer has no
+    /// such call, so it is asked only after the helper reports this version.
+    public func writeRuleSets(_ files: [String: String], replacingAll: Bool) async throws {
+        guard try await version() == HelperConstants.version else { throw Self.unreachable }
+        let payload = try HotRuleSetFiles.encode(files)
+        let failure: String? = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String?, Error>) in
+            let once = Once(continuation)
+            guard let helper = helper({ once.resume(throwing: $0) }) else { return once.resume(throwing: Self.unreachable) }
+            helper.writeRuleSets(payload, replacingAll: replacingAll) { once.resume(returning: $0) }
+            DispatchQueue.global().asyncAfter(deadline: .now() + 5) { once.resume(throwing: Self.unreachable) }
+        }
+        if let failure { throw EditorError(Bundle.main.localizedString(forKey: failure, value: failure, table: nil)) }
     }
 
     /// Stops the root core and waits (at most three seconds) for it, so a quitting Veer does not
