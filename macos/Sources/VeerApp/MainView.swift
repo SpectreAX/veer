@@ -102,9 +102,13 @@ struct MainView: View {
     /// detail column its final width at once and then slides it, which would throw anything inside
     /// it past the window's edge.
     private var split: some View {
-        HStack(spacing: 0) {
+        ZStack(alignment: .trailing) {
             sidebarAndPage
                 .frame(minWidth: 0, maxWidth: .infinity)
+                // The page makes room only once the panel has slid in, and takes it back before it
+                // slides out (`ColumnReveal`), so it does not lay out again on every frame.
+                // In one step: animated, grids and tables pass through every layout in between.
+                .padding(.trailing, panelReveal.reservesSpace ? AgentPanelColumn.width(store) : 0)
             // On every page but the Agent page, which is the Agent at full size. A plain column,
             // not `.inspector`: changing an inspector again before its collapse has finished makes
             // AppKit raise over a view it has already removed, ending the app.
@@ -114,7 +118,7 @@ struct MainView: View {
                     .background(Color.surface)
                     .overlay(alignment: .top) { dragRow }
                     // Narrowed from its leading edge, so it slides in from the window's edge.
-                    .frame(width: panelReveal.progress < 1 ? AgentPanelColumn.width(store) * panelReveal.progress : nil, alignment: .leading)
+                    .frame(width: AgentPanelColumn.width(store) * panelReveal.progress, alignment: .leading)
                     .clipped()
             }
         }

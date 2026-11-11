@@ -12,6 +12,12 @@ system proxy, and TUN tests on the real Mac remain outside authorization.
 
 ## Current state (2026-11-11, Claude)
 
+- Panel motion, round 2 (user: Proxies/Connections still jump): real-core probe on a copy of the user's data
+  (own bundle id, port 17890, system proxy runner stubbed to throw, TUN off, no state.json; proxy off before
+  and after). Per-frame relayout cost 30–70 ms. Now the panel slides over the page and the page changes width
+  once (`ColumnReveal.reservesSpace`), rearranging in that step; a cross-fade of the overview was tried and dropped (ghosts, offset).
+  Slide frames 11–18 ms. Probe scripts: scratchpad/probe/{prepare_real.py,run_real.sh}. Real window NOT VERIFIED.
+
 - Agent panel open/close: `ColumnReveal` (VeerUI) steps the panel's width per frame with the same NSAnimation
   driver as `SidebarAnimator`, so the split view and the overview get real intermediate widths. Overview
   breakpoint crossings animate (`Motion.standard`), left card above (zIndex) so the right one passes under.
