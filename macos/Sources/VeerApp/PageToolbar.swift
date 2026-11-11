@@ -34,8 +34,8 @@ extension View {
 /// HIG says to group toolbar items by function and to aim for at most three groups, so a page has two
 /// and the Agent panel and start and stop, which are always there, share the last at the far end. It
 /// stays where it is. On a page switch a group that stays springs to its new width while its controls
-/// blur into the new ones, and one that comes or goes flows out of or back into its neighbour's glass,
-/// as Liquid Glass does: the same motion either way.
+/// blur into the new ones, and one that comes or goes fades in or out where it stands, glass and all:
+/// the same motion either way.
 struct ToolbarCapsule: View {
     @Environment(ProxyStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

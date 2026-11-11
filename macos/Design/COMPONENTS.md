@@ -36,7 +36,7 @@ Use the native control first, then a `VeerUI` component, then a new one. Shared 
 | `ExitLabel` | Exit node and country |
 | `SegmentedControl` | Standard segmented picker in the system's colors, for symbols or text |
 | `GlassSwitch` | A switch in its own group of glass, for the window's top row, in symbols or text. The system's segmented picker draws its own track outside a real toolbar. Native alternative: `SegmentedControl`, anywhere else. Segments are buttons: keyboard and VoiceOver through them, with an `.isSelected` trait |
-| `GlassGroup`, `glassSurface` | Glass on macOS 26, the regular material before it. `glassSurface(in:id:namespace:)` inside a `GlassGroup` lets a shape flow out of and back into its neighbours as it comes and goes, as the toolbar's groups do |
+| `GlassGroup`, `glassSurface` | Glass on macOS 26, the regular material before it. `glassSurface(in:id:namespace:)` inside a `GlassGroup` fades a shape's glass in and out in place as it comes and goes, as the toolbar's groups do |
 | `ToolbarToggle` | A switch in a toolbar group: a button that fills when on, since the groups' controls are round icon buttons. Keyboard and VoiceOver as a button with the toggle trait and its state as the value. Light and dark through `accentFill` and `onAccent`; same on macOS 14 |
 | `ProfileTile`, `ToolRow` | A row of plain buttons with secondary actions beside them, on `ProxiesView` and `ToolsView`. Plain buttons, so keyboard and VoiceOver work as for any button |
 | `CoreStateRing` | A ring and ripple around the Overview's start button, for what the core is doing. Decorative: hidden from VoiceOver, which hears the new state as an announcement. Same in light and dark and on macOS 14; steady with Reduce Motion |

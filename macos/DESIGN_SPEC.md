@@ -34,8 +34,8 @@ Brand expression must not damage native usability.
 - Icon-only buttons have accessibility labels and tooltips.
 - Controls are grouped by what they do, each group in its own glass, and at most three groups: up to
   two for the page, with search on its own, then the Agent toggle and start/stop together.
-- The last group stays fixed. A group grows out of its neighbour on the same spring rather than
-  appearing on its own.
+- The last group stays fixed. On a page switch a group that comes or goes fades and blurs in place,
+  glass and all, the same way in and out; one that stays springs to its new width.
 - The profile's name under the title is the profile menu, as the HIG places a document menu.
 - A toggle in the toolbar fills when on, and says its state to VoiceOver.
 - Search is `⌘F`; Esc clears it and leaves the field.

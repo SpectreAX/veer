@@ -32,6 +32,11 @@ Not pushed (PR #3 is already merged, so this needs a new PR). See PLAN's “续�
   glass drawn by the container). No official macOS 27 toolbar-transition guidance was found. Selected sidebar icons stay white only while the accent fill shows, so a
   background window no longer shows a white icon on grey. Frames and a background capture viewed
   (light); dark background NOT VERIFIED.
+- Then the user asked for the closing groups to fade out like they fade in, not slide into the
+  neighbour (seen switching to Tools). The groups' glass now uses `glassEffectTransition(.materialize)`:
+  in and out both fade and blur in place. Frames viewed for Connections→Tools, Tools→Connections and
+  Connections→Agent (1080, light, zh); verify.sh passed. Dark/en/narrow for this change and the
+  real window NOT VERIFIED. dist/ rebuilt afterwards (SDK 27.2, minos 14.0, codesign ok); not launched.
 - Known: a hidden system “Hide Sidebar ⌥⌘S” in the Help menu uses native toggleSidebar (present
   before too). The probe cannot see “Enter Full Screen” before or after the change.
 - NOT VERIFIED: real app window, keyboard/VoiceOver, clicking a synchronously failing retry,
