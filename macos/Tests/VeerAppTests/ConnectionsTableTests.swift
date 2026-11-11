@@ -131,4 +131,27 @@ import VeerCore
         #expect(closed.isEmpty)
         withExtendedLifetime(scroll) {}
     }
+
+    @Test func columnsKeepTheirPlaceAndOnlyTheHostTakesTheSlack() {
+        let view = ConnectionsTable(rows: SnapshotRunner.sampleConnections(), hiddenColumns: [], selection: .constant([]),
+                                    ask: { _ in }, addRule: { _ in }, close: { _ in })
+        let coordinator = view.makeCoordinator()
+        let scroll = coordinator.makeScrollView()
+        let table = coordinator.table
+        // Most wanted first, so the page's edge covers the least wanted.
+        #expect(table.tableColumns.map(\.identifier.rawValue) == ["host", "process", "traffic", "speed", "duration", "rule", "chain"])
+        #expect(table.columnAutoresizingStyle == .firstColumnOnlyAutoresizingStyle)
+        scroll.frame = NSRect(x: 0, y: 0, width: 900, height: 300)
+        scroll.layoutSubtreeIfNeeded()
+        let wide = table.tableColumns.map(\.width)
+        scroll.frame = NSRect(x: 0, y: 0, width: 420, height: 300)
+        scroll.layoutSubtreeIfNeeded()
+        let narrow = table.tableColumns.map(\.width)
+        // Narrower than its columns, it scrolls: none is hidden and none but the host changes width.
+        #expect(table.tableColumns.allSatisfy { !$0.isHidden })
+        #expect(Array(wide.dropFirst()) == Array(narrow.dropFirst()))
+        #expect(narrow[0] >= 150)
+        #expect(table.frame.width > 420)
+        withExtendedLifetime(scroll) {}
+    }
 }

@@ -46,7 +46,9 @@ struct ConnectionsTable: NSViewRepresentable {
             table.allowsEmptySelection = true
             table.allowsColumnReordering = false
             table.usesAlternatingRowBackgroundColors = true
-            table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
+            // The host takes up or gives back the slack and every other column keeps its width and
+            // place, so nothing in the table moves as the page narrows: its edge just covers them.
+            table.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
             table.rowSizeStyle = .medium
             table.setAccessibilityLabel(String(localized: "连接"))
             for spec in ConnectionColumn.allCases {
@@ -219,7 +221,9 @@ final class ConnectionTableView: NSTableView {
 }
 
 private enum ConnectionColumn: String, CaseIterable {
-    case host, process, rule, chain, traffic, speed, duration
+    /// Most wanted first: the page's trailing edge covers and uncovers the columns from the far end
+    /// as the window or the Agent panel changes its width, and the rest scroll into view.
+    case host, process, traffic, speed, duration, rule, chain
     var identifier: NSUserInterfaceItemIdentifier { .init(rawValue) }
     var title: String {
         switch self {
@@ -246,7 +250,9 @@ private enum ConnectionColumn: String, CaseIterable {
 
     var minimum: CGFloat {
         switch self {
-        case .host, .traffic: 100
+        // The host only ever gains the slack: squeezed, it is the first thing to stop being readable.
+        case .host: 150
+        case .traffic: 100
         case .process: 50
         case .rule: 60
         case .chain: 90

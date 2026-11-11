@@ -11,16 +11,6 @@ struct ConnectionsView: View {
     @State private var process: String?
     @State private var policy: String?
     @State private var selection: Set<ConnectionRow.ID>
-    @State private var hiddenColumns = Set<String>()
-    @Environment(\.pageTargetWidth) private var targetWidth
-    @State private var measuredWidth: CGFloat = 0
-
-    private static let columnWidths: [ColumnFit.Column] = [
-        .init("host", ideal: 150), .init("process", ideal: 90), .init("rule", ideal: 100), .init("chain", ideal: 150),
-        .init("traffic", ideal: 105), .init("speed", ideal: 60), .init("duration", ideal: 64),
-    ]
-    /// The selected row's route shows the first two, and the host always stays.
-    private static let columnsGivenUp = ["rule", "chain", "duration", "process", "speed"]
     @State private var addingRule: ConnectionRow?
 
     init(selection: Set<ConnectionRow.ID> = []) {
@@ -63,7 +53,7 @@ struct ConnectionsView: View {
                 filterBar
                 Divider()
                 table
-                // One selected connection: its route, rule to node. Below, so that it leaves the columns alone.
+                // One selected connection: its route, rule to node, which the far columns also show.
                 if selection.count == 1, let row = shown.first(where: { selection.contains($0.id) }) {
                     Divider()
                     RouteMap(row: row) {
@@ -71,16 +61,6 @@ struct ConnectionsView: View {
                     }
                 }
             }
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { if targetWidth == nil { measuredWidth = $0 } }
-            // Once it settles: the first layout measures next to nothing, and the Agent panel passes
-            // through every width as it opens. Columns hidden on the way come back squeezed.
-            .task(id: measuredWidth) {
-                try? await Task.sleep(for: .milliseconds(120))
-                if !Task.isCancelled { fitColumns(to: targetWidth ?? measuredWidth) }
-            }
-            // The Agent panel opening or closing: the columns for the width the page is going to,
-            // chosen as it sets off, so they only stretch on the way and nothing changes at the end.
-            .onChange(of: targetWidth, initial: true) { if let targetWidth { fitColumns(to: targetWidth) } }
         }
     }
 
@@ -117,17 +97,10 @@ struct ConnectionsView: View {
     }
 
     private var table: some View {
-        ConnectionsTable(rows: shown, hiddenColumns: hiddenColumns, selection: $selection,
+        ConnectionsTable(rows: shown, hiddenColumns: [], selection: $selection,
                          ask: { row in ask(String(localized: "为什么 \(row.host) 走了“\(row.policy)”？")) },
                          addRule: { addingRule = $0 },
                          close: { ids in for id in ids { store.closeConnection(id) } })
-    }
-
-    /// Hides what no longer fits as the table narrows. Only on a change: writing this resets the widths.
-    private func fitColumns(to width: CGFloat) {
-        let hidden = ColumnFit.hidden(in: width, columns: Self.columnWidths, givingUp: Self.columnsGivenUp)
-        guard hidden != hiddenColumns else { return }
-        hiddenColumns = hidden
     }
 
     @ViewBuilder private var toolbar: some View {
