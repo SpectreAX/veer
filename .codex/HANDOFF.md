@@ -12,6 +12,11 @@ system proxy, and TUN tests on the real Mac remain outside authorization.
 
 ## Current state (2026-11-11, Claude)
 
+- Panel motion, round 4 (user screenshot: two sets of table columns over each other mid-fade). The page's
+  picture now holds 0.06 s (a Table settles on its columns over a few frames), then blurs as it fades over
+  0.15 s (`PictureLeaving`), inside the panel's 0.22 s slide. Sample-data probe, dark, Connections and
+  Proxies viewed. Real window NOT VERIFIED.
+
 - Panel motion, round 3 (user: 1.0.6 still not smooth). `ColumnReveal` is gone. The panel is a ZStack
   overlay with a move transition (zIndex 1, or it drops behind while leaving); the page makes room inside
   the detail column (`TrailingInsetLayout`). `ProxyStore.agentPanelWillChange` (willSet) lets `MainView`

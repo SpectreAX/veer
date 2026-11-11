@@ -76,6 +76,9 @@ struct MainView: View {
 
     /// The window's top row, which the sidebar button, the title and the capsule float in.
     static let topRowHeight: CGFloat = 52
+    /// How the page's picture leaves when the Agent panel opens or closes: after a moment, as a table
+    /// takes a few frames to settle on its columns at a new width, and within the panel's slide.
+    static let pictureFade = Animation.easeOut(duration: 0.15).delay(0.06)
 
     var body: some View {
         @Bindable var store = store
@@ -338,7 +341,7 @@ struct MainView: View {
                             .padding(.top, snapshotTop)
                             .allowsHitTesting(false)
                             .accessibilityHidden(true)
-                            .transition(.opacity)
+                            .transition(.asymmetric(insertion: .identity, removal: PictureLeaving.transition.animation(Self.pictureFade)))
                     }
                 }
                 .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
