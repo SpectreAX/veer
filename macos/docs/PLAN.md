@@ -294,6 +294,8 @@ Claude 接续时先读本文、[共用工作流](WORKFLOW.md) 和
 | GitHub Sponsors 和爱发电账号 | 赞助链接 | 第 6 步 |
 
 ## 之后再做
+**2026-11-11 决定：暂停 iOS、Android 和 App Store 版，集中做 macOS 直接下载版。** 下面两项保留作记录，暂不推进。
+
 - **App Store 版和 iOS 的内核选型：**
   - 比较 Xray-core（MPL-2.0）、leaf（Apache-2.0）、hysteria（MIT），以及 Veer 自己实现规则引擎的工作量；
   - 比较的方面：协议覆盖、性能、和 Clash 规则的兼容程度。
