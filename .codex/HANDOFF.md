@@ -10,7 +10,28 @@ as the user requested, so Claude can resume through its usual development-plan e
 The feature and workflow are being recorded as separate local commits. Publishing, enabling the
 system proxy, and TUN tests on the real Mac remain outside authorization.
 
-## Current state (2026-11-10, Claude)
+## Current state (2026-11-11, Claude)
+
+Codex's 2026-11-10/11 continuation is finished and committed locally on `feat/macos-agent-attachments`.
+Not pushed (PR #3 is already merged, so this needs a new PR). See PLAN's “续修边栏与失败恢复”.
+
+- Kept Codex's native divider animator (`SidebarAnimator`), detail viewport and failure recovery.
+- Menu command now uses `@FocusedValue(\.sidebar)` from `MainView`; the window-notification
+  availability flag was removed. The "always disabled" finding was a probe artifact: the probe never
+  sent `menuNeedsUpdate`. With it, the item is enabled, its title follows the state, and ⌃⌘S toggles.
+- Design review Major fixed: a retry that fails again synchronously (port in use, missing core) now
+  shows and announces “仍然失败（第 N 次重试）”. Manage Profiles is hidden on Proxies.
+- Checks run: full verify PASS 15 + 105 + 294 + 13 = 427; isolated probe frames viewed for 860 dark,
+  1080 light, panel, hidden start, Reduce Motion and full screen; static re-render viewed.
+- Probe used here (in-process window capture, no screen-recording permission):
+  `/private/tmp/claude-501/-Users-spectreax-Developer-Veer-macos/a188dafe-3258-4a69-9054-4bbe0446c8cf/scratchpad/probe/`.
+  It adapts Codex's `.codex/local/sidebar-followup/prepare.py` and `Probe.swift`.
+- Known: a hidden system “Hide Sidebar ⌥⌘S” in the Help menu uses native toggleSidebar (present
+  before too). The probe cannot see “Enter Full Screen” before or after the change.
+- NOT VERIFIED: real app window, keyboard/VoiceOver, clicking a synchronously failing retry,
+  macOS 14 VM, system proxy/TUN. `dist/Veer.app` was not rebuilt.
+
+## Earlier state (2026-11-10, Claude)
 
 The empty-group guard and sidebar-title fixes are committed; the page-content clipping remains
 unresolved, so the full sidebar-glitch request is not finished. See PLAN's “边栏动画与启动错误”

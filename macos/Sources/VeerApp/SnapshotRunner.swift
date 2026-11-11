@@ -436,7 +436,7 @@ enum SnapshotRunner {
                 store.helperProbe = { .ready }
                 return store
             }, view: AnyView(TUNSettings())),
-        ]
+        ] + sidebarScenes()
     }
 
     static func sampleConnections() -> [ConnectionRow] {

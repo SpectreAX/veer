@@ -35,7 +35,8 @@ nonisolated public enum Metrics {
 
 nonisolated public enum Motion {
     public static let quick = Animation.easeOut(duration: 0.15)
-    public static let standard = Animation.easeInOut(duration: 0.22)
+    public static let standardDuration = 0.22
+    public static let standard = Animation.easeInOut(duration: standardDuration)
 }
 
 private func rgb(_ red: CGFloat, _ green: CGFloat, _ blue: CGFloat) -> NSColor {

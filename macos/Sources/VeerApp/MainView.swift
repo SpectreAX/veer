@@ -61,9 +61,14 @@ struct MainView: View {
     @Environment(\.openSettings) private var openSettings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.undoManager) private var undoManager
-    @State private var sidebarVisibility = NavigationSplitViewVisibility.all
     @State private var isFullScreen = false
     @State private var roomyTitle = true
+    @Namespace private var splitCoordinateSpace
+    @State private var sidebarAnimator: SidebarAnimator
+
+    init(sidebarVisibility: NavigationSplitViewVisibility = .all, sidebarAnimator: SidebarAnimator? = nil) {
+        _sidebarAnimator = State(initialValue: sidebarAnimator ?? SidebarAnimator(isHidden: sidebarVisibility == .detailOnly))
+    }
 
     /// The window's top row, which the sidebar button, the title and the capsule float in.
     static let topRowHeight: CGFloat = 52
@@ -84,6 +89,8 @@ struct MainView: View {
             if url.isFileURL { store.importFile(url) } else { store.openImport(prefill: url.absoluteString) }
             return true
         }
+        // Onboarding has no sidebar, so the menu command is unavailable there.
+        .focusedSceneValue(\.sidebar, store.onboarding == nil ? sidebarAnimator : nil)
         .onAppear { DockPresence.windowOpened() }
         .onChange(of: undoManager, initial: true) { _, manager in agent.changes.manager = manager }
         .onDisappear { DockPresence.windowClosed() }
@@ -151,7 +158,12 @@ struct MainView: View {
     /// screen hides them, and the button takes their place.
     private var sidebarButtonLeading: CGFloat { isFullScreen ? Spacing.sm : 88 }
 
-    private var sidebarHidden: Bool { sidebarVisibility == .detailOnly }
+    private var sidebarHidden: Bool { sidebarAnimator.isHidden }
+
+    private var sidebarVisibility: Binding<NavigationSplitViewVisibility> {
+        Binding(get: { sidebarAnimator.nativeHidden ? .detailOnly : .all },
+                set: { sidebarAnimator.nativeVisibilityChanged(hidden: $0 == .detailOnly) })
+    }
 
     /// Over a column, which scrolls under the row: a click here is the window's, not the column's.
     /// In each column rather than over them all, so that the page's title can sit above it and take
@@ -192,7 +204,7 @@ struct MainView: View {
 
     private var sidebarButton: some View {
         Button {
-            withAnimation(reduceMotion ? nil : .default) { sidebarVisibility = sidebarHidden ? .all : .detailOnly }
+            toggleSidebar()
         } label: {
             Label(sidebarHidden ? String(localized: "显示边栏") : String(localized: "隐藏边栏"), systemImage: "sidebar.left")
         }
@@ -201,6 +213,10 @@ struct MainView: View {
         .help(sidebarHidden ? String(localized: "显示边栏") : String(localized: "隐藏边栏"))
         .padding(Spacing.xs)
         .glassSurface(in: Circle())
+    }
+
+    private func toggleSidebar() {
+        sidebarAnimator.toggle(reduceMotion: reduceMotion)
     }
 
     /// The page, which a click on goes through to the window, and the profile's menu.
@@ -219,60 +235,76 @@ struct MainView: View {
     }
 
     private var sidebarAndPage: some View {
-        NavigationSplitView(columnVisibility: $sidebarVisibility) {
-            List(selection: Binding<Page?>(get: { store.page.parent ?? store.page }, set: { if let page = $0 { store.page = page } })) {
-                ForEach(Page.Section.allCases, id: \.self) { section in
-                    Section(section.title) {
-                        ForEach(Page.sidebarPages.filter { $0.section == section }) { page in
-                            Label {
-                                Text(page.title)
-                            } icon: {
-                                // By hand: the list's own tint stays on it when the row isn't what it thinks is selected.
-                                Image(systemName: page.symbol)
-                                    .foregroundStyle((store.page.parent ?? store.page) == page ? Color.onAccent : Color.accentColor)
+        GeometryReader { split in
+            NavigationSplitView(columnVisibility: sidebarVisibility) {
+                SidebarRevealLayout(width: sidebarAnimator.isAnimating ? sidebarAnimator.width : nil) {
+                List(selection: Binding<Page?>(get: { store.page.parent ?? store.page }, set: { if let page = $0 { store.page = page } })) {
+                    ForEach(Page.Section.allCases, id: \.self) { section in
+                        Section(section.title) {
+                            ForEach(Page.sidebarPages.filter { $0.section == section }) { page in
+                                Label {
+                                    Text(page.title)
+                                } icon: {
+                                    // By hand: the list's own tint stays on it when the row isn't what it thinks is selected.
+                                    Image(systemName: page.symbol)
+                                        .foregroundStyle((store.page.parent ?? store.page) == page ? Color.onAccent : Color.accentColor)
+                                }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .contentShape(Rectangle())
+                                    .selectionHighlight((store.page.parent ?? store.page) == page)
+                                    // The list reports no change for the row already selected, which
+                                    // a subpage's parent is, and a click there should go back to it.
+                                    .simultaneousGesture(TapGesture().onEnded {
+                                        if store.page.parent == page { store.page = page }
+                                    })
+                                    .tag(page)
                             }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .contentShape(Rectangle())
-                                .selectionHighlight((store.page.parent ?? store.page) == page)
-                                // The list reports no change for the row already selected, which
-                                // a subpage's parent is, and a click there should go back to it.
-                                .simultaneousGesture(TapGesture().onEnded {
-                                    if store.page.parent == page { store.page = page }
-                                })
-                                .tag(page)
                         }
                     }
                 }
-            }
-            .safeAreaInset(edge: .bottom) { appFooter }
-            .safeAreaPadding(.top, fullScreenTopInset)
-            .overlay(alignment: .top) { dragRow }
-            .toolbar(removing: .sidebarToggle)
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 260)
-        } detail: {
-            Group {
-                switch store.page {
-                case .overview: OverviewView()
-                case .proxies: ProxiesView()
-                case .connections: ConnectionsView()
-                case .tools: ToolsView()
-                case .requests: RequestsView()
-                case .logs: LogsView()
-                case .dns: DNSView()
-                case .agent: AgentView()
+                .safeAreaInset(edge: .bottom) { appFooter }
+                .safeAreaPadding(.top, fullScreenTopInset)
+                .overlay(alignment: .top) { dragRow }
+                .toolbar(removing: .sidebarToggle)
                 }
+                .background(SidebarAnimationHost(sidebarAnimator))
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { sidebarAnimator.rememberWidth($0) }
+                .navigationSplitViewColumnWidth(min: sidebarAnimator.minimumWidth,
+                                                ideal: sidebarAnimator.isAnimating ? sidebarAnimator.maximumWidth : sidebarAnimator.width,
+                                                max: sidebarAnimator.maximumWidth)
+            } detail: {
+                SplitDetailViewport(splitWidth: split.size.width, coordinateSpace: splitCoordinateSpace) {
+                    pageContent
+                }
+                .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                // The toolbar has no band, so nothing may scroll under the title and window buttons.
+                .clipped()
+                .padding(.top, fullScreenTopInset)
+                .background(Color.surface)
+                .overlay(alignment: .top) { dragRow }
+                .overlay(alignment: .topLeading) { titleRow }
+                .navigationSplitViewColumnWidth(min: 0, ideal: Metrics.readingWidth, max: .infinity)
             }
-            .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            // The toolbar has no band, so nothing may scroll under the title and window buttons.
-            .clipped()
-            .padding(.top, fullScreenTopInset)
-            .background(Color.surface)
-            .overlay(alignment: .top) { dragRow }
-            .overlay(alignment: .topLeading) { titleRow }
+            .agentPresentations(agent)
+            // For the window's name elsewhere, such as the Window menu; `pageTitle` shows it here.
+            .navigationTitle(store.page.title)
         }
-        .agentPresentations(agent)
-        // For the window's name elsewhere, such as the Window menu; `pageTitle` shows it here.
-        .navigationTitle(store.page.title)
+        .coordinateSpace(name: splitCoordinateSpace)
+    }
+
+    private var pageContent: some View {
+        Group {
+            switch store.page {
+            case .overview: OverviewView()
+            case .proxies: ProxiesView()
+            case .connections: ConnectionsView()
+            case .tools: ToolsView()
+            case .requests: RequestsView()
+            case .logs: LogsView()
+            case .dns: DNSView()
+            case .agent: AgentView()
+            }
+        }
     }
 
     /// What this is and which version, at the foot of the sidebar, and the way into Settings. The
@@ -340,7 +372,7 @@ private struct ProfileMenu: View {
                 Button("更新订阅") { store.update(profile.id) }
                     .disabled(store.updatingProfiles.contains(profile.id))
             }
-            Button("管理配置") { store.page = .proxies }
+            Button("管理配置") { store.manageProfiles() }
             Button("导入配置…") { store.openImport() }
         } label: {
             HStack(spacing: Spacing.xs) {

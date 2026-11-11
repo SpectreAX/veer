@@ -6,10 +6,11 @@ struct VeerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @State private var store = AppDelegate.store
     @State private var agent = AppDelegate.agent
+    @State private var sidebar = SidebarAnimator()
 
     var body: some Scene {
         Window("Veer", id: "main") {
-            MainView()
+            MainView(sidebarAnimator: sidebar)
                 .environment(store)
                 .environment(agent)
                 .tint(.veerAccent)
@@ -103,11 +104,13 @@ enum DockPresence {
 struct VeerCommands: Commands {
     let store: ProxyStore
     let agent: AgentStore
+    @FocusedValue(\.sidebar) private var sidebar
     @AppStorage("proxiesShowMap") private var proxiesShowMap = false
 
     var body: some Commands {
-        // Show and Hide Sidebar, as the row's button has no other way in from the keyboard.
-        SidebarCommands()
+        // The same native animation as the window button, including interrupted transitions.
+        // Keep the standard full-screen command in the sidebar group.
+        CommandGroup(before: .sidebar) { SidebarMenuButton(sidebar: sidebar) }
         CommandGroup(after: .appInfo) {
             Button("检查更新…") { Updater.shared.checkForUpdates() }
         }

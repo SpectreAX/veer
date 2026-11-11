@@ -6,14 +6,10 @@ import VeerProxy
 /// reflows with the window. Mode, switches and profile are in its toolbar.
 struct OverviewView: View {
     @Environment(ProxyStore.self) private var store
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Halves side by side need about this much; narrower (the Agent panel open in a small
     /// window), each row's halves stack, and below the second width the quarter cards too.
     static let stackBelow: CGFloat = 720, stackPairsBelow: CGFloat = 460
     @State private var width: CGFloat = 1000
-    /// The first width is where the page starts, not a change to animate: opening the page beside
-    /// the Agent panel would otherwise rearrange every card, every time.
-    @State private var measured = false
     private var stacked: Bool { width < Self.stackBelow }
 
     var body: some View {
@@ -35,8 +31,11 @@ struct OverviewView: View {
         } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: Spacing.lg) {
-                    if case .failed(let message, let log) = store.phase { FailurePanel(message: message, log: log) }
-                    if let notice = store.notice { StatusBadge(kind: .warning, text: notice).fixedSize(horizontal: false, vertical: true) }
+                    if case .failed(let message, let log) = store.phase {
+                        FailurePanel(message: message, log: log)
+                    } else if let notice = store.notice {
+                        StatusBadge(kind: .warning, text: notice).fixedSize(horizontal: false, vertical: true)
+                    }
                     // The panel brings its own composer.
                     if !store.agentPanel { AgentAskBar() }
                     SuggestionCards()
@@ -50,16 +49,12 @@ struct OverviewView: View {
                 .frame(maxWidth: 1180)
                 .frame(maxWidth: .infinity)
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { new in
-                    var first = Transaction()
-                    first.disablesAnimations = !measured
-                    withTransaction(first) {
-                        width = new
-                        measured = true
-                    }
+                    // The container is already moving. Animating HStack/VStack changes as well
+                    // sent traffic and connection cards across the status card's controls.
+                    var layout = Transaction(animation: nil)
+                    layout.disablesAnimations = true
+                    withTransaction(layout) { width = new }
                 }
-                // Cards rearrange rather than jump when the Agent panel opens or closes.
-                .animation(reduceMotion ? nil : Motion.standard, value: stacked)
-                .animation(reduceMotion ? nil : Motion.standard, value: width < Self.stackPairsBelow)
             }
             .task(id: store.isRunning) {
                 guard store.isRunning else { return }
@@ -134,45 +129,20 @@ private struct StatusCard: View {
         } content: {
             // The whole width for the address, which matters most here, beside the Agent panel too.
             exit
-            // As few lines as fit. The network's name, which can be long, is the first to get its own;
-            // last the address, which must keep its port and has no room beside the button.
-            ViewThatFits(in: .horizontal) {
-                beside {
-                    HStack(alignment: .top, spacing: Spacing.xl) {
-                        runTime
-                        localAddress
-                        network
-                    }
+            // Keep one glass button outside the text's fitting alternatives. Recreating it as
+            // ViewThatFits changed candidates let its layer animate across neighbouring cards.
+            HStack(alignment: .center, spacing: Spacing.lg) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: Spacing.xl) { runTime; network }
+                    VStack(alignment: .leading, spacing: Spacing.sm) { runTime; network }
                 }
-                beside {
-                    VStack(alignment: .leading, spacing: Spacing.sm) {
-                        HStack(alignment: .top, spacing: Spacing.xl) {
-                            runTime
-                            localAddress
-                        }
-                        network
-                    }
-                }
-                VStack(alignment: .leading, spacing: Spacing.sm) {
-                    beside {
-                        VStack(alignment: .leading, spacing: Spacing.sm) {
-                            runTime
-                            network
-                        }
-                    }
-                    localAddress
-                }
+                Spacer(minLength: 0)
+                // After a failure the panel above has Try Again, the one primary action.
+                if !store.phase.isFailed { startButton }
             }
+            // Full width keeps the local address and its port readable beside the Agent panel.
+            localAddress
             reach
-        }
-    }
-
-    private func beside<Details: View>(@ViewBuilder _ details: () -> Details) -> some View {
-        HStack(alignment: .center, spacing: Spacing.lg) {
-            details()
-            Spacer(minLength: 0)
-            // After a failure the panel above has Try Again, the one primary action.
-            if case .failed = store.phase {} else { startButton }
         }
     }
 
