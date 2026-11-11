@@ -76,6 +76,11 @@ struct AgentPanelColumn: View {
     nonisolated static let idealWidth = 380.0
     static let widths = 320.0...520.0
 
+    /// The whole column: the panel's width and the divider before it.
+    static func width(_ store: ProxyStore) -> CGFloat {
+        (widths.contains(store.agentPanelWidth) ? store.agentPanelWidth : idealWidth) + 1
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             Divider()

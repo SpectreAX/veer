@@ -12,6 +12,12 @@ system proxy, and TUN tests on the real Mac remain outside authorization.
 
 ## Current state (2026-11-11, Claude)
 
+- Agent panel open/close: `ColumnReveal` (VeerUI) steps the panel's width per frame with the same NSAnimation
+  driver as `SidebarAnimator`, so the split view and the overview get real intermediate widths. Overview
+  breakpoint crossings animate (`Motion.standard`), left card above (zIndex) so the right one passes under.
+  Probe frames viewed for overview open/close, proxies, connections; panel snapshot scenes fine. verify.sh
+  passed; `ColumnRevealTests` added. DESIGN_SPEC deviation row added. Real window NOT VERIFIED.
+
 - Hot rule sets under TUN: helper protocol v3 adds `writeRuleSets` (payload checked by `HotRuleSetFiles`:
   names `veer-hot-<n>`, ≤512 files, ≤1 MB each, 0600 in the root home's `veer-hot/`). `HotRuleSetWriter`
   picks local or helper; helper v2 stays compatible (`compatibleVersions`) and falls back to reloads.

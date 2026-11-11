@@ -51,6 +51,10 @@
   或后台服务；版本 2 仍兼容，退回重载。`start()` 拆出 `launchCore`、`coreDidStart`、`controllerAnswers`，热更新代码移到
   `ProxyStoreHotRuleSets.swift`。带真实内核的 verify.sh 通过（新增 `HotRuleSetWriterTests`）。TUN 下的实际热更新
   只能由你开 TUN 验证：NOT VERIFIED。
+- **Agent 面板开关时页面同步变化（1.0.5 之后）：** 之前面板用 SwiftUI 过渡滑入，旁边的分栏一开始就拿到最终宽度，
+  概览立刻换成上下排列、右侧留出空白，面板再滑进来。现在 `ColumnReveal` 逐帧改变面板宽度，页面每帧按实际宽度排版；
+  跨过断点时卡片用 0.22 秒移到新行列，左侧卡片在上层，右侧卡片从它下面经过。隔离副本逐帧查看概览（打开、关闭）、
+  代理、连接；面板场景静态截图正常；verify.sh 通过，新增 `ColumnRevealTests`。真实窗口、减弱动态效果下的实际观感 NOT VERIFIED。
 - **已知、未处理：** 探针看不到“进入全屏幕”（它在菜单真正打开时才插入），改动前后相同，
   未能证实。
 - **NOT VERIFIED：** 真实应用窗口、键盘焦点和 VoiceOver、点击“重试”同步失败的实际效果、
