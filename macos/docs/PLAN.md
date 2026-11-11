@@ -2,6 +2,13 @@
 
 本计划按 [REQUIREMENTS.md](REQUIREMENTS.md) 和 [SPEC.md](SPEC.md) 推进，取代 [PLAN_2026-10-29.md](PLAN_2026-10-29.md) 的第 2 到第 4 阶段。那份文档的第 1 阶段（可用的代理）已经完成并提交。
 
+## 1.0.6（2026-11-11）
+
+**已发布 1.0.6 / build 7（未公证测试版，tag `macos-v1.0.6`，合并提交 `eac6e21`）。** 包含 TUN 下分流热更新（后台服务版本 3，
+兼容版本 2）、Agent 面板滑过页面、去掉帮助菜单里隐藏的 ⌥⌘S。带真实内核的 verify.sh 通过；应用 SDK 27.2、最低 14.0、
+签名严格校验通过；DMG 校验并挂载确认为签名正确的 1.0.6；线上 appcast 返回 1.0.6，DMG 下载 200 且长度一致。
+NOT VERIFIED：从 1.0.5 通过 Sparkle 升级、RELEASE.md 第 2 节实机检查、TUN 下热更新、macOS 14 VM。
+
 ## 续修边栏与失败恢复（2026-11-10 Codex 开始，2026-11-11 Claude 收尾）
 
 **状态：已合并（PR #4，`0fb5108`），2026-11-11 发布为 1.0.5 / build 6（未公证测试版，tag `macos-v1.0.5`）。** 线上 appcast 已确认为 1.0.5；Sparkle 从 1.0.4 升级、RELEASE.md 第 2 节的实机检查和 macOS 14 VM 均 NOT VERIFIED。

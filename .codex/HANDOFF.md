@@ -12,6 +12,11 @@ system proxy, and TUN tests on the real Mac remain outside authorization.
 
 ## Current state (2026-11-11, Claude)
 
+- Released 1.0.6 (build 7): PR #11 merged as `eac6e21`, tag `macos-v1.0.6`, GitHub release v1.0.6 on
+  SpectreAX/veer-releases. Checked: verify.sh with VEER_MIHOMO_BIN; SDK 27.2 / minos 14.0; strict codesign;
+  DMG mounts with signed 1.0.6; live appcast serves 1.0.6; DMG 200 with the same length. NOT VERIFIED:
+  Sparkle 1.0.5 → 1.0.6, hands-on checks, TUN hot routing, macOS 14 VM.
+
 - Panel motion, round 2 (user: Proxies/Connections still jump): real-core probe on a copy of the user's data
   (own bundle id, port 17890, system proxy runner stubbed to throw, TUN off, no state.json; proxy off before
   and after). Per-frame relayout cost 30–70 ms. Now the panel slides over the page and the page changes width
