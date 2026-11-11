@@ -12,6 +12,11 @@ system proxy, and TUN tests on the real Mac remain outside authorization.
 
 ## Current state (2026-11-11, Claude)
 
+- After 1.0.5: SwiftUI's hidden Help-menu "Hide Sidebar ⌥⌘S" (native `toggleSidebar:`, bypassing
+  `SidebarAnimator`) is removed by `StraySidebarItems` (disarmed synchronously on add/change, removed
+  after). Guarded probe: Help menu holds only "Veer Help"; ⌥⌘S unhandled; ⌃⌘S still toggles. verify.sh
+  passed; `StraySidebarItemsTests` added. Branch `fix/macos-help-menu-sidebar`. Real window NOT VERIFIED.
+
 - Released 1.0.5 (build 6) on 2026-11-11: PR #4 merged as `0fb5108`, tag `macos-v1.0.5`, GitHub release
   v1.0.5 on SpectreAX/veer-releases with the DMG and appcast. Checked: verify.sh (with VEER_MIHOMO_BIN)
   passed; dist app SDK 27.2 / minos 14.0, codesign strict ok, DMG verifies and mounts with a signed 1.0.5;
