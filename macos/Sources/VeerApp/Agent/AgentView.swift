@@ -70,7 +70,9 @@ struct AgentConversation: View {
     }
 
     @ViewBuilder private var content: some View {
-        if proxy.activeProfile == nil {
+        // An archived conversation stays readable on the Agent page after the last profile is deleted;
+        // the panel, which has no list to pick it from, asks for a profile instead.
+        if proxy.activeProfile == nil && (compact || !agent.isArchived) {
             StateView(symbol: "tray.and.arrow.down", title: String(localized: "还没有配置"),
                       message: String(localized: "导入一个配置后，就可以用一句话调整它的分流。"))
         } else if !agent.aiConfigured && agent.current == nil {
@@ -137,31 +139,47 @@ extension AgentStore {
 private struct ThreadList: View {
     @Environment(AgentStore.self) private var agent
     @Environment(ProxyStore.self) private var proxy
+    /// Closed each time the list appears, unless the conversation shown is one of them.
+    @State private var showsArchived = false
 
     var body: some View {
+        let archived = agent.sessions.filter(agent.isArchived)
         List(selection: Binding(get: { agent.selectedID }, set: { if let id = $0 { agent.select(id) } })) {
-            ForEach(agent.sessions) { session in
-                VStack(alignment: .leading, spacing: Spacing.xxs) {
-                    Text(session.title).lineLimit(1)
-                    // Not secondary when selected: it fades too far on the selection's color.
-                    Text(subtitle(session)).font(.caption)
-                        .foregroundStyle(agent.selectedID == session.id ? AnyShapeStyle(Color.onAccent) : AnyShapeStyle(.secondary))
-                        .lineLimit(1)
-                }
-                .padding(.vertical, Spacing.xxs)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .selectionHighlight(agent.selectedID == session.id)
-                .tag(session.id)
-                .contextMenu {
-                    Button(String(localized: "删除对话…"), role: .destructive) { agent.pendingDeletion = session }
+            ForEach(agent.sessions.filter { !agent.isArchived($0) }, content: row)
+            if !archived.isEmpty {
+                // Their profile was deleted: kept to read, folded away below the ones that can still be
+                // continued. A disclosure group rather than a collapsible section, whose chevron shows
+                // only on hover.
+                DisclosureGroup(isExpanded: $showsArchived) {
+                    ForEach(archived, content: row)
+                } label: {
+                    Text(String(localized: "已归档（\(archived.count)）")).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
                 }
             }
         }
+        .onAppear { showsArchived = agent.current.map(agent.isArchived) ?? false }
         .onDeleteCommand(perform: agent.current == nil ? nil : { agent.pendingDeletion = agent.current })
         .overlay {
             if agent.sessions.isEmpty {
                 Text(String(localized: "还没有对话")).font(.callout).foregroundStyle(.secondary)
             }
+        }
+    }
+
+    private func row(_ session: Session) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.xxs) {
+            Text(session.title).lineLimit(1)
+            // Not secondary when selected: it fades too far on the selection's color.
+            Text(subtitle(session)).font(.caption)
+                .foregroundStyle(agent.selectedID == session.id ? AnyShapeStyle(Color.onAccent) : AnyShapeStyle(.secondary))
+                .lineLimit(1)
+        }
+        .padding(.vertical, Spacing.xxs)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .selectionHighlight(agent.selectedID == session.id)
+        .tag(session.id)
+        .contextMenu {
+            Button(String(localized: "删除对话…"), role: .destructive) { agent.pendingDeletion = session }
         }
     }
 

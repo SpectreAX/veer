@@ -37,6 +37,11 @@
     现在组的玻璃用 `glassEffectTransition(.materialize)`，出现和收起都在原地淡入淡出加模糊。
     隔离副本逐帧确认（连接→工具、工具→连接、连接→Agent；1080 浅色中文）；verify.sh 通过。
     深色、英文和窄窗口的这次改动 NOT VERIFIED，真实窗口 NOT VERIFIED。
+  - 用户要求：对话所属的配置删除后自动归档、不能再发消息。`AgentStore.isArchived` 由配置是否存在推算；
+    发送、应用、放弃、撤销、重做、重新生成和澄清选项都被挡住，列表有“已归档”一节，输入框换成说明和“新对话”。
+    新增 `ArchivedConversationTests`，快照场景 09w、09x（中英、深浅、1080 和 860）已看过；verify.sh 通过。
+    键盘、VoiceOver、真实窗口、macOS 14 NOT VERIFIED。
+  - 随后改为“已归档（N）”折叠组（`DisclosureGroup`，默认收起，选中归档对话时展开）；快照 09y/09w/09x 已看过，verify.sh 通过。
 - **已知、未处理：** 系统自动在“帮助”菜单放了一个隐藏的“隐藏边栏 ⌥⌘S”，走原生切换，不经过
   动画器；改动前就存在。探针看不到“进入全屏幕”（它在菜单真正打开时才插入），改动前后相同，
   未能证实。

@@ -125,6 +125,14 @@ final class AgentStore {
     /// The profile the current conversation edits.
     var profile: Profile? { current?.profileID.flatMap { id in proxy.profiles.first { $0.id == id } } }
 
+    /// A conversation whose profile was deleted: kept to read, closed to new instructions and changes,
+    /// which would have no profile to go to.
+    func isArchived(_ session: Session) -> Bool {
+        session.profileID.map { id in !proxy.profiles.contains { $0.id == id } } ?? true
+    }
+
+    var isArchived: Bool { current.map(isArchived) ?? false }
+
     /// The conversation's profile is not the one running: its changes would not reach the core.
     var profileIsInactive: Bool { current?.profileID != nil && current?.profileID != proxy.activeProfileID }
 
@@ -318,7 +326,7 @@ final class AgentStore {
         let attachments = raw == nil ? pendingAttachments : sent
         var prompt = (raw ?? composerText).trimmingCharacters(in: .whitespacesAndNewlines)
         if prompt.isEmpty, !attachments.isEmpty { prompt = String(localized: "请看附件。") }
-        guard !prompt.isEmpty, !isRunning, canSend(attachments, forceAI: forceAI) else { return }
+        guard !prompt.isEmpty, !isRunning, !isArchived, canSend(attachments, forceAI: forceAI) else { return }
         if prompt == "/undo" || prompt == "/redo" {
             composerText = ""
             prompt == "/undo" ? undo() : redo()
@@ -639,7 +647,7 @@ final class AgentStore {
     }
 
     func discard(turnID: UUID) {
-        guard let session = current else { return }
+        guard let session = current, !isArchived else { return }
         mutateTurn(sessionID: session.id, turnID: turnID) { turn in
             if turn.proposal?.status == .pending { turn.proposal?.status = .discarded }
         }
@@ -799,7 +807,7 @@ final class AgentStore {
     /// The last applied change of this conversation, turned off in "my routing"; or, when the
     /// latest thing done was a runtime action, that action put back.
     func undo() {
-        guard let session = current, !refusedWhileBusy else { return }
+        guard let session = current, !isArchived, !refusedWhileBusy else { return }
         let lastRuntime = session.turns.lastIndex { if case .runtime(let run) = $0.outcome { run.canUndo } else { false } }
         let lastWrite = session.turns.lastIndex { $0.proposal?.status == .written }
         if let lastRuntime, lastRuntime > (lastWrite ?? -1) {
@@ -815,7 +823,7 @@ final class AgentStore {
 
     /// Turns the most recently undone change back on.
     func redo() {
-        guard let session = current, !refusedWhileBusy,
+        guard let session = current, !isArchived, !refusedWhileBusy,
               let index = session.turns.lastIndex(where: { $0.proposal?.status == .undone }) else { return }
         let id = session.turns[index].id
         guard !changes.redoIfNext(id), setApplied(true, turnID: id, in: session.id) else { return }
@@ -891,7 +899,7 @@ final class AgentStore {
     }
 
     var canUndo: Bool {
-        guard let turns = current?.turns, !isRunning else { return false }
+        guard let turns = current?.turns, !isRunning, !isArchived else { return false }
         return turns.contains { turn in
             if case .runtime(let run) = turn.outcome { return run.canUndo }
             return turn.proposal?.status == .written
@@ -900,14 +908,14 @@ final class AgentStore {
 
     /// Undoes one runtime turn from its own card.
     func undoRuntime(turnID: UUID) {
-        guard let id = current?.id, !changes.undoIfNext(turnID) else { return }
+        guard let id = current?.id, !isArchived, !changes.undoIfNext(turnID) else { return }
         undoRuntime(sessionID: id, turnID: turnID)
         changes.forget(turnID)
     }
     /// A turn's files live only as long as this launch, and it means little without them.
-    func canRetry(_ turn: Turn) -> Bool { turn.attachments?.isEmpty != false || sentAttachments[turn.id] != nil }
+    func canRetry(_ turn: Turn) -> Bool { !isArchived && (turn.attachments?.isEmpty != false || sentAttachments[turn.id] != nil) }
 
-    var canRedo: Bool { current?.turns.contains { $0.proposal?.status == .undone } == true && !isRunning }
+    var canRedo: Bool { current?.turns.contains { $0.proposal?.status == .undone } == true && !isRunning && !isArchived }
 
     func retry(turnID: UUID, useLocal: Bool = false) {
         guard let turn = current?.turns.first(where: { $0.id == turnID }) else { return }

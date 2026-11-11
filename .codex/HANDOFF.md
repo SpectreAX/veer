@@ -37,6 +37,15 @@ Not pushed (PR #3 is already merged, so this needs a new PR). See PLAN's “续�
   in and out both fade and blur in place. Frames viewed for Connections→Tools, Tools→Connections and
   Connections→Agent (1080, light, zh); verify.sh passed. Dark/en/narrow for this change and the
   real window NOT VERIFIED. dist/ rebuilt afterwards (SDK 27.2, minos 14.0, codesign ok); not launched.
+- User request: an Agent conversation whose profile was deleted is archived and closed. `AgentStore.isArchived`
+  is derived from whether the profile exists (no stored flag). Send, apply, discard, undo, redo, retry,
+  clarification choices and the "split by network" link are blocked; the list has an "Archived" section and
+  the composer is replaced by `ArchivedNotice` with "New Conversation". On the Agent page an archived chat
+  stays readable even with no profile left (not rendered: NOT VERIFIED). Tests: `ArchivedConversationTests`.
+  Snapshot scenes 09w/09x viewed (zh/en, light/dark, 1080/860) from an isolated copy with its own bundle id;
+  verify.sh passed; apple-design-review: 2 Major fixed. Keyboard, VoiceOver, real window, macOS 14 NOT
+  VERIFIED. Then archived chats fold into an "Archived (N)" `DisclosureGroup`, closed by default and open
+  when the shown chat is archived (scene 09y added; viewed). dist/ rebuilt after quitting Veer; committed and pushed to PR #4.
 - Known: a hidden system “Hide Sidebar ⌥⌘S” in the Help menu uses native toggleSidebar (present
   before too). The probe cannot see “Enter Full Screen” before or after the change.
 - NOT VERIFIED: real app window, keyboard/VoiceOver, clicking a synchronously failing retry,
