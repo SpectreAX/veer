@@ -10,7 +10,25 @@ as the user requested, so Claude can resume through its usual development-plan e
 The feature and workflow are being recorded as separate local commits. Publishing, enabling the
 system proxy, and TUN tests on the real Mac remain outside authorization.
 
-## Current state (2026-11-11, Claude)
+## Current implementation · native panel split (2026-11-11, Codex)
+
+The user superseded the overlay proposal and authorized direct restructuring with both page and panel visible. Current branch fix/macos-panel-live-resize includes inherited uncommitted work plus PanelSplitView, a SwiftUI HSplitView with NSSplitView.setPosition updating the real divider and SwiftUI hosting proposals each frame. Snapshot masking is removed. MainView preferences stay in the same SwiftUI tree. Tables/grids choose destination columns, Overview uses actual width. Hidden stable panels unmount their contents and relinquish first responder.
+
+Full verification passes 441 tests, including a new intermediate SwiftUI-proposal regression. CUA isolated-sample checks cover three pages, reversal, configured AI composer focus on close and Agent-page round trips. The older 600-row stress fixture reused c0…c5; its performance and selection conclusions are invalid pending a unique-ID rerun. The 400 nodes use unique names. A direct-frame optimization reached fast callbacks but failed actual rendered/proposal checks and was reverted. The final setPosition route really resizes content, but heavy-list and first-transition costs remain unresolved; do not claim the issue's 16ms frame gate passed. No real app replacement, proxy/TUN change or release.
+
+See the [implementation and evidence record](../macos/docs/reviews/2026-11-11-panel-restructure.md). Work remains uncommitted. Preserve inherited changes, the initial diff is archived in ignored .codex/local/panel-restructure/inherited.patch. The [earlier issue handoff](../macos/docs/reviews/2026-11-11-animation-handoff.md) is historical.
+
+## Claude follow-up on the native split (2026-11-12)
+
+Claude resumed after a usage pause without noticing Codex had restructured the same uncommitted branch, and edited on top of it. Net effect on Codex's work: `ProxiesView` grid gets `.id(columns.count)` + `.transition(.identity)` so tiles are replaced in place when the column count changes instead of each travelling across the others; `PanelResizeTests` covers `columnCount`. An Overview change that arranged rows for the destination width was made and reverted (it is the vertical-text Major Codex closed). Sample frames (1080×720, dark, zh) viewed for Connections, Proxies, Overview both ways: one layer, readable, continuous. Real core on copied data (own bundle id, port 17890, proxy runner stubbed, TUN off; taken before the Overview revert): 15–17 ms a frame on Connections and Overview, Proxies 14–19 ms opening and 30–49 ms for six frames closing; screenshots add main-thread cost. verify.sh passed, 447 tests. Committed and merged as one PR with Codex's work. `ConnectionsTable.swift` is Codex's and is not used by any view yet.
+
+## Main branch verification (2026-11-11, Codex)
+
+Local and remote `main` matched at `76acb0f`. Public 1.0.6 build 7 includes the sidebar and empty-group fixes. PRs #13 and #14 subsequently merged the Agent panel snapshot and blur changes. The local dist app still reports 1.0.6/7 but contains the later `PictureLeaving` symbol. Deep strict signature verification passed.
+
+Full verification with bundled Mihomo passed on this checkout, 438 tests (15 UI, 111 Proxy, 294 Core, 18 App). Log: `.codex/local/main-76acb0f-progress-verify.log`. The earlier frame reviews below are historical. Latest panel motion in the user's window, full screen, multiple displays and macOS 14 remains unverified. This check did not launch or replace the app.
+
+## Development history (2026-11-11, Claude)
 
 - Panel motion, round 4 (user screenshot: two sets of table columns over each other mid-fade). The page's
   picture now holds 0.06 s (a Table settles on its columns over a few frames), then blurs as it fades over

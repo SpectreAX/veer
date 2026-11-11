@@ -3,6 +3,7 @@ import SwiftUI
 /// NavigationSplitView can lay out its detail at the destination width while AppKit is still
 /// moving the column. Keep the page's right edge inside the split at every intermediate position.
 struct SplitDetailViewport<Content: View>: View {
+    @Environment(\.panelContentTargetWidth) private var targetSplitWidth
     let splitWidth: CGFloat
     let coordinateSpace: Namespace.ID
     @ViewBuilder var content: Content
@@ -11,12 +12,21 @@ struct SplitDetailViewport<Content: View>: View {
         GeometryReader { geometry in
             let width = SplitDetailLayout.visibleWidth(proposed: geometry.size.width, split: splitWidth,
                                                        leading: geometry.frame(in: .named(coordinateSpace)).minX)
-            VisibleDetailLayout(width: width) { content }
+            VisibleDetailLayout(width: width) {
+                content.environment(\.pageTargetWidth, targetSplitWidth.map {
+                    max(0, $0 - geometry.frame(in: .named(coordinateSpace)).minX)
+                })
+            }
                 .clipped()
-                // The native column supplies the motion; a second width animation would lag it.
                 .animation(nil, value: width)
         }
     }
+}
+
+extension EnvironmentValues {
+    /// The width the page has, or is on its way to while the Agent panel opens or closes. Pages
+    /// choose their arrangement by it, so it is settled when the motion starts, not during or after.
+    @Entry var pageTargetWidth: CGFloat?
 }
 
 /// Propose the visible width without declaring a fixed minimum width to the native split.
@@ -37,20 +47,5 @@ struct VisibleDetailLayout: Layout {
 enum SplitDetailLayout {
     nonisolated static func visibleWidth(proposed: CGFloat, split: CGFloat, leading: CGFloat) -> CGFloat {
         max(0, min(proposed, split - leading))
-    }
-}
-
-/// Leaves `inset` free at the trailing edge, for the Agent panel lying over the page's column. Not
-/// `padding`, whose amount is animatable and would lay the page out again on every frame.
-struct TrailingInsetLayout: Layout {
-    var inset: CGFloat
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        proposal.replacingUnspecifiedDimensions(by: .zero)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let size = CGSize(width: max(0, bounds.width - inset), height: bounds.height)
-        subviews.first?.place(at: bounds.origin, anchor: .topLeading, proposal: ProposedViewSize(size))
     }
 }

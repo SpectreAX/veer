@@ -70,6 +70,7 @@ struct AgentPanel: View {
 
 /// The panel as a column beside the page, its left edge dragged to resize it.
 struct AgentPanelColumn: View {
+    var showsDivider = true
     @Environment(ProxyStore.self) private var store
     @State private var widthAtDragStart: Double?
 
@@ -83,7 +84,7 @@ struct AgentPanelColumn: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            Divider()
+            if showsDivider { Divider() }
             AgentPanel()
                 .frame(width: Self.widths.contains(store.agentPanelWidth) ? store.agentPanelWidth : Self.idealWidth)
         }

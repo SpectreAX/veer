@@ -11,8 +11,8 @@ struct ConnectionsView: View {
     @State private var process: String?
     @State private var policy: String?
     @State private var selection: Set<ConnectionRow.ID>
-    @State private var columns = TableColumnCustomization<ConnectionRow>()
     @State private var hiddenColumns = Set<String>()
+    @Environment(\.pageTargetWidth) private var targetWidth
     @State private var measuredWidth: CGFloat = 0
 
     private static let columnWidths: [ColumnFit.Column] = [
@@ -71,13 +71,16 @@ struct ConnectionsView: View {
                     }
                 }
             }
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { measuredWidth = $0 }
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { if targetWidth == nil { measuredWidth = $0 } }
             // Once it settles: the first layout measures next to nothing, and the Agent panel passes
             // through every width as it opens. Columns hidden on the way come back squeezed.
             .task(id: measuredWidth) {
                 try? await Task.sleep(for: .milliseconds(120))
-                if !Task.isCancelled { fitColumns(to: measuredWidth) }
+                if !Task.isCancelled { fitColumns(to: targetWidth ?? measuredWidth) }
             }
+            // The Agent panel opening or closing: the columns for the width the page is going to,
+            // chosen as it sets off, so they only stretch on the way and nothing changes at the end.
+            .onChange(of: targetWidth, initial: true) { if let targetWidth { fitColumns(to: targetWidth) } }
         }
     }
 
@@ -114,65 +117,10 @@ struct ConnectionsView: View {
     }
 
     private var table: some View {
-        Table(shown, selection: $selection, columnCustomization: $columns) {
-            TableColumn("主机") { row in
-                VStack(alignment: .leading, spacing: Spacing.xxs) {
-                    Text(row.host).lineLimit(1).truncationMode(.middle).help(row.host)
-                    if row.network == "udp" { Text(verbatim: "UDP").font(.caption2).foregroundStyle(.secondary) }
-                }
-            }
-            .width(min: 100, ideal: 150)
-            .customizationID("host").disabledCustomizationBehavior([.reorder, .visibility])
-            TableColumn("进程") { row in
-                Text(row.process ?? "—").lineLimit(1).foregroundStyle(row.process == nil ? .secondary : .primary)
-                    .help(row.process ?? "")
-            }
-                .width(min: 50, ideal: 90)
-                .customizationID("process").disabledCustomizationBehavior([.reorder, .visibility])
-            TableColumn("规则") { row in Text(row.rule).lineLimit(1).help(row.rule) }
-                .width(min: 60, ideal: 100)
-                .customizationID("rule").disabledCustomizationBehavior([.reorder, .visibility])
-            TableColumn("代理链") { row in Text(row.chain.joined(separator: " → ")).lineLimit(1).truncationMode(.middle).help(row.chain.joined(separator: " → ")) }
-                .width(min: 90, ideal: 150)
-                .customizationID("chain").disabledCustomizationBehavior([.reorder, .visibility])
-            TableColumn("流量") { row in
-                Text(verbatim: "↑\(Format.bytes(row.upload)) ↓\(Format.bytes(row.download))").font(Typography.codeSmall).foregroundStyle(.secondary)
-                    .help(Text(verbatim: "↑\(Format.bytes(row.upload)) ↓\(Format.bytes(row.download))"))
-            }
-            .width(min: 100, ideal: 105, max: 140)
-            .customizationID("traffic").disabledCustomizationBehavior([.reorder, .visibility])
-            TableColumn("速率") { row in
-                Text(verbatim: Format.rate(row.downloadRate + row.uploadRate)).font(Typography.codeSmall)
-                    .foregroundStyle(row.downloadRate + row.uploadRate > 0 ? .primary : .secondary)
-            }
-            .width(min: 56, ideal: 60, max: 90)
-            .customizationID("speed").disabledCustomizationBehavior([.reorder, .visibility])
-            TableColumn("时长") { row in
-                Text(verbatim: row.start.map { Format.duration(since: $0) } ?? "—").font(Typography.codeSmall).foregroundStyle(.secondary)
-            }
-            .width(min: 64, ideal: 64, max: 72)
-            .customizationID("duration").disabledCustomizationBehavior([.reorder, .visibility])
-        }
-        .contextMenu(forSelectionType: ConnectionRow.ID.self) { ids in
-            if let row = rows(ids).first {
-                Button("问 AI：为什么这样走？") { ask(String(localized: "为什么 \(row.host) 走了“\(row.policy)”？")) }
-                Button("为这个主机添加规则…") { addingRule = row }
-                Divider()
-                Button("复制主机") { copy(rows(ids).map(\.host).joined(separator: "\n")) }
-                Button(ids.count > 1 ? String(localized: "关闭 \(ids.count) 个连接") : String(localized: "关闭连接")) {
-                    for id in ids { store.closeConnection(id) }
-                }
-            }
-        }
-        .onDeleteCommand { for id in selection { store.closeConnection(id) } }
-        // Nil with nothing selected, which leaves the clipboard and the menu item alone.
-        .onCopyCommand(perform: selection.isEmpty ? nil : {
-            [NSItemProvider(object: rows(selection).map(\.host).joined(separator: "\n") as NSString)]
-        })
-        // A new table when the columns change, the one way to get clean widths: an existing one squeezes
-        // or stretches them whatever it is told. The window or the Agent panel can do that, a selection
-        // can't, so this doesn't take the focus from someone choosing a row.
-        .id(hiddenColumns)
+        ConnectionsTable(rows: shown, hiddenColumns: hiddenColumns, selection: $selection,
+                         ask: { row in ask(String(localized: "为什么 \(row.host) 走了“\(row.policy)”？")) },
+                         addRule: { addingRule = $0 },
+                         close: { ids in for id in ids { store.closeConnection(id) } })
     }
 
     /// Hides what no longer fits as the table narrows. Only on a change: writing this resets the widths.
@@ -180,10 +128,6 @@ struct ConnectionsView: View {
         let hidden = ColumnFit.hidden(in: width, columns: Self.columnWidths, givingUp: Self.columnsGivenUp)
         guard hidden != hiddenColumns else { return }
         hiddenColumns = hidden
-        // From scratch: this also holds the widths the old table had. A width someone dragged goes with them.
-        var fresh = TableColumnCustomization<ConnectionRow>()
-        for id in hidden { fresh[visibility: id] = .hidden }
-        columns = fresh
     }
 
     @ViewBuilder private var toolbar: some View {
@@ -197,14 +141,7 @@ struct ConnectionsView: View {
             .disabled(store.connections.isEmpty)
     }
 
-    private func rows(_ ids: Set<ConnectionRow.ID>) -> [ConnectionRow] { store.connections.filter { ids.contains($0.id) } }
-
     private func ask(_ text: String) { agent.open(asking: text) }
-
-    private func copy(_ text: String) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-    }
 }
 
 /// A rule for one host, recorded in "my routing" like any other change.

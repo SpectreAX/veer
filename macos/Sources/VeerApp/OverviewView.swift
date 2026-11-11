@@ -9,7 +9,7 @@ struct OverviewView: View {
     /// Halves side by side need about this much; narrower (the Agent panel open in a small
     /// window), each row's halves stack, and below the second width the quarter cards too.
     static let stackBelow: CGFloat = 720, stackPairsBelow: CGFloat = 460
-    @State private var width: CGFloat = 1000
+    @State private var width: CGFloat = 0
     private var stacked: Bool { width < Self.stackBelow }
 
     var body: some View {
@@ -49,9 +49,8 @@ struct OverviewView: View {
                 .frame(maxWidth: 1180)
                 .frame(maxWidth: .infinity)
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { new in
-                    // At once: the page changes width in one step (the Agent panel slides over it
-                    // first, see `ColumnReveal`). Animated, every label and number in the cards
-                    // travelled on its own, and a cross-fade left ghosts of the old arrangement.
+                    // Choose card arrangements at the actual width. Using the wider destination
+                    // while the native column is still narrow squeezes text into vertical strips.
                     var layout = Transaction(animation: nil)
                     layout.disablesAnimations = true
                     withTransaction(layout) { width = new }
@@ -82,7 +81,9 @@ extension OverviewView {
     }
 
     func pair<Left: View, Right: View>(@ViewBuilder _ left: () -> Left, @ViewBuilder and right: () -> Right) -> some View {
-        let layout = width < Self.stackPairsBelow ? AnyLayout(VStackLayout(alignment: .leading, spacing: Spacing.lg)) : AnyLayout(HStackLayout(alignment: .top, spacing: Spacing.lg))
+        let layout = width < Self.stackPairsBelow
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Spacing.lg))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: Spacing.lg))
         return layout {
             left().frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
             right().frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
