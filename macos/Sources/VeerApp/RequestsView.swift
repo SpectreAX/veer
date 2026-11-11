@@ -13,6 +13,7 @@ struct RequestsView: View {
     @State private var columns = TableColumnCustomization<ClosedRequest>()
     @State private var hiddenColumns = Set<String>()
     @State private var measuredWidth: CGFloat = 0
+    @Environment(\.pageTargetWidth) private var targetWidth
 
     private static let columnWidths: [ColumnFit.Column] = [
         .init("closed", ideal: 64), .init("host", ideal: 150), .init("process", ideal: 90), .init("rule", ideal: 100),
@@ -71,8 +72,10 @@ struct RequestsView: View {
             // through every width as it opens. Columns hidden on the way come back squeezed.
             .task(id: measuredWidth) {
                 try? await Task.sleep(for: .milliseconds(120))
-                if !Task.isCancelled { fitColumns(to: measuredWidth) }
+                if !Task.isCancelled { fitColumns(to: targetWidth ?? measuredWidth) }
             }
+            // As on the Connections page: the columns for where the page is going, as it sets off.
+            .onChange(of: store.agentPanel) { if let targetWidth { fitColumns(to: targetWidth) } }
         }
     }
 

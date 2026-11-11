@@ -43,6 +43,8 @@ Use the native control first, then a `VeerUI` component, then a new one. Shared 
 | `selectionHighlight` | A selected row in the sidebar and conversation list, in `selectionFill` whatever has the focus, since pages move the focus to their own fields. Dimmed by the system when the window is in the background |
 | `AttachmentChip` | A file or image going with an Agent instruction, removable in the composer. A row of name, state and remove button that no system control offers. Keyboard and VoiceOver through its plain remove button; its label says what was hidden or cut. Same in light and dark through `subtleFill`, and on macOS 14 |
 | `ColumnFit` | Not a control: which table columns to hide so that the rest fit, for tables that narrow beside a panel |
+| `PanelSplitView` | SwiftUI HSplitView with an AppKit divider animator; keeps page and Agent panel in disjoint real columns, preserving the page preference and focus tree |
+| `ConnectionsTable` | Native NSTableView: SwiftUI Table hosted-cell measurement made each live split-divider step expensive; retains native multi-selection, context actions, keyboard commands and stable row IDs |
 | `KeyCap`, `ShortcutHint` | Keyboard shortcut display |
 | `ChoiceRow` | A row in a choice list |
 

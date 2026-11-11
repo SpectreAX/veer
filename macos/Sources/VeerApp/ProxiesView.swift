@@ -94,11 +94,25 @@ extension ProxyStore {
     }
 }
 
-private struct GroupSection: View {
+struct GroupSection: View {
     @Environment(ProxyStore.self) private var store
     @Environment(AgentStore.self) private var agent
     let group: ProxyStore.Group
-    private let columns = [GridItem(.adaptive(minimum: 180), spacing: Spacing.sm)]
+    @Environment(\.pageTargetWidth) private var targetWidth
+
+    /// As many columns as fit the width the page has or is going to, not the one it has on the way
+    /// there: an adaptive grid would drop a column at a time as the Agent panel opens.
+    private var columns: [GridItem] {
+        guard let targetWidth else { return [GridItem(.adaptive(minimum: Self.tileWidth), spacing: Spacing.sm)] }
+        return Array(repeating: GridItem(.flexible(minimum: 0), spacing: Spacing.sm), count: Self.columnCount(pageWidth: targetWidth))
+    }
+
+    static let tileWidth: CGFloat = 180
+
+    /// What an adaptive grid would choose inside the page's margins.
+    static func columnCount(pageWidth: CGFloat) -> Int {
+        max(1, Int((pageWidth - 2 * Spacing.xl + Spacing.sm) / (tileWidth + Spacing.sm)))
+    }
 
     private var collapsed: Bool { store.collapsedGroups.contains(group.name) }
 
@@ -147,6 +161,10 @@ private struct GroupSection: View {
                     }
                 }
             }
+            // A new grid when the count changes, in place at once: moved there, each tile travels on
+            // its own and they cross over each other. It then only stretches with the page.
+            .id(columns.count)
+            .transition(.identity)
             .transition(.opacity)
             }
         }
