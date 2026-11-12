@@ -2,6 +2,26 @@
 
 本计划按 [REQUIREMENTS.md](REQUIREMENTS.md) 和 [SPEC.md](SPEC.md) 推进，取代 [PLAN_2026-10-29.md](PLAN_2026-10-29.md) 的第 2 到第 4 阶段。那份文档的第 1 阶段（可用的代理）已经完成并提交。
 
+## AirBuild 导入基线（2026-11-11）
+
+保留现有 macOS 14+ SwiftPM 客户端，没有转换为 iOS，也没有改功能、版本号或测试。
+AirBuild 的本地构建配置位于 `.airbuild/airbuild.yaml`，沿用原打包和验收脚本，自动准备固定版本的 Mihomo。
+本次在 macOS 27.2 / Xcode 27.2 / Swift 6.4.2 / Apple Silicon 上：原生应用构建和深度严格签名检查通过；
+原始 `verify.sh` 的格式、严格 lint、构建和测试通过，421 项通过、17 项可选测试跳过、0 失败。
+真实发布内核集成测试已运行。测试产物为临时签名，未公证，不能验收 TUN；没有推送、打标签或发布。
+证据与具体运行编号见 `.codex/HANDOFF.md` 的 AirBuild 段和 `.airbuild/artifacts/independent-native-verification.json`。
+隔离示例数据截图检查通过：9 个主窗口场景的中英文、深浅色共 36 张，加 8 张静态 TUN 提示；
+实际查看了其中 8 张主窗口代表图，未发现阻塞性的静态渲染问题，其余图片未逐张审阅。
+截图不代表真实联网或交互验收。真实窗口交互、键盘、VoiceOver、macOS 14、系统代理 / TUN 仍为 NOT VERIFIED。
+
+## iOS 原型的许可例外（2026-11-12）
+
+Owner 批准：`ios/` 里的 iOS 原型把固定版本的 Mihomo（v1.19.29，GPL-3.0）编进 App 进程内运行（`ios/core` → `MihomoCore.xcframework`）。
+这个例外**只适用于这个不对外分发、只在模拟器里评估的原型**：不上 TestFlight、不进 App Store、不发给任何人。
+Mac 版“Mihomo 作为独立进程运行”的规则不变，这里不改 Mac 的任何做法。
+在任何形式的分发之前，必须先换掉内核（App 只通过 `ProxyCore` 协议使用内核，就是为了能替换），或者重新做许可决定。
+2026-11-11 暂停 iOS / Android / App Store 的决定仍然有效；这个原型只用于评估。
+
 ## Agent 面板真实分栏重构（2026-11-11，Codex）
 
 用户随后明确要求正文与面板都完整可见，直接重构。当前采用 SwiftUI HSplitView 保留同一视图树，由 AppKit 驱动真实分栏。移除页面截图叠加；连接、代理按目标宽度选择列集，概览按实际宽度换排。回归测试 441 项通过（含中间 SwiftUI 宽度提案），隔离 Computer Use 验证三页开关、反向、配置 AI 后的关闭焦点、Agent 页往返与 600 连接 / 400 节点压力样例。直接 frame 优化虽回调快但实际画面未移动，已撤回。保留真实更新 SwiftUI 的原生 setPosition 路径，大列表与首次切换仍有卡顿，约 16ms 完整帧门槛未通过验收；修复后的用户真实窗口尚待验收。源码和并行继承改动尚未提交。

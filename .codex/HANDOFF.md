@@ -1,5 +1,94 @@
 # Veer macOS handoff
 
+## iOS Simulator prototype — Simulator acceptance PASS (2026-11-12)
+
+- Owner approved the Simulator-only brief `.airbuild/artifacts/ios-prototype-brief-v0.3.md`.
+  Bundle `com.yamax.veer.ios-prototype`, iOS 26+, portrait iPhone, zh-Hans/en, three tabs.
+  `ios/` shares VeerCore/VeerProxy and the Agent store; no NetworkExtension, device-wide proxy,
+  TUN, accounts, telemetry, device distribution, TestFlight or App Store work. No commit or push.
+- Prototype-only licence exception: pinned Mihomo v1.19.29 is self-built as a C archive and linked
+  into the app. Mac's separate-process rule is unchanged. Keep `ProxyCore` abstraction; any
+  distribution requires a replacement core or a new licence decision.
+- First embedded-core/store builds and sample import/start/stop ran successfully in Simulator.
+  Three-tab UI + Import, Settings, Connections, group detail, Conversations, payload and proposal
+  views are now implemented; **final integrated build/Simulator verification still pending**.
+  Design: `/run/airbuild/team/state/team/design/veer-ios/design.md` and its PNGs; copy merged only
+  into `ios/Localization/*.ios.strings` via `ios/scripts/sync-strings.py` (Mac copy untouched).
+- A read-only store review found start-stop-start/profile-activation/reload ordering races.
+  Active fixes are isolated to iOS `ProxyStore`, `CoreLifecycle`, hot-update helper and race tests.
+  Do not use earlier green builds as proof these changes pass. First parent integrated snapshot
+  `/tmp/veer-integrated-build.log` failed because it captured the in-progress missing `enqueueHot`.
+- Fixture construction now separates files/defaults/memory-only secrets before either store.
+  Uses no real lookup/search/verifier. Shared AgentStore's settings model-list client is injectable
+  with an unchanged real-client default for Mac; fixture passes recorded transport there too.
+  Unit tests may inject UUID temp paths/defaults and a mock `ProxyCore` into `AppModel`.
+- Fresh Mac regression before the latest model-client injection passed: Build
+  `852cc454-99e5-471c-bfc6-5bf12df12fff`, `.airbuild/artifacts/ios-mac-regression.log`.
+  Pass/skip name sets match imported baseline exactly (421 passed/17 skipped/0 failed; 438 discovered).
+  Final regression after the small shared edit is running separately, not yet claimed passed.
+- Superseded: final Mac regression after the AgentStore edit PASS (Build 4df169a6,
+  `.airbuild/artifacts/ios-final-mac-regression-report.json`); iOS unit tests PASS
+  (`.airbuild/artifacts/ios-unit-tests.log`).
+- Fixes during Simulator acceptance: node-switch crash (MainActor-default `UIColor` dynamic
+  providers resolved off-main → `@Sendable` + `nonisolated extension UIColor`, UI/Theme.swift);
+  mode switch/reload (embed mode has no PUT/PATCH /configs → Go `VeerCoreSetMode`/`VeerCoreReload`);
+  DEBUG language override bundle; "Zero KB/s"; Agent tab no longer auto-focuses keyboard; single
+  toolbar glass on Test All; AX3 hero status row stacks and exit IP stays on one line.
+- Final build `d89d26c5-7b68-459f-865f-855e5dac0492` on iphone-18-pro (iOS 27.2) PASS: sample
+  import, auto start, exit IP, Rule/Global/Direct, node select persists, delay test, fixture
+  proposal apply + undo, zh-Hans + en, light/dark, AX3. DEBUG launch env: VEER_UI_LANGUAGE,
+  VEER_IMPORT_SAMPLE=1, VEER_AUTO_START=1, VEER_FIXTURE_AI=1.
+- Known/open: config reload (apply/undo) clears Mihomo delay history (core behaviour, accepted by
+  Ato); Camo's msg54 copy supplement pending; new en key "示例" = "Sample" awaits Camo.
+  NOT VERIFIED: VoiceOver walk-through, real AI provider, real subscription. Parser preflight
+  (size-limited, fail-closed geodata/provider fetch) not done.
+- Design review 1 (Colo msg70) + Ato msg68 applied, build `2d662639-01b0-4655-a30b-357a5bd91940`,
+  iOS tests 25/25 PASS: 0 KB/s formatter (KB minimum), localized region tag from countryCode,
+  fixture turns hide the step row and understanding is plain, composer pills one row leading
+  ("示例" short pill, web search hidden in fixture), wrapping placeholder overlay, group-detail
+  header aligned (-16) with absolute Color.secondary, toolbar glyphs .primary, undo/redo note
+  turns hidden on iPhone only. Also fixed: Import uses PasteButton (UIPasteboard read was refused
+  after a declined prompt), import buttons never wrap, fixture Settings shows only the sample
+  label, failure card shows the raw error once and hides 更新订阅 for non-subscription profiles,
+  SecondaryCapsuleStyle dims when disabled. Awaiting Colo's confirmation of those choices.
+- DEBUG quirk: the first launch after `simulator install` with VEER_UI_LANGUAGE can mix
+  languages (String(localized:) follows the device language); launch a second time.
+
+## AirBuild import baseline (2026-11-11)
+
+- Imported `SpectreAX/veer` at `76acb0f1f6ea89916496dbac75a31460414117e2` into AirBuild project
+  `4038787e-3c0f-42ca-a0e0-1b5cc91b45aa`. This is the existing native macOS app, not an iOS conversion.
+- Added platform-local `.airbuild/airbuild.yaml` and `.airbuild/scripts/prepare-macos.sh`:
+  keep SwiftPM and existing packaging/verification scripts, dynamically select the Xcode SDK,
+  build the pinned Mihomo core, and collect `macos/dist/Veer.app`. Core cache key includes the
+  source-build recipe hash and architecture. No app, test, lint, identity, version or feature edits.
+- Final native `runbuild` PASS after cache-key hardening: run
+  `00be2744-cf14-45ca-a29b-9b9a7325a88a`, Build `63fa32e9-dc58-4ff9-9c6f-612274e6001a`.
+  Test artifact saved at `.airbuild/artifacts/Veer-macos-test.app.tar.gz`; execution evidence
+  `.airbuild/artifacts/final-native-build.log`. First native `runbuild` also passed: run
+  `e6ca54bf-2ff1-41d3-b109-f79a6d370134`, Build `fe4e3763-0072-48d1-8c1b-c5435c9c4e28`.
+  macOS 27.2 / Xcode 27.2 / Swift 6.4.2 / arm64.
+  Existing package script's deep strict signature verification passed; forced ad-hoc test signing,
+  not notarized, TUN unavailable in this artifact. No release, tag or push.
+- Independent unchanged `verify.sh` PASS via `runtest`: run
+  `84667d59-d1f4-4d52-b123-89d501c85c38`, Build `6a86d347-e59d-4d67-8872-284f36983a70`.
+  Formatting, strict lint, build and tests passed: 421 individual passes, 17 optional skips,
+  0 failures (438 discovered, including skips). Real release-core integration tests ran.
+  Evidence: `.airbuild/artifacts/independent-native-verify.log` and
+  `.airbuild/artifacts/independent-native-verification.json`.
+- Existing compiler warnings remain (String cString deprecation, unnecessary nonisolated(unsafe),
+  a non-Sendable callback conversion). Baseline scope did not change their source.
+- Isolated sample-data screenshot check PASS using `.codex/scripts/snapshots.sh`, run
+  `183b4304-bcbe-4f28-8bf4-9d2e45991dcc`, Build `a0529944-d7d8-4679-b1c4-a8397ba6eecc`.
+  Generated 36 main-window captures (9 scenes × zh/en × light/dark) and 8 inert native TUN
+  alert mockups. Actually viewed 8 representative main-window captures: overview, proxies,
+  smallest proxy layout, Agent proposal, connections, narrow panel and failed-start state.
+  No blocking static-render defect found in those eight. Full 44-image review NOT VERIFIED;
+  alert mockups do not establish functioning TUN. Evidence:
+  `.airbuild/artifacts/mac-verification/screenshots/`.
+  macOS apps have no Team iPhone Simulator preview. Normal app launch, real proxy/TUN,
+  keyboard/VoiceOver, macOS 14, live provider credentials and notarization remain NOT VERIFIED.
+
 ## Scope
 
 Shared progress summary: [`macos/docs/PLAN.md`](../macos/docs/PLAN.md), section
