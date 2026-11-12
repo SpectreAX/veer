@@ -1,0 +1,82 @@
+/* iOS prototype only. Merged over macos/Resources/Localization/en.lproj/Localizable.strings by
+   ios/scripts/sync-strings.py into ios/VeerMobile/en.lproj/Localizable.strings. Same zh keys as
+   the Mac where the text is shared; a key repeated here replaces the Mac en value on iPhone only.
+   Source: Camo's iOS copy (.airbuild/artifacts/ios-copy.md). */
+
+/* Overview */
+"启动内核" = "Start the core";
+"停止内核" = "Stop the core";
+"内核只在 Veer 里运行，不接管 iPhone 的网络。" = "The core runs only inside Veer. It doesn't take over the iPhone's network.";
+"出口 IP" = "Exit IP";
+"启动后显示出口 IP。" = "Shows the exit IP once the core runs.";
+"内核版本" = "Core version";
+"先添加你的订阅。粘贴订阅链接，或者从“文件”选择一个 Mihomo / Clash 配置文件。订阅链接只保存在这台 iPhone 上。" = "Start by adding your subscription. Paste its link, or choose a Mihomo / Clash config file from Files. The link stays on this iPhone.";
+
+/* Import */
+"从“文件”选择…" = "Choose from Files…";
+"粘贴订阅链接、Mihomo / Clash 配置、Base64 订阅内容或节点分享链接。订阅链接只保存在这台 iPhone 上，用于之后更新。" = "Paste a subscription link, a Mihomo / Clash config, a Base64 subscription or node share links. Subscription links stay on this iPhone for later updates.";
+
+/* Connections */
+"原型版不接管 iPhone 的网络，这里只显示经过 Veer 内核的连接，例如检测出口 IP。" = "The prototype doesn't take over the iPhone's network, so only connections through Veer's core show here, such as the exit IP check.";
+
+/* Proxies */
+"测速全部" = "Test All";
+
+/* Agent */
+"对话" = "Conversations";
+"AI 可以联网搜索规则集和官方域名（轻点关闭）" = "The AI can search the web for rule sets and official domains (tap to turn off)";
+"AI · %@。轻点选择模型、思考强度或改用本地解析" = "AI · %@. Tap to choose a model, thinking strength, or local parsing";
+"本地解析。轻点选择 AI 或本地解析" = "Local parsing. Tap to choose AI or local parsing";
+"Veer 使用你自己的 API Key。Key 只保存在这台 iPhone 上；发给 AI 的配置会先匿名化，服务器地址、密码和订阅链接不会发送。" = "Veer uses your own API key. The key stays on this iPhone. Your config is anonymized before it goes to the AI; server addresses, passwords and subscription links are never sent.";
+"拖动排序，或长按后选择上移、下移" = "Drag to reorder, or touch and hold to move up or down";
+"示例回答（未连接 AI）" = "Sample answer (no AI connected)";
+"Ollama（局域网）" = "Ollama (local network)";
+"上方是你的配置（只在本机），下方是 AI 收到的对应内容。" = "Top: your config (only on this iPhone). Bottom: what the AI received for it.";
+
+/* Settings */
+"AI 服务" = "AI Service";
+"Veer 跟随 iPhone 的语言。要单独更改，请在 iOS“设置”的 Veer 页面里选择。" = "Veer follows your iPhone's language. To change it for Veer only, choose a language on Veer's page in the iOS Settings app.";
+"打开 iOS 设置" = "Open iOS Settings";
+"原型版，只用于在模拟器里评估，不对外发布。" = "Prototype for evaluation in Simulator only. Not for distribution.";
+"内核：Mihomo %@（GPL-3.0）" = "Core: Mihomo %@ (GPL-3.0)";
+"保存在这台 iPhone 上。" = "Saved on this iPhone.";
+"内核无法使用本机端口 %@，请重新打开 Veer。" = "The core couldn't use local port %@. Reopen Veer.";
+
+/* iPhone overrides: same zh key as the Mac, iPhone en value */
+"已保存在本机" = "Saved on this iPhone";
+"配置文件、订阅链接和“我的分流”会从本机删除。" = "The config file, its subscription link and its My Routing changes are removed from this iPhone.";
+"对话记录会从本机删除；已经应用的修改仍在“我的分流”里。" = "The conversation is removed from this iPhone. Changes it applied stay in My Routing.";
+"会删除本机保存的全部对话；已经应用的修改仍在“我的分流”里。" = "Every conversation saved on this iPhone is deleted. Applied changes stay in My Routing.";
+"在本机识别常见服务、域名、IP 和地区，不发送任何内容。" = "Recognizes common services, domains, IPs and regions on this iPhone, and sends nothing.";
+"正在本机检查 %lld 个域名命中哪条规则" = "Checking which rules %lld domains match, on this iPhone";
+"本机检查 %lld 个域名" = "Checked %lld domains on this iPhone";
+"本机无法确定命中哪一条" = "Can't tell on this iPhone which rule matches";
+"本机查询 %lld 项" = "Looked up %lld items on this iPhone";
+"Veer 用当前的规则在本机逐条匹配，结果已发给 AI。" = "Veer matched the current rules one by one on this iPhone and sent the results to the AI.";
+"左侧是你的配置（只在本机），右侧是 AI 收到的对应内容。" = "Top: your config (only on this iPhone). Bottom: what the AI received for it.";
+"原始配置（仅在本机）" = "Your config (only on this iPhone)";
+"Veer 在本机 MetaCubeX 地理数据中查到。" = "Found in MetaCubeX geodata on this iPhone.";
+"Veer 在本机 MetaCubeX 地理数据中查到，并随指令发给了 AI。" = "Found in MetaCubeX geodata on this iPhone and sent to the AI with the instruction.";
+"Veer 在本机地理数据中按域名查到" = "Found by domain in geodata on this iPhone";
+
+/* Addendum (copy.md §11): strings from the design spec */
+"这个策略组会自动选择节点。" = "This group picks its node automatically.";
+"轻点策略组查看节点并切换。" = "Tap a group to see its nodes and switch.";
+"轻点切换" = "Tap to switch";
+"关闭" = "Close";
+"AI 解析" = "AI parsing";
+"AI 解析中…" = "AI parsing…";
+
+/* Sample profile — approved by Camo, ios-copy-sample-addendum.md */
+"使用示例配置" = "Use Sample Profile";
+"示例配置（仅直连）" = "Sample Profile (Direct Only)";
+"找不到示例配置。" = "Couldn't find the sample profile.";
+
+/* Agent: archived state, proposal labels and payload privacy note — approved by Camo */
+"已归档" = "Archived";
+"新增规则" = "New rule";
+"新增规则集" = "New rule set";
+"未发送：真实名称、节点地址、端口、密码、协议参数、订阅与规则集地址及其他网络配置" = "Not sent: real names, node addresses, ports, passwords, protocol settings, subscription and rule-set addresses, and other network settings";
+
+/* Agent composer: short engine pill in sample mode — design review 1, item 4 */
+"示例" = "Sample";

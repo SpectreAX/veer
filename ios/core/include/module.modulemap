@@ -1,0 +1,8 @@
+module MihomoCore {
+    header "MihomoCore.h"
+    // System libraries the Go runtime and Mihomo need; autolinked when Swift imports the module.
+    link "resolv"
+    link framework "CoreFoundation"
+    link framework "Security"
+    export *
+}

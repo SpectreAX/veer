@@ -1,8 +1,13 @@
-import AppKit
 import Observation
 import SwiftUI
 import VeerCore
 import VeerProxy
+#if os(macOS)
+import AppKit
+#else
+// The iOS prototype compiles this file as is (ios/VeerMobile.xcodeproj); only `announce` differs.
+import UIKit
+#endif
 
 /// A new group in a pending proposal that the group editor changes.
 struct GroupEditTarget: Identifiable, Equatable {
@@ -71,6 +76,9 @@ final class AgentStore {
     let sessionStore: SessionStore
     let keyStore: KeyStoring
     let engine: EditorEngine
+    /// Used for settings operations as well as the conversation engine's injected transport.
+    /// The default preserves the Mac behaviour; offline demonstrations can replace it.
+    let modelClient: AIClient
     @ObservationIgnored let defaults: UserDefaults
     private var tasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var documentCache: [(text: String, document: ConfigDocument)] = []
@@ -88,13 +96,15 @@ final class AgentStore {
     /// What each turn sent, for trying it again. Only for this launch: their contents aren't saved.
     @ObservationIgnored private var sentAttachments: [UUID: [ChatAttachment]] = [:]
 
-    init(proxy: ProxyStore, keyStore: KeyStoring? = nil, engine: EditorEngine? = nil, defaults: UserDefaults = .standard, persist: Bool = true) {
+    init(proxy: ProxyStore, keyStore: KeyStoring? = nil, engine: EditorEngine? = nil, defaults: UserDefaults = .standard, persist: Bool = true,
+         modelClient: AIClient = AIClient()) {
         self.proxy = proxy
         sessionStore = SessionStore(directory: proxy.paths.threads)
         self.keyStore = keyStore ?? proxy.profileStore.secrets
         let geo = GeoDataStore.shared
         self.engine = engine ?? EditorEngine(searcher: WebSearchService(geo: geo), lookup: InstructionLookup(geo: geo), checker: DomainChecker(geo: geo))
         self.defaults = defaults
+        self.modelClient = modelClient
         var settings = AISettings()
         if let data = defaults.data(forKey: "aiSettings"), let saved = try? JSONDecoder().decode(AISettings.self, from: data) { settings = saved }
         self.settings = settings
@@ -978,7 +988,7 @@ final class AgentStore {
 
     func fetchModels() async throws -> Int {
         let current = settings
-        let models = try await AIClient().listModels(settings: current, apiKey: apiKey)
+        let models = try await modelClient.listModels(settings: current, apiKey: apiKey)
         guard settings.provider == current.provider else { return 0 }
         settings.fetchedModels = models
         return models.count
@@ -1013,8 +1023,12 @@ final class AgentStore {
     }
 
     private func announce(_ text: String) {
+        #if os(macOS)
         NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested,
                              userInfo: [.announcement: text, .priority: NSAccessibilityPriorityLevel.high.rawValue])
+        #else
+        UIAccessibility.post(notification: .announcement, argument: text)
+        #endif
     }
 
     func message(for error: Error) -> String {

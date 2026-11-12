@@ -311,10 +311,18 @@ public struct SubscriptionFetcher: Sendable {
         // An empty dictionary means no proxy at all, ignoring the system's.
         case .direct: configuration.connectionProxyDictionary = [:]
         case .proxy(let port):
+            #if os(macOS)
             configuration.connectionProxyDictionary = [
                 kCFNetworkProxiesHTTPEnable as String: 1, kCFNetworkProxiesHTTPProxy as String: "127.0.0.1", kCFNetworkProxiesHTTPPort as String: port,
                 kCFNetworkProxiesHTTPSEnable as String: 1, kCFNetworkProxiesHTTPSProxy as String: "127.0.0.1", kCFNetworkProxiesHTTPSPort as String: port,
             ]
+            #else
+            // iOS has no constants for the HTTPS keys; URLSession still reads them by these names.
+            configuration.connectionProxyDictionary = [
+                kCFNetworkProxiesHTTPEnable as String: 1, kCFNetworkProxiesHTTPProxy as String: "127.0.0.1", kCFNetworkProxiesHTTPPort as String: port,
+                "HTTPSEnable": 1, "HTTPSProxy": "127.0.0.1", "HTTPSPort": port,
+            ]
+            #endif
         }
         let session = URLSession(configuration: configuration, delegate: NoRedirect(), delegateQueue: nil)
         defer { session.finishTasksAndInvalidate() }

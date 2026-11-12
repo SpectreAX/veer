@@ -1,0 +1,3 @@
+/* iOS prototype: keys that are not Chinese text need a zh-Hans value. Everything else is keyed by
+   its own zh text, so this table stays small. */
+"page.proxies" = "代理";

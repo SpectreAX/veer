@@ -1,10 +1,14 @@
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 import ImageIO
 import PDFKit
 import UniformTypeIdentifiers
 
-/// Turns a file or a pasted image into something a request can carry. AppKit is here only because
-/// `NSAttributedString` is what reads RTF and Word documents; nothing here draws.
+/// Turns a file or a pasted image into something a request can carry. AppKit (UIKit on iOS) is here
+/// only because `NSAttributedString` is what reads RTF and Word documents; nothing here draws.
 public enum AttachmentReader {
     public static let maxFileBytes = 25 * 1024 * 1024
     /// What Claude, GPT and Gemini all take without downscaling it again themselves.
@@ -17,7 +21,12 @@ public enum AttachmentReader {
             + textExtensions.compactMap { UTType(filenameExtension: $0, conformingTo: .data) }
     }
 
+    #if os(macOS)
     private static var documentTypes: [UTType] { ["doc", "docx", "odt"].compactMap { UTType(filenameExtension: $0) } }
+    #else
+    /// UIKit's `NSAttributedString` reads RTF but no Word or OpenDocument files, so they are not offered.
+    private static var documentTypes: [UTType] { [] }
+    #endif
     private static let textExtensions: Set<String> = ["yaml", "yml", "conf", "cfg", "ini", "toml", "list", "log", "md", "markdown",
                                                       "csv", "tsv", "txt", "json", "xml", "html", "htm"]
 

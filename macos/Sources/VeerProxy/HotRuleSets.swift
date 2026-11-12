@@ -1,7 +1,9 @@
 import Foundation
 import VeerCore
-import VeerHelperKit
 import Yams
+#if os(macOS)
+import VeerHelperKit
+#endif
 
 /// Rule sets Veer refreshes in place, so a new "X 走 Y" takes effect without reloading the
 /// whole config: one empty file rule set per policy (every group, DIRECT and REJECT), each with
@@ -17,7 +19,12 @@ public struct HotRuleSets: Sendable, Equatable {
         public var path: String { "./\(HotRuleSets.folder)/\(name).yaml" }
     }
 
+    #if os(macOS)
     public static let folder = HotRuleSetFiles.folder
+    #else
+    /// `HotRuleSetFiles.folder`: iOS has no helper, so it does not link VeerHelperKit.
+    public static let folder = "veer-hot"
+    #endif
     public let sets: [RuleSet]
 
     public init(targets: [String]) {
@@ -122,6 +129,7 @@ public struct LocalRuleSetWriter: HotRuleSetWriter {
     }
 }
 
+#if os(macOS)
 public struct HelperRuleSetWriter: HotRuleSetWriter {
     let client: HelperClient
 
@@ -135,3 +143,4 @@ public struct HelperRuleSetWriter: HotRuleSetWriter {
         try await client.writeRuleSets([set.name: HotRuleSets.file(lines)], replacingAll: false)
     }
 }
+#endif

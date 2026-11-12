@@ -3,10 +3,13 @@ import PackageDescription
 
 let package = Package(
     name: "Veer",
-    platforms: [.macOS(.v14)],
+    // iOS is only for the Simulator prototype in ../ios, which links the two libraries below.
+    platforms: [.macOS(.v14), .iOS(.v26)],
     products: [
         .executable(name: "Veer", targets: ["VeerApp"]),
         .executable(name: "VeerHelper", targets: ["VeerHelper"]),
+        .library(name: "VeerCore", targets: ["VeerCore"]),
+        .library(name: "VeerProxy", targets: ["VeerProxy"]),
     ],
     dependencies: [
         .package(url: "https://github.com/jpsim/Yams.git", exact: "6.2.2"),
@@ -23,7 +26,12 @@ let package = Package(
         /// The root daemon that runs Mihomo for TUN. Small on purpose: no YAML, no AI.
         .executableTarget(name: "VeerHelper", dependencies: ["VeerHelperKit"]),
         /// Runs the proxy: the Mihomo process, its runtime config, profiles and the system proxy.
-        .target(name: "VeerProxy", dependencies: ["VeerCore", "VeerHelperKit", "Yams"], exclude: ["CLAUDE.md"]),
+        /// On iOS only the parts without a process, the helper or the system proxy are built.
+        .target(
+            name: "VeerProxy",
+            dependencies: ["VeerCore", .target(name: "VeerHelperKit", condition: .when(platforms: [.macOS])), "Yams"],
+            exclude: ["CLAUDE.md"]
+        ),
         .executableTarget(
             name: "VeerApp",
             dependencies: ["VeerProxy", "VeerCore", "VeerUI", .product(name: "Sparkle", package: "Sparkle")],

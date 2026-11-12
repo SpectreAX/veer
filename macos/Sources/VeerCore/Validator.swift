@@ -18,8 +18,10 @@ public protocol ConfigValidating: Sendable {
     var versionDescription: String? { get }
 }
 
-/// Runs the bundled Mihomo binary with `-t` in an isolated temporary directory.
+/// Runs the bundled Mihomo binary with `-t` in an isolated temporary directory. On iOS, where an
+/// app cannot start a process, it asks the core linked into the app instead.
 public struct MihomoValidator: ConfigValidating {
+    #if os(macOS)
     public let binary: URL?
     public let timeout: TimeInterval
     /// A folder with GEO data the core already downloaded; linked in so a check does not fetch it again.
@@ -129,6 +131,34 @@ public struct MihomoValidator: ConfigValidating {
         }
         var string: String { lock.lock(); defer { lock.unlock() }; return String(decoding: data, as: UTF8.self) }
     }
+    #else
+    /// The linked core's check of a config: nil when it passes, else the core's error.
+    public typealias Check = @Sendable (_ yaml: Data) -> String?
+
+    let check: Check?
+    public let versionDescription: String?
+
+    /// Without `check` a config gets the structure check only, as on a Mac without the binary.
+    public init(check: Check? = nil, version: String? = nil) {
+        self.check = check
+        versionDescription = version
+    }
+
+    public func validate(_ yaml: String) async -> ValidationResult {
+        guard let check else {
+            return ValidationResult(status: .unavailable, message: String(localized: "已通过结构检查；未找到内置 Mihomo 校验器，没有进行内核校验。"))
+        }
+        // The core's own check blocks while it parses, so it runs off the caller's thread.
+        guard let error = await Task.detached(priority: .userInitiated, operation: { check(Data(yaml.utf8)) }).value else {
+            return ValidationResult(status: .passed, message: String(localized: "已通过 Mihomo 配置测试 · 网络可达性未验证"))
+        }
+        // The app's container stands in for the temporary folder a Mac check runs in.
+        let detail = Self.redact(error, yaml: yaml, directory: NSHomeDirectory())
+        let hint = detail.range(of: #"rule.?provider|download|dial|i/o timeout|no such host"#, options: [.regularExpression, .caseInsensitive]) != nil
+            ? String(localized: "可能是规则集下载失败。") : ""
+        return ValidationResult(status: .failed, message: String(localized: "Mihomo 配置测试未通过。\(hint)"), detail: String(detail.suffix(1500)))
+    }
+    #endif
 
     /// Hides values of secret-looking keys and the temporary path.
     static func redact(_ output: String, yaml: String, directory: String) -> String {

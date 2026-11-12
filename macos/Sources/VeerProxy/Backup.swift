@@ -1,3 +1,5 @@
+// macOS only: it zips with /usr/bin/ditto, and the iOS prototype has no backups.
+#if os(macOS)
 import Foundation
 import VeerCore
 
@@ -148,3 +150,4 @@ public enum Backup {
         }
     }
 }
+#endif

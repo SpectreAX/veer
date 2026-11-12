@@ -1,3 +1,5 @@
+// macOS only: on iOS the core is linked into the app and no process can be started.
+#if os(macOS)
 import Foundation
 
 /// The Mihomo child process: started with Veer's runtime config, stopped on request, and
@@ -81,3 +83,4 @@ public final class CoreProcess: @unchecked Sendable {
         }
     }
 }
+#endif
