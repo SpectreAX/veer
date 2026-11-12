@@ -1,6 +1,8 @@
 import Foundation
 import VeerCore
 
+// macOS only: it runs networksetup, and iOS has no system proxy an app can set.
+#if os(macOS)
 /// The macOS system proxy, set per network service with `networksetup` (an admin user needs no
 /// password for it). Veer only turns off a proxy that points at itself.
 public struct SystemProxy: Sendable {
@@ -117,6 +119,7 @@ public struct SystemProxy: Sendable {
         return text
     }
 }
+#endif
 
 /// Each network service's proxy settings as they were before Veer set its own.
 public struct ProxySnapshot: Codable, Sendable, Equatable {

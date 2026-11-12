@@ -1,3 +1,5 @@
+// macOS only: it zips through Backup, and the iOS prototype has no diagnostics export.
+#if os(macOS)
 import Foundation
 import VeerCore
 
@@ -56,3 +58,4 @@ public enum Diagnostics {
         #endif
     }
 }
+#endif

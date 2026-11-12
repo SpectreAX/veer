@@ -1,7 +1,9 @@
 import Foundation
+#if os(macOS)
 import ServiceManagement
 import VeerCore
 import VeerHelperKit
+#endif
 
 /// How the core runs: as the user (`CoreProcess`) or as root through the helper (`HelperCore`).
 public protocol CoreRunning: AnyObject, Sendable {
@@ -13,7 +15,9 @@ public protocol CoreRunning: AnyObject, Sendable {
     func stop()
 }
 
+#if os(macOS)
 extension CoreProcess: CoreRunning {}
+#endif
 
 /// Where the privileged helper stands.
 public enum HelperState: Equatable, Sendable {
@@ -46,6 +50,8 @@ public enum HelperState: Equatable, Sendable {
     }
 }
 
+// The helper is macOS only; iOS has no privileged helper, TUN or launchd.
+#if os(macOS)
 /// Talks to the privileged helper: registers it with SMAppService (or installs it by hand when
 /// that cannot work, as with a development signature), and calls it over XPC.
 public final class HelperClient: @unchecked Sendable {
@@ -300,3 +306,4 @@ public final class HelperCore: CoreRunning, @unchecked Sendable {
         client.stopSynchronously()
     }
 }
+#endif

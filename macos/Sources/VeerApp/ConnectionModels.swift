@@ -100,10 +100,18 @@ struct ExitInfo: Equatable {
     /// wins: any one of them can be blocked, slow, or rate-limited on a given node.
     static func lookUp(throughPort port: Int) async -> ExitInfo? {
         let configuration = URLSessionConfiguration.ephemeral
+        #if os(macOS)
         configuration.connectionProxyDictionary = [
             kCFNetworkProxiesHTTPEnable: true, kCFNetworkProxiesHTTPProxy: "127.0.0.1", kCFNetworkProxiesHTTPPort: port,
             kCFNetworkProxiesHTTPSEnable: true, kCFNetworkProxiesHTTPSProxy: "127.0.0.1", kCFNetworkProxiesHTTPSPort: port,
         ] as [AnyHashable: Any]
+        #else
+        // The iOS prototype compiles this file too. iOS has no constants for these keys; URLSession reads them by name.
+        configuration.connectionProxyDictionary = [
+            "HTTPEnable": true, "HTTPProxy": "127.0.0.1", "HTTPPort": port,
+            "HTTPSEnable": true, "HTTPSProxy": "127.0.0.1", "HTTPSPort": port,
+        ] as [AnyHashable: Any]
+        #endif
         configuration.timeoutIntervalForRequest = 6
         let session = URLSession(configuration: configuration)
         defer { session.invalidateAndCancel() }

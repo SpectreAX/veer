@@ -1,3 +1,5 @@
+// macOS only: it starts the bundled core as a second process, which iOS apps cannot.
+#if os(macOS)
 import Darwin
 import Foundation
 import Yams
@@ -113,3 +115,4 @@ public struct RuleSetCounter: Sendable {
         return Int(UInt16(bigEndian: address.sin_port))
     }
 }
+#endif

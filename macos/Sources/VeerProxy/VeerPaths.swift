@@ -1,6 +1,8 @@
 import Foundation
 import VeerCore
+#if os(macOS)
 import VeerHelperKit
+#endif
 
 /// Where Veer keeps its files: `~/Library/Application Support/Veer/`.
 public struct VeerPaths: Sendable {
@@ -37,7 +39,13 @@ public struct VeerPaths: Sendable {
 
     public func makeSecretStore() -> KeyStoring {
         let file = FileKeyStore(url: secrets)
-        guard usesKeychain(team: CodeSigning.teamIdentifier(), environment: ProcessInfo.processInfo.environment) else { return file }
+        #if os(macOS)
+        let team = CodeSigning.teamIdentifier()
+        #else
+        // Every iOS app is signed, and its Keychain items stay with it across rebuilds.
+        let team: String? = "iOS"
+        #endif
+        guard usesKeychain(team: team, environment: ProcessInfo.processInfo.environment) else { return file }
         return MigratingKeyStore(store: KeychainKeyStore(), legacy: file)
     }
 

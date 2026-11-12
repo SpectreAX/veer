@@ -1,3 +1,5 @@
+// macOS only: it downloads and runs a separate Mihomo binary.
+#if os(macOS)
 import CryptoKit
 import Foundation
 import VeerCore
@@ -179,3 +181,4 @@ public struct CoreUpdater: Sendable {
         return data
     }
 }
+#endif
