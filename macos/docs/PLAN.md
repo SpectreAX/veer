@@ -2,6 +2,14 @@
 
 本计划按 [REQUIREMENTS.md](REQUIREMENTS.md) 和 [SPEC.md](SPEC.md) 推进，取代 [PLAN_2026-10-29.md](PLAN_2026-10-29.md) 的第 2 到第 4 阶段。那份文档的第 1 阶段（可用的代理）已经完成并提交。
 
+## 动画定位方案（2026-11-13，Codex）
+
+执行分支 codex/macos-motion-profile，基线 main@0533e50。本轮已实现并验收：概览按当前proposal同帧排版，提问栏移到原生safeAreaInset底部独立保留区，配置名交给系统Text截断；连接指标仅刷新prepared∪visible单元格并保留全缓存/固定列。没有截图遮罩、逐帧高度状态或分栏驱动改动。
+
+最终完整verify PASS454（20UI+111Proxy+294Core+29App），日志 .codex/local/motion-20261113/native-title-final-verify.log。独立查看52张inset状态图+40张最终标题图及新动态关键帧，Critical0/Major0，保留底部滚动锚点偏移Minor。轻量呈现对照18次热开合含100ms收尾：hitch45→14（749.99→233.33ms），这是本轮单次样例改善，仍有偶发掉帧，不保证所有页固定FPS。无收益/退化的高度动画、Layout.Cache、逐帧panel比例实验均已撤回。
+
+详细修改、证据、未覆盖项与下一步见 [审查报告](reviews/2026-11-13-panel-motion.md)、根plans/README.md及.codex/HANDOFF.md。macOS14、VoiceOver、全屏/多屏和最终650节点压力场景仍NOT VERIFIED。全部变更尚未提交，未替换真实应用或发布。
+
 ## Android 仓库归档迁移（2026-11-13）
 
 用户要求将 GitHub 的 `SpectreAX/veer-android` 合并到 Veer 的 `android/deprecated/`，并归档原仓库。

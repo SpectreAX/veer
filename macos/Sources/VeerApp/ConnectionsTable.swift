@@ -79,7 +79,8 @@ struct ConnectionsTable: NSViewRepresentable {
             updating = true
             defer { updating = false }
             let changedRows = rows != value.rows
-            let changedOrder = rows.map(\.id) != value.rows.map(\.id)
+            let changedOrder = changedRows && (rows.count != value.rows.count || zip(rows, value.rows).contains { $0.0.id != $0.1.id })
+            let metricsOnly = changedRows && !changedOrder && zip(rows, value.rows).allSatisfy { sameContent($0.0, $0.1) }
             let anchor = changedOrder ? scrollAnchor() : nil
             let second = Date.timeIntervalSinceReferenceDate.rounded(.down)
             let changedSecond = second != displayedSecond
@@ -93,7 +94,9 @@ struct ConnectionsTable: NSViewRepresentable {
                     column.width = spec.width
                 }
             }
-            if changedRows {
+            if metricsOnly {
+                refreshPrepared(columns: changedSecond ? [.traffic, .speed, .duration] : [.traffic, .speed])
+            } else if changedRows {
                 table.reloadData()
                 if let anchor, let index = rows.firstIndex(where: { $0.id == anchor.id }), let scroll = table.enclosingScrollView {
                     let top = table.rect(ofRow: index).minY + anchor.offset
@@ -104,14 +107,28 @@ struct ConnectionsTable: NSViewRepresentable {
             }
             let indexes = IndexSet(rows.indices.filter { value.selection.contains(rows[$0].id) })
             if table.selectedRowIndexes != indexes { table.selectRowIndexes(indexes, byExtendingSelection: false) }
-            // Traffic can be unchanged while the elapsed time advances. Refresh only visible cells.
-            if !changedRows, changedSecond, !rows.isEmpty {
-                let visible = table.rows(in: table.visibleRect)
-                if visible.location != NSNotFound, visible.length > 0 {
-                    table.reloadData(forRowIndexes: IndexSet(integersIn: visible.location..<NSMaxRange(visible)),
-                                     columnIndexes: IndexSet(integer: table.column(withIdentifier: ConnectionColumn.duration.identifier)))
-                }
-            }
+            // Elapsed time can advance even when all byte counts stay unchanged.
+            if !changedRows, changedSecond { refreshPrepared(columns: [.duration]) }
+        }
+
+        /// Stable content and row heights let metric ticks refresh cells without rebuilding the table.
+        private func sameContent(_ old: ConnectionRow, _ new: ConnectionRow) -> Bool {
+            old.host == new.host && old.process == new.process && old.network == new.network
+                && old.rule == new.rule && old.chain == new.chain && old.start == new.start
+        }
+
+        private func refreshPrepared(columns: [ConnectionColumn]) {
+            // AppKit can retain rows beyond the viewport for responsive scrolling.
+            let prepared = table.preparedContentRect
+            let bounds = prepared.isEmpty ? table.visibleRect : prepared.union(table.visibleRect)
+            let range = table.rows(in: bounds)
+            guard range.location != NSNotFound, range.length > 0, range.location < rows.count else { return }
+            let preparedRows = IndexSet(integersIn: range.location..<min(rows.count, NSMaxRange(range)))
+            let indexes = IndexSet(columns.compactMap { column in
+                let index = table.column(withIdentifier: column.identifier)
+                return index >= 0 ? index : nil
+            })
+            table.reloadData(forRowIndexes: preparedRows, columnIndexes: indexes)
         }
 
         private func scrollAnchor() -> (id: String, offset: CGFloat)? {

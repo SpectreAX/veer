@@ -53,7 +53,8 @@ import VeerCore
     }
 
     @Test func shrinkingRowsWhileChangingColumnsDoesNotLeaveStaleRowAccess() {
-        let rows = (0..<100).flatMap { _ in SnapshotRunner.sampleConnections() }
+        let rows = metricRows(upload: 0)
+        #expect(Set(rows.map(\.id)).count == 600)
         let view = ConnectionsTable(rows: rows, hiddenColumns: [], selection: .constant([]),
                                     ask: { _ in }, addRule: { _ in }, close: { _ in })
         let coordinator = view.makeCoordinator()
@@ -153,5 +154,91 @@ import VeerCore
         #expect(narrow[0] >= 150)
         #expect(table.frame.width > 420)
         withExtendedLifetime(scroll) {}
+    }
+
+    @Test func liveMetricUpdatesPreserveTheViewportAndReachOffscreenCells() throws {
+        let rows = metricRows(upload: 0)
+        let view = ConnectionsTable(rows: rows, hiddenColumns: [], selection: .constant([rows[100].id]),
+                                    ask: { _ in }, addRule: { _ in }, close: { _ in })
+        let coordinator = view.makeCoordinator()
+        let scroll = coordinator.makeScrollView()
+        scroll.frame = NSRect(x: 0, y: 0, width: 900, height: 200)
+        scroll.layoutSubtreeIfNeeded()
+        let table = coordinator.table
+        table.scrollRowToVisible(100)
+        let origin = scroll.contentView.bounds.origin
+        let row = table.row(at: NSPoint(x: 0, y: table.visibleRect.minY))
+        try #require(row >= 0)
+        let column = table.column(withIdentifier: .init("traffic"))
+        let before = try #require((table.view(atColumn: column, row: row, makeIfNecessary: true) as? NSTableCellView)?.textField?.stringValue)
+        let updated = metricRows(upload: 100_000)
+        coordinator.update(ConnectionsTable(rows: updated, hiddenColumns: [], selection: view.$selection,
+                                             ask: { _ in }, addRule: { _ in }, close: { _ in }))
+        let after = try #require((table.view(atColumn: column, row: row, makeIfNecessary: true) as? NSTableCellView)?.textField?.stringValue)
+        #expect(after != before)
+        #expect(scroll.contentView.bounds.origin == origin)
+        #expect(coordinator.selectedIDs == [rows[100].id])
+        table.scrollRowToVisible(500)
+        let offscreen = try #require((table.view(atColumn: column, row: 500, makeIfNecessary: true) as? NSTableCellView)?.textField?.stringValue)
+        #expect(offscreen == after)
+        withExtendedLifetime(scroll) {}
+    }
+
+    @Test func changedRowContentStillRefreshesNativeCells() throws {
+        let original = metricRows(upload: 0)
+        let view = ConnectionsTable(rows: original, hiddenColumns: [], selection: .constant([]),
+                                    ask: { _ in }, addRule: { _ in }, close: { _ in })
+        let coordinator = view.makeCoordinator()
+        let scroll = coordinator.makeScrollView()
+        scroll.frame = NSRect(x: 0, y: 0, width: 900, height: 200)
+        scroll.layoutSubtreeIfNeeded()
+        let table = coordinator.table
+        let column = table.column(withIdentifier: .init("host"))
+        let oldHeight = coordinator.tableView(table, heightOfRow: 0)
+        coordinator.update(ConnectionsTable(rows: metricRows(upload: 0, firstHost: "changed.example", firstNetwork: "udp"),
+                                             hiddenColumns: [], selection: .constant([]),
+                                             ask: { _ in }, addRule: { _ in }, close: { _ in }))
+        let cell = try #require(table.view(atColumn: column, row: 0, makeIfNecessary: true) as? NSTableCellView)
+        #expect(cell.textField?.stringValue == "changed.example")
+        #expect(coordinator.tableView(table, heightOfRow: 0) > oldHeight)
+        withExtendedLifetime(scroll) {}
+    }
+
+    @Test func preloadedRowsOutsideTheViewportReceiveCurrentMetrics() throws {
+        let view = ConnectionsTable(rows: metricRows(upload: 0), hiddenColumns: [], selection: .constant([]),
+                                    ask: { _ in }, addRule: { _ in }, close: { _ in })
+        let coordinator = view.makeCoordinator()
+        let scroll = coordinator.makeScrollView()
+        scroll.frame = NSRect(x: 0, y: 0, width: 900, height: 200)
+        scroll.layoutSubtreeIfNeeded()
+        let table = coordinator.table
+        table.scrollRowToVisible(80)
+        let range = table.rows(in: table.visibleRect)
+        let cachedRow = NSMaxRange(range) + 1
+        try #require(cachedRow < table.numberOfRows)
+        let cachedRect = table.rect(ofRow: cachedRow)
+        #expect(!table.visibleRect.intersects(cachedRect))
+        table.prepareContent(in: table.visibleRect.union(cachedRect))
+        table.preparedContentRect = table.visibleRect.union(cachedRect)
+        let column = table.column(withIdentifier: .init("traffic"))
+        let before = try #require((table.view(atColumn: column, row: cachedRow, makeIfNecessary: true) as? NSTableCellView)?.textField?.stringValue)
+        coordinator.update(ConnectionsTable(rows: metricRows(upload: 200_000), hiddenColumns: [], selection: .constant([]),
+                                             ask: { _ in }, addRule: { _ in }, close: { _ in }))
+        let prepared = try #require((table.view(atColumn: column, row: cachedRow, makeIfNecessary: false) as? NSTableCellView)?.textField?.stringValue)
+        #expect(prepared != before)
+        table.scrollRowToVisible(cachedRow)
+        let visible = try #require((table.view(atColumn: column, row: cachedRow, makeIfNecessary: true) as? NSTableCellView)?.textField?.stringValue)
+        #expect(visible == prepared)
+        withExtendedLifetime(scroll) {}
+    }
+
+    private func metricRows(upload: Int64, firstHost: String = "host-0.example", firstNetwork: String = "tcp") -> [ConnectionRow] {
+        (0..<600).map { index in
+            ConnectionRow(MihomoController.Connection(id: "metric-\(index)",
+                                                       metadata: .init(network: index == 0 ? firstNetwork : "tcp",
+                                                                       host: index == 0 ? firstHost : "host-\(index).example"),
+                                                       chains: [], rule: "Match", rulePayload: "", upload: upload, download: 0, start: nil),
+                          uploadRate: upload, downloadRate: 0)
+        }
     }
 }
