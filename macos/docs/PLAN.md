@@ -8,7 +8,7 @@
 
 最终完整verify PASS454（20UI+111Proxy+294Core+29App），日志 .codex/local/motion-20261113/native-title-final-verify.log。独立查看52张inset状态图+40张最终标题图及新动态关键帧，Critical0/Major0，保留底部滚动锚点偏移Minor。轻量呈现对照18次热开合含100ms收尾：hitch45→14（749.99→233.33ms），这是本轮单次样例改善，仍有偶发掉帧，不保证所有页固定FPS。无收益/退化的高度动画、Layout.Cache、逐帧panel比例实验均已撤回。
 
-详细修改、证据、未覆盖项与下一步见 [审查报告](reviews/2026-11-13-panel-motion.md)、根plans/README.md及.codex/HANDOFF.md。macOS14、VoiceOver、全屏/多屏和最终650节点压力场景仍NOT VERIFIED。全部变更尚未提交，未替换真实应用或发布。
+详细修改、证据、未覆盖项与下一步见 [审查报告](reviews/2026-11-13-panel-motion.md)、根plans/README.md及.codex/HANDOFF.md。macOS14、VoiceOver、全屏/多屏和最终650节点压力场景仍NOT VERIFIED。修复源码已提交为6b2b6ff并推送到origin/codex/macos-motion-profile；用户要求的开发构建已完成，Apple Development签名/深度严格校验和本次重跑454项检查通过。构建交付记录见.codex/HANDOFF.md；未替换真实应用或发布Release。
 
 ## Android 仓库归档迁移（2026-11-13）
 

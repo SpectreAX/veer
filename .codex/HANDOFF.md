@@ -1,8 +1,18 @@
 # Veer macOS handoff
 
-## Motion repair verified (2026-11-13, Codex)
+## Build and Git delivery (2026-11-13, Codex)
 
-Branch codex/macos-motion-profile; baseline product code main@0533e50. This round is implemented and reviewed; ALL changes remain uncommitted. No push/release/version bump or real-app replacement. Keep the original dirty /Users/spectreax/Developer/Veer checkout untouched. Full result: macos/docs/reviews/2026-11-13-panel-motion.md and plans/README.md.
+User explicitly requested build, commit and push. Source fix commit `6b2b6fff7c56b14377eeedc8cf102a3a245c032c` is pushed to `origin/codex/macos-motion-profile`; git ls-remote matched the local commit exactly. This branch tracks that remote branch; main was not modified. Delivery documentation follows the source commit.
+
+Fresh full verify PASS454 (UI20/Proxy111/Core294/App29), log `.codex/local/motion-20261113/delivery-verify.log`. Compared184Swift source/test files with the independently reviewed snapshot: no differences. No additional product UI changes or new visual pass in this delivery step; prior scoped visual evidence and remaining limitations below still apply.
+
+Production-form build through the unchanged scripts/build-app.sh in a non-running isolated copy succeeded. Apple Development signing and deep strict verification PASS after copying the artifact; minos14.0/SDK27.2, version1.0.6/build7 unchanged. App: `/Users/spectreax/.codex/worktrees/archive-android/Veer/macos/dist/Veer-motion-profile-20261113.app`. Executable SHA256 `bf81fb589f4e726b3511f8a114f57c9ae6ff4eb7bf443b214701b8e62e304aaa`. Build/source manifest and logs: delivery-build.json, delivery-build.log, delivery-codesign.log in the ignored evidence directory. Binary is not a tracked repository asset.
+
+The built app was not launched and the existing dist/Veer.app was not replaced. No proxy/TUN setting was changed, and no release/tag was published. Remaining bottom-scroll Minor and unverified macOS14/VoiceOver/fullscreen/multidisplay/heavy-grid items remain unchanged.
+
+## Motion repair verified (2026-11-13, before Git delivery)
+
+Branch codex/macos-motion-profile; baseline product code main@0533e50. This is the verification record formed before Git delivery; the current commit/build status is recorded above. No release/version bump or real-app replacement. Keep the original dirty /Users/spectreax/Developer/Veer checkout untouched. Full result: macos/docs/reviews/2026-11-13-panel-motion.md and plans/README.md.
 
 KEPT: OverviewCardsLayout measures/places cards from the current proposal at original720/460 thresholds, no width state/onGeometryChange. Quick question bar moves to native bottom safeAreaInset reserved space, hidden when Agent panel opens; SPEC updated. MainView ProfileMenu uses native Text tail truncation160/90pt, preserving full menu/help/AX name, instead of repeated Core Text prefix measurement. ConnectionsTable keeps all latest cached rows, refreshes metrics in preparedContentRect UNION visibleRect, and retains full reload for structure/content changes plus fixed columns/ID selection. Product PanelSplitView/SidebarAnimator are unchanged from HEAD.
 

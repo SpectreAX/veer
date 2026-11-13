@@ -1,6 +1,6 @@
 # 分栏动画修复与验收记录
 
-2026-11-13，Codex；分支 `codex/macos-motion-profile`，基线产品代码 `main@0533e50`。本轮改动尚未提交、推送或发布，没有替换实际应用。
+2026-11-13，Codex；分支 `codex/macos-motion-profile`，基线产品代码 `main@0533e50`。以下为修复验收记录；源码已于后续交付步骤提交为6b2b6ff并推送到origin/codex/macos-motion-profile，没有替换实际应用或发布Release。
 
 ## 结论与实现
 
@@ -71,3 +71,11 @@ reviewer `motion_layout_review`只读审查源码、原始图与XML，没有代�
 此前inset状态快照：`/var/folders/8b/9krhx4nn0bd2zz_0w21jj18c0000gn/T/veer-codex.Ljf6s4/macos/dist/snapshots/2026-11-13-165251/`。
 
 详细规则与进度见根AGENTS.md、macos/CLAUDE.md、docs/WORKFLOW.md、docs/PLAN.md和`.codex/HANDOFF.md`。保留源码/证据，不以机器本地录制文件充当已提交的仓库资产。
+
+## 构建与Git交付补记（2026-11-13）
+
+用户随后明确要求构建、提交并推送。本次完整verify重新通过454项检查，delivery-verify.log保存结果；184个Swift源/测试文件与已审查快照完全一致，未重复执行视觉审查。
+
+在隔离副本按原build-app.sh构建，得到Apple Development签名的1.0.6/build7开发应用，最低macOS14.0/SDK27.2。复制后deep strict签名检查通过，产物位于macos/dist/Veer-motion-profile-20261113.app；没有启动它或覆盖原dist/Veer.app。详情和校验值见根.codex/HANDOFF.md，未发布Release。
+
+修复提交6b2b6fff7c56b14377eeedc8cf102a3a245c032c已推送，git ls-remote核对远端一致；交付文档随分支后续更新。上述Minor和NOT VERIFIED项目仍保留。
