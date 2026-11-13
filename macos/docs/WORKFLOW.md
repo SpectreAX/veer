@@ -20,8 +20,9 @@
 
 ## 保留的用户决定
 
-- 当前 macOS 客户端与旧的 `~/Developer/veer-editor` 独立；Android 在独立仓库。
-  VeerCore 的共同修复按需手动移植，不引入跨仓库构建依赖。
+- 当前 macOS 客户端与旧的 `~/Developer/veer-editor` 独立；旧 Android 仓库已迁入根目录
+  `android/deprecated/` 作为历史归档，原 `SpectreAX/veer-android` 仓库转为只读。
+  各平台独立构建；归档内容不加入当前客户端的构建。VeerCore 的共同修复按需手动移植。
 - 目标是帮助不熟悉 YAML 的订阅用户；原生主窗口和 Agent 是核心界面。
   macOS 免费、没有试用检查；商店版和移动端内核选型是后续独立工作。
 - 一个构建支持 macOS 14 起的系统；新系统的 Glass API 留在 VeerUI，并保留回退。

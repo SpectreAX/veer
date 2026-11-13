@@ -1,5 +1,6 @@
-# The Android app is its own repository (SpectreAX/veer-android), checked out here.
-/android/
+# Track the historical Android archive; keep other local Android checkouts/builds ignored.
+/android/*
+!/android/deprecated/
 # Local Claude Code settings and worktrees.
 /.claude/
 # Machine-local migration archives, environment inventory and check logs.

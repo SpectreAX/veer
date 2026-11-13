@@ -1,0 +1,329 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-14T13:38:17Z",
+  "title": "Design System: Veer macOS AI Editor",
+  "extensions": {
+    "native": {
+      "platform": "macOS",
+      "framework": "SwiftUI",
+      "units": "SwiftUI logical points; pt tokens are not CSS pixel measurements",
+      "sources": [
+        "Sources/VeerMac/WorkbenchStyle.swift",
+        "Sources/VeerMac/EditorView.swift",
+        "Sources/VeerMac/ConversationTurnView.swift",
+        "Sources/VeerMac/ConversationReviewView.swift",
+        "Sources/VeerMac/ConversationTurn.swift",
+        "Sources/VeerMac/EditorModel.swift",
+        "PRODUCT.md"
+      ],
+      "authority": "User-approved OpenCode reference prototype followed by 开始落地; authorized native documentation refresh within the incumbent Veer visual world.",
+      "semanticColors": [
+        {
+          "name": "accent",
+          "value": "NSColor.systemGreen / Color.green brand punctuation",
+          "purpose": "Veer accent; platform-owned selection and control states"
+        },
+        {
+          "name": "primary",
+          "value": "Color.primary / default foreground",
+          "purpose": "Body, destinations and Diff text"
+        },
+        {
+          "name": "secondary",
+          "value": ".secondary",
+          "purpose": "Supporting text, metadata and line numbers"
+        },
+        {
+          "name": "separator",
+          "value": "Color(nsColor: .separatorColor)",
+          "purpose": "Editor borders and panel strokeBorder 0.5pt"
+        },
+        {
+          "name": "error",
+          "value": "Color.red",
+          "purpose": "Error status; deletion uses red opacity(0.08) background, not colored body"
+        },
+        {
+          "name": "window",
+          "value": "Color(nsColor: .windowBackgroundColor)",
+          "purpose": "Detail background and user prompt bubble"
+        },
+        {
+          "name": "content",
+          "value": "Color(nsColor: .controlBackgroundColor)",
+          "purpose": "Solid content and opaque operations"
+        },
+        {
+          "name": "diff-add",
+          "value": "Color.green.opacity(0.08)",
+          "purpose": "Addition background, complemented by + prefix"
+        },
+        {
+          "name": "operation-material",
+          "value": "OperationGlass / ImportGlassButton",
+          "purpose": "Native glass, older-OS material or reduced-transparency solid fallback"
+        }
+      ],
+      "typography": [
+        {
+          "name": "brand-title",
+          "value": ".title2.weight(.semibold)",
+          "purpose": "Sidebar Veer brand"
+        },
+        {
+          "name": "header-section",
+          "value": ".headline",
+          "purpose": "File header, review, routing destinations and YAML Diff"
+        },
+        {
+          "name": "empty-state",
+          "value": ".title2 / .title",
+          "purpose": "Import guidance / imported conversation guidance"
+        },
+        {
+          "name": "body",
+          "value": "default system body / .body.monospaced()",
+          "purpose": "Conversation / rules editor"
+        },
+        {
+          "name": "supporting",
+          "value": ".callout; medium for completion, semibold for file entry",
+          "purpose": "Processing records and file entry"
+        },
+        {
+          "name": "metadata",
+          "value": ".caption / .caption.monospaced()",
+          "purpose": "Status, regions, limitations / expanded rule matches"
+        },
+        {
+          "name": "diff",
+          "value": ".callout.monospaced()",
+          "purpose": "Single-line Diff and before/after line numbers"
+        },
+        {
+          "name": "import-symbol",
+          "value": ".system(size: 56, weight: .light)",
+          "purpose": "SF Symbols plus only; not a body font scale"
+        }
+      ],
+      "layout": {
+        "composition": "Balanced NavigationSplitView; native sidebar; single-line imported filename/actions; conversation + on-demand review; composer fixed at bottom of conversation column",
+        "sidebarWidth": "minimum 160pt, ideal 180pt, maximum 210pt",
+        "conversationMaximum": "900pt",
+        "review": {
+          "measurement": "GeometryReader detail width, not whole window width",
+          "splitThreshold": "1000pt",
+          "widthFraction": 0.44,
+          "minimum": "420pt",
+          "maximum": "540pt",
+          "compact": "Single visible review region over mounted full-size conversation; opacity 0, hit testing disabled and accessibilityHidden true"
+        },
+        "windowDefault": "1320 × 900pt",
+        "contentMinimum": "1080 × 700pt",
+        "observedMinimumWindowIncludingSystemTitle": "1080 × 738pt",
+        "retinaCapturePixels": {
+          "desktop": "2640 × 1800px",
+          "minimum": "2160 × 1476px"
+        },
+        "detailAndReviewSpacing": "EditorLayout.section",
+        "turnSpacing": "EditorLayout.padding",
+        "headerAndSinglePageInset": "WorkbenchStyle.inset",
+        "diff": "36pt before/after columns; 240pt scroll viewport; unwrapped horizontal scroll",
+        "composerHeightMeaning": "72pt input area, or minimum import-prompt height; not whole container height",
+        "importSheetWidth": "520pt",
+        "responsiveBehavior": "Width-based native presentation and scrolling; no mobile breakpoint"
+      },
+      "elevation": "Solid content, separator strokeBorder 0.5pt, no custom shadows. OperationGlass checks system Reduce Transparency/user opaque preference first, then macOS 26 glassEffect(.regular), else regularMaterial. Prominent/utility actions use native glass or bordered fallbacks. Import action uses circular interactive glass. macOS 14 and system Reduce Transparency source branches are not runtime verified.",
+      "shapes": "Frontmatter panel for composer/content/operations, field for prompt bubble/file entry/review; platform-owned field and control shapes; circular import action",
+      "motion": "No custom animation or motion tokens",
+      "previewPolicy": "Preserve native SwiftUI metadata. No HTML/CSS previews, sampled semantic-color hex, guessed system font sizes or synthesized tonal ramps; browser panel previews cannot faithfully express this native implementation.",
+      "privacy": "Full imported source stays in local memory and loopback service, never AI context. AI receives anonymous outlets, regions and anonymized prompt. Prompt explicitly warns against secrets; arbitrary user-entered secrets cannot be guaranteed to be detected. Keychain status restores booleans only, never secret values into UI. Confirmation changes draft only; no Controller/VPN or proxy reload.",
+      "serviceDependency": "App bundles Node, editing service and placeholder validator; authenticated random 127.0.0.1 port; app owns lifecycle; external npm start no longer required",
+      "evidence": {
+        "date": "2026-10-14",
+        "review": "Scoped independent native UI SHIP; mapped states and persistence approved, no pending mechanical UI findings. No browser/CSS detector used.",
+        "visual": [
+          "artifacts/opencode-2026-10-14/landing-dark.png",
+          "artifacts/opencode-2026-10-14/desktop-dark.png",
+          "artifacts/opencode-2026-10-14/desktop-light.png",
+          "artifacts/opencode-2026-10-14/minimum-review.png",
+          "artifacts/opencode-2026-10-14/compact-review.png",
+          "artifacts/opencode-2026-10-14/history-before.png",
+          "artifacts/opencode-2026-10-14/history-after.png",
+          "artifacts/opencode-2026-10-14/old-record-readonly.png"
+        ],
+        "verified": [
+          "29 Swift Tests: VeerMac 15 / VeerEditor 14",
+          "Release build and ad-hoc signature verification",
+          "Native dark/light and default/minimum review",
+          "No-node/no-key fixture import, local generation, confirm and undo guards",
+          "Per-turn range disclosure remains on across confirm and close/reopen",
+          "History scroll value 0.4880382775119617 before and after compact review",
+          "Complete native export YAML parsed: current 10 Netflix/ChatGPT US service rules + MATCH; non-rules prefix preserved byte-for-byte",
+          "Separate user dirty old window preserved"
+        ],
+        "exportPath": "/tmp/veer-native-opencode-edited-20261014.yaml",
+        "unverified": [
+          "Real AI and long-running AI request",
+          "Real subscription",
+          "Keychain secret values (not read)",
+          "Real network reachability",
+          "VoiceOver runtime",
+          "macOS 14 runtime",
+          "System Reduce Transparency runtime",
+          "Public signing/notarization"
+        ],
+        "historical": [
+          {
+            "date": "2026-10-11",
+            "layout": "Superseded dual-column Liquid Workbench",
+            "evidence": "9 tests; light 1120 × 860pt, navigation/candidate persistence, confirm, independent rules sync and undo; dark/exact minimum/export unverified at that time",
+            "visual": [
+              "artifacts/liquid-workbench.png",
+              "artifacts/liquid-settings.png",
+              "artifacts/liquid-review-fixed.png"
+            ]
+          },
+          {
+            "date": "2026-10-11",
+            "layout": "Import canvas and single-column conversation before on-demand review",
+            "evidence": "Light/dark import canvas, file/public HTTPS YAML, 10-rule preview/confirm, complete export; Node 43, Swift 20 passed and 1 fixture skipped. Historical checks, not rerun claims."
+          }
+        ],
+        "contract": "../../docs/MACOS_OPENCODE_IMPLEMENTATION_2026-10-14.md"
+      },
+      "components": [
+        {
+          "name": "Import action",
+          "kind": "button",
+          "refersTo": "import-action",
+          "swiftUI": "ImportGlassButton",
+          "purpose": "Circular primary empty-state import action",
+          "states": "Native interactive glass/material/opaque fallback; disabled busy; ⌘O and explicit accessibility label"
+        },
+        {
+          "name": "Utility actions",
+          "kind": "button",
+          "refersTo": "utility-action",
+          "swiftUI": "UtilityButton + OperationGlass",
+          "purpose": "Import, undo, export, review and appearance",
+          "states": "Native button states, help/semantic label, action-specific guards and shortcuts"
+        },
+        {
+          "name": "Composer",
+          "kind": "input",
+          "refersTo": "composer",
+          "swiftUI": "Solid TextEditor + segmented mode Picker + native send/cancel/follow controls",
+          "purpose": "Post-import instruction input; pre-import guidance only",
+          "states": "72pt input; no send before import; busy conflicts guarded; secret warning"
+        },
+        {
+          "name": "Native settings field",
+          "kind": "input",
+          "swiftUI": "TextField / SecureField .textFieldStyle(.roundedBorder)",
+          "purpose": "AI endpoint/model and non-restored secret input",
+          "states": "Native focus; endpoint-isolated saved-Key boolean status"
+        },
+        {
+          "name": "Native navigation",
+          "kind": "nav",
+          "swiftUI": "NavigationSplitView + List(selection:).listStyle(.sidebar)",
+          "purpose": "Four pages with shared model/session",
+          "states": "Platform selection/focus; persistent privacy boundary"
+        },
+        {
+          "name": "Solid content panel",
+          "kind": "card",
+          "refersTo": "workbench-panel",
+          "swiftUI": "WorkbenchPanel",
+          "purpose": "Rules/groups/settings content",
+          "states": "Solid, no decorative glass/shadows"
+        },
+        {
+          "name": "Conversation turn",
+          "kind": "custom",
+          "swiftUI": "ConversationTurnView",
+          "purpose": "Prompt, actual processing disclosure, response, service/outlet summary",
+          "states": "Three real successful records; running elapsed timer; failure/cancel retry; no model reasoning"
+        },
+        {
+          "name": "File entry",
+          "kind": "button",
+          "refersTo": "file-entry",
+          "swiftUI": "Plain Button .contentShape(RoundedRectangle(...))",
+          "purpose": "Open same turn in on-demand review",
+          "states": "State title and chevron; explicit per-file accessibility label"
+        },
+        {
+          "name": "On-demand review",
+          "kind": "custom",
+          "refersTo": "review-panel",
+          "swiftUI": "ConversationReviewView",
+          "purpose": "Turn-bound outlet/range/Diff/validation/actions",
+          "states": "Selected turn survives close; per-turn route disclosure survives confirm; only current valid pending confirmation; only matching stack-top undo"
+        },
+        {
+          "name": "Diff",
+          "kind": "custom",
+          "swiftUI": "ConversationDiffView: bidirectional ScrollView + LazyVStack",
+          "purpose": "Single-line rule differences with independent before/after numbers",
+          "states": "+ / − and subtle add/remove backgrounds, primary text, selection and copy"
+        },
+        {
+          "name": "Transient feedback",
+          "kind": "custom",
+          "swiftUI": "Bottom overlay + OperationGlass + task(id: ToastTrigger)",
+          "purpose": "Nonbusy feedback without reserved height; persistent inline error recovery",
+          "states": "Normal 4s/error 8s, manual close, repeated message resets lifetime; running state uses turn/cancel"
+        }
+      ]
+    },
+    "shadows": [],
+    "motion": [],
+    "breakpoints": []
+  },
+  "components": [],
+  "narrative": {
+    "northStar": "清晰安静可靠的工作台",
+    "overview": "Veer 的 macOS 界面是原生 SwiftUI 工作台，不是网页包装。品牌承诺来自 `PRODUCT.md`：清晰、安静、可靠，保留绿色标识，沿用 macOS 原生控件与系统语义色。信息、编辑和审阅优先于装饰；不照搬 Android 卡片语言。\n\n用户已确认 OpenCode 参考原型并要求「开始落地」。本次在既有视觉世界内刷新设计记录：保留导入画布，导入后以主对话承载指令、真实任务记录、出口摘要与紧凑文件条目，详细审阅按需打开。内容保持实底，Liquid Glass 只用于操作层与动作。原型是布局参考，不是运行证据；原生源码与本轮真实应用截图才是当前实现依据。",
+    "keyCharacteristics": [
+      "原生控件、系统文字角色、语义色。",
+      "主对话与按需审阅，紧凑窗口一次呈现一个主要区域。",
+      "玻璃只在操作层，正文保持清晰稳定。",
+      "出口、验证限制与差异先于确认动作。",
+      "操作结果明确停留在规则草稿，不暗示代理已经生效。"
+    ],
+    "rules": [
+      {
+        "name": "The Semantic Color Rule",
+        "body": "保留系统语义色与原生材质，不将其冻结为截图采样 hex，不生成未经平台定义的 tonal ramp。",
+        "section": "colors"
+      },
+      {
+        "name": "The Native Type Rule",
+        "body": "延续系统文本角色和 monospaced 设计，不引入固定字体尺寸或网页字体栈作为原生实现规范。",
+        "section": "typography"
+      },
+      {
+        "name": "The Native Surface Rule",
+        "body": "内容面板保持实底可读，玻璃只属于操作层，不给正文、编辑器或 Diff 叠加透明材质和装饰性投影。",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do 复用系统语义色、文字角色、原生控件与现有 spacing scale。",
+      "Do 先呈现明确出口、验证限制与 Diff，再允许确认规则草稿。",
+      "Do 用文字、图标、行号和 Diff 前缀补足颜色的状态含义。",
+      "Do 保留选中 turn、匹配范围展开与历史阅读位置，以同一 model 驱动审阅。",
+      "Do 保留草稿范围、未实测地区、占位检查与内存存储的真实限制。"
+    ],
+    "donts": [
+      "Don't 从截图发明固定 hex、字体尺寸、阴影、tonal ramp 或动画 token。",
+      "Don't 给规则、Diff 正文或内容面板加玻璃；Diff 保持 primary 正文与 + / − 前缀。",
+      "Don't 把 Android 卡片或网页导航视觉直接移植到原生工作台。",
+      "Don't 将「确认修改」写成连接代理、应用配置或真实出口已经验证。",
+      "Don't 将原型演示阶段、源码兼容分支或 accessibility label 当成已完成的运行验证。",
+      "Don't 在紧凑审阅时移除或压缩原对话，或让被隐藏的对话继续接受点击与辅助技术访问。"
+    ]
+  }
+}

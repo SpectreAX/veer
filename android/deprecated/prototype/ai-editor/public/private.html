@@ -1,0 +1,42 @@
+<!doctype html>
+<!-- 独立规则模式沿用编辑稿＋审阅账本，不导入节点。FINISH: reviewer pass; desktop/mobile verified; inherits DESIGN.md. -->
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><title>Veer · 独立规则编辑器</title><link rel="stylesheet" href="/style.css"><script type="module" src="/private.js"></script><script type="module" src="/key-settings.js"></script></head>
+<body>
+  <header class="topbar"><a class="brand" href="/">Veer<span class="brand-detail">独立规则编辑器</span></a><label class="theme-control">外观<select id="theme" aria-label="外观"><option value="auto">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></label></header>
+  <main>
+    <div class="page-heading"><div><h1>只编辑分流，不接触节点配置。</h1><p>手工登记允许使用的策略组。AI 只看到匿名出口与声明地区，真实组名在本地恢复。</p></div></div>
+    <div class="workspace">
+      <section class="document-pane" aria-labelledby="document-title">
+        <div class="pane-heading"><h2 id="document-title">独立规则稿</h2><span>不连接代理客户端</span></div>
+        <div class="assistant-body">
+          <h3>允许使用的策略组</h3><p class="help">名称须与代理客户端完全一致；地区由你声明，不代表实测。</p>
+          <form id="group-form" class="settings-fields"><label>策略组名称<input id="group-name" maxlength="120" autocomplete="off" placeholder="例如：日本出口" required></label><label>声明地区<select id="group-region"><option value="UNKNOWN">未指定地区</option><option value="JP">日本</option><option value="US">美国</option><option value="HK">香港</option><option value="SG">新加坡</option><option value="TW">台湾</option><option value="KR">韩国</option><option value="GB">英国</option><option value="DE">德国</option><option value="AUTO">自动</option></select></label><button type="submit">登记策略组</button></form>
+          <ul id="groups" class="change-ledger" aria-label="已登记策略组"></ul>
+          <button id="sample">载入演示组名（非真实配置）</button>
+          <label class="field-label" for="rules">仅含 rules 的 YAML 片段</label><p class="help">不要粘贴完整配置、订阅、节点地址或密钥。此模式拒绝其他顶级字段。</p>
+        </div>
+        <textarea id="rules" class="code-editor" spellcheck="false" aria-label="仅含 rules 的 YAML 片段">rules: []
+</textarea>
+        <div id="config-info" class="config-info" role="status">正在检查规则…</div>
+        <div class="document-footer"><div><button id="validate" disabled>检查规则</button><button id="undo" disabled>撤销</button></div><button id="export" disabled>导出规则片段</button></div>
+      </section>
+      <section class="assistant-pane" aria-labelledby="assistant-title">
+        <div class="pane-heading"><h2 id="assistant-title">分流指令</h2><select id="mode" aria-label="解析模式"><option value="local">本地解析 · 无需 Key</option><option value="ai">AI 理解 · API</option></select></div>
+        <div class="assistant-body">
+          <p class="help">AI 接收：指令（已替换登记组名）、匿名编号、声明地区。不接收规则稿或真实组名。不要在指令中自行填写密码或其他敏感信息。</p>
+          <details id="ai-settings" hidden><summary>AI 服务设置</summary><div class="settings-fields"><label>API 基础地址<input id="base-url" type="url" value="https://api.deepseek.com"></label><label>模型<input id="model" value="deepseek-chat" autocomplete="off"></label><label>API Key<input id="api-key" type="password" autocomplete="off" placeholder="填写后点击保存到钥匙串"></label><div class="review-actions"><button id="save-key" disabled>保存到钥匙串</button><button id="remove-key" disabled>删除已保存 Key</button></div><p id="key-status" class="status" role="status" aria-live="polite">正在检查钥匙串…</p><p class="help">已保存 Key 按 API 地址隔离，仅由本机服务读取，不回传页面。未保存的输入仅用于本页会话。AI 返回的地区选择不代表服务解锁。</p></div></details>
+          <label class="field-label" for="prompt">你想如何分流？</label><textarea id="prompt" rows="3" maxlength="8000" placeholder="Netflix 走日本，ChatGPT 走美国"></textarea>
+          <div class="examples"><button data-prompt="Netflix 走日本，ChatGPT 走美国">多服务分流</button><button data-prompt="example.com 直连">网站直连</button></div>
+          <p id="cloud-context" class="help catalog-note">未登记出口；DIRECT / REJECT 始终可用。</p>
+          <button id="generate" class="primary full-width" disabled>生成修改预览</button><div id="status" class="status" role="status" aria-live="polite">规则稿仅保存在页面内存；Key 可保存到系统钥匙串。离开前请导出规则。</div>
+          <section class="review"><div class="review-heading"><h3>修改预览</h3><span id="review-count"></span></div><div id="empty-review" class="empty-review"><p>先看出口，再确认。</p><span>导出的是规则片段，不是完整代理配置。</span></div>
+            <div id="review-content" hidden><ul id="changes" class="change-ledger"></ul><details class="diff-panel" open><summary>规则差异</summary><pre id="diff" aria-label="规则文本差异"></pre></details><p id="validation-result" class="help"></p><div class="review-actions"><button id="discard">放弃预览</button><button id="confirm" class="primary">确认到规则稿</button></div></div>
+          </section>
+          <section class="review"><h3>导出后如何使用</h3><p class="help">按客户端的规则合并方式，将本片段规则置于原规则前面，并由客户端校验。不要覆盖整份配置；不是通用 OpenClash 覆写模块，也不会自动应用。</p><p class="help catalog-note">高级模式会在本地读取完整 YAML。<a href="/advanced" target="_blank" rel="noopener">打开完整配置编辑（高级）</a>。两个模式可使用同一 API 地址的钥匙串 Key，规则稿不共享。</p></section>
+        </div>
+      </section>
+    </div>
+    <footer class="page-footer"><span>当前模式不读取配置文件、不下载订阅、不连接 Controller。</span><span>关闭页面清空规则稿；已保存 Key 留在 macOS 钥匙串。</span></footer>
+  </main>
+</body></html>

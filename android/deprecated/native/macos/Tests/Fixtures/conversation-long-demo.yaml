@@ -1,0 +1,10 @@
+# 界面验收专用：无节点、密钥或订阅，不代表真实代理出口。
+proxy-groups:
+  - name: 日本出口-东京服务分流策略组-长名称排版验收-Netflix与其他流媒体专用出口
+    type: select
+    proxies: [DIRECT]
+  - name: 美国出口-西海岸服务分流策略组-长名称排版验收-ChatGPT与其他AI服务专用出口
+    type: select
+    proxies: [DIRECT]
+rules:
+  - MATCH,DIRECT

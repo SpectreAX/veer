@@ -1,7 +1,9 @@
 # Veer development workflow
 
-The macOS app is `macos/`. Android is a separate ignored checkout in `android/`; the older
-Veer AI Editor is a separate repository. Keep their code, commits and release processes separate.
+The macOS app is `macos/`. The legacy Android repository is archived in `android/deprecated/`;
+it is historical reference, not an active development target. The older Veer AI Editor is a
+separate repository. Keep platform code, builds and release processes separate. Legacy instructions
+inside `android/deprecated/` apply only to that archived tree.
 
 Before any macOS work, read `macos/CLAUDE.md` and every `macos/.claude/rules/*.md`.
 These are the shared, authoritative development instructions for Claude and Codex; the name

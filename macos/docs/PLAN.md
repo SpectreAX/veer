@@ -2,6 +2,15 @@
 
 本计划按 [REQUIREMENTS.md](REQUIREMENTS.md) 和 [SPEC.md](SPEC.md) 推进，取代 [PLAN_2026-10-29.md](PLAN_2026-10-29.md) 的第 2 到第 4 阶段。那份文档的第 1 阶段（可用的代理）已经完成并提交。
 
+## Android 仓库归档迁移（2026-11-13）
+
+用户要求将 GitHub 的 `SpectreAX/veer-android` 合并到 Veer 的 `android/deprecated/`，并归档原仓库。
+采用不压缩历史的 Git subtree 导入默认分支 `main@7f1af61ded6785d366629227047832a6327268e2`；
+原始提交和文件保留，Git LFS 对象迁往 Veer，其他分支继续保留在原只读归档仓库。
+根 README、AGENTS、忽略规则和共用工作流同步更新。Android 历史树不参与当前 macOS / iOS 构建。
+本地独立 Android 检出的未提交改动，以及原工作区内未完成的 macOS 修复，均不混入本次迁移。
+本次验证范围为迁移树一致性、源提交可达性、LFS 对象完整性和文档路径；不把迁移当成应用构建或运行验收。
+
 ## AirBuild 导入基线（2026-11-11）
 
 保留现有 macOS 14+ SwiftPM 客户端，没有转换为 iOS，也没有改功能、版本号或测试。
