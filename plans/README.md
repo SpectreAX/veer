@@ -1,6 +1,6 @@
 # macOS 分栏动画定位与修复计划
 
-2026-11-13；基线产品代码为 main@0533e50，执行分支 codex/macos-motion-profile。本轮实现与验收完成：454项检查通过，92张相关静态图已独立查看，Critical0/Major0，保留一项滚动锚点Minor。轻量呈现对照18次热开合含100ms收尾，hitch事件45→14；仍有偶发掉帧，不能推广为固定FPS或所有场景零卡顿。报告见 [最终审查记录](../macos/docs/reviews/2026-11-13-panel-motion.md)。修复源码6b2b6ff已推送到origin/codex/macos-motion-profile，开发构建与交付记录见[HANDOFF](../.codex/HANDOFF.md)；未替换应用或发布Release。
+2026-11-13；基线产品代码为 main@0533e50，执行分支 codex/macos-motion-profile。本轮实现与验收完成：454项检查通过，92张相关静态图已独立查看，Critical0/Major0，保留一项滚动锚点Minor。轻量呈现对照18次热开合含100ms收尾，hitch事件45→14；仍有偶发掉帧，不能推广为固定FPS或所有场景零卡顿。报告见 [最终审查记录](../macos/docs/reviews/2026-11-13-panel-motion.md)。修复源码6b2b6ff已推送到origin/codex/macos-motion-profile，开发构建与交付记录见[HANDOFF](../.codex/HANDOFF.md)；应用已按用户要求替换并保留旧版备份，未启动或发布Release。
 
 | 顺序 | 计划 | 状态 | 依赖 |
 |---|---|---|---|

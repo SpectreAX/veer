@@ -1,6 +1,6 @@
 # 分栏动画修复与验收记录
 
-2026-11-13，Codex；分支 `codex/macos-motion-profile`，基线产品代码 `main@0533e50`。以下为修复验收记录；源码已于后续交付步骤提交为6b2b6ff并推送到origin/codex/macos-motion-profile，没有替换实际应用或发布Release。
+2026-11-13，Codex；分支 `codex/macos-motion-profile`，基线产品代码 `main@0533e50`。以下为修复验收记录；源码已于后续交付步骤提交为6b2b6ff并推送到origin/codex/macos-motion-profile，替换应用的后续授权与结果见文末补记，未发布Release。
 
 ## 结论与实现
 
@@ -79,3 +79,7 @@ reviewer `motion_layout_review`只读审查源码、原始图与XML，没有代�
 在隔离副本按原build-app.sh构建，得到Apple Development签名的1.0.6/build7开发应用，最低macOS14.0/SDK27.2。复制后deep strict签名检查通过，产物位于macos/dist/Veer-motion-profile-20261113.app；没有启动它或覆盖原dist/Veer.app。详情和校验值见根.codex/HANDOFF.md，未发布Release。
 
 修复提交6b2b6fff7c56b14377eeedc8cf102a3a245c032c已推送，git ls-remote核对远端一致；交付文档随分支后续更新。上述Minor和NOT VERIFIED项目仍保留。
+
+### 后续应用替换（2026-11-13 23:40）
+
+用户明确要求替换。确认原应用及包内程序没有运行后，已将签名构建安装至 /Users/spectreax/Developer/Veer/macos/dist/Veer.app，旧包备份为同目录 Veer-before-motion-profile-20261113-234026.app。安装后deep strict签名通过，主程序SHA256与构建清单一致，旧包摘要也核对一致。没有启动应用或改动原工作区源码/用户配置，未触碰系统代理/TUN；完整路径与校验值见根.codex/HANDOFF.md。

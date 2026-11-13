@@ -1,5 +1,11 @@
 # Veer macOS handoff
 
+## Installed app replacement (2026-11-13 23:40, Codex)
+
+User explicitly requested replacement after build/commit/push. The existing app at `/Users/spectreax/Developer/Veer/macos/dist/Veer.app` had no running process, including bundled executables. Staged the verified Apple Development build, checked its deep strict signature, then renamed the old bundle to `/Users/spectreax/Developer/Veer/macos/dist/Veer-before-motion-profile-20261113-234026.app` and installed the new one at the original path. No source/test files or user settings in the original checkout were changed.
+
+Post-install deep strict signature PASS; executable SHA256 `bf81fb589f4e726b3511f8a114f57c9ae6ff4eb7bf443b214701b8e62e304aaa` matches the verified build from source commit6b2b6ff. Backup executable SHA256 `c3682ce3930618e89dba2b686e3560b8f674adb6ef80c11b0b82439702cd35d0` matches the previous app. Evidence: ignored `.codex/local/motion-20261113/replacement.json`. App remains1.0.6/build7; it was NOT launched, and no proxy/TUN or release action was taken. The earlier454-test and visual evidence remains historical; this step only verified installation/signature/digest.
+
 ## Build and Git delivery (2026-11-13, Codex)
 
 User explicitly requested build, commit and push. Source fix commit `6b2b6fff7c56b14377eeedc8cf102a3a245c032c` is pushed to `origin/codex/macos-motion-profile`; git ls-remote matched the local commit exactly. This branch tracks that remote branch; main was not modified. Delivery documentation follows the source commit.
