@@ -1,5 +1,13 @@
 # Veer macOS handoff
 
+## Android repository archival migration (2026-11-13, Codex)
+
+User authorized moving the GitHub repository SpectreAX/veer-android into Veer's android/deprecated/, updating the root README and archiving the original. Import source is its default main branch at 7f1af61ded6785d366629227047832a6327268e2 (35 commits, 1,659 tracked files), preserved with a non-squashed Git subtree merge. Git LFS payloads must be copied to Veer's LFS storage before the original is archived; a Git-tree-only copy is insufficient. Other source branches stay accessible in the original read-only repository.
+
+The migration is isolated on codex/archive-android from Veer origin/main@9f235f2. Do not include the unrelated dirty macOS changes in the primary checkout or uncommitted Android work on agent/ui-refactor-sync. The original local Android checkout is preserved. Root .gitignore now permits only android/deprecated/ under android/, and root AGENTS plus macos/docs/WORKFLOW.md describe the archive rather than a separate active Android repository. App source, builds and releases are outside this migration.
+
+Acceptance requires exact source/imported tree identity, source commit ancestry, all historical LFS payloads present on destination, verified README links, merge into GitHub Veer main, and archived=true on the original repository. The migration does not establish Android or macOS build/runtime verification.
+
 ## iOS Simulator prototype — Simulator acceptance PASS (2026-11-12)
 
 - Owner approved the Simulator-only brief `.airbuild/artifacts/ios-prototype-brief-v0.3.md`.
