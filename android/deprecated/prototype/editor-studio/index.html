@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Veer Editor Studio</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.mjs"></script>
+</head>
+<body>
+  <div class="app" id="app">
+    <aside class="sidebar" id="sidebar" aria-label="会话">
+      <div class="sidebar-head">
+        <div class="brand">Veer<span>.</span></div>
+        <button id="new-session" class="icon-button" aria-label="新建会话：导入配置" title="新建会话（⌘O）"><span data-icon="plus"></span></button>
+      </div>
+      <label class="search">
+        <span data-icon="search"></span>
+        <span class="sr-only">搜索会话</span>
+        <input id="session-search" type="search" placeholder="搜索配置或指令" autocomplete="off">
+      </label>
+      <nav class="session-list" aria-label="会话列表"><ul id="sessions"></ul></nav>
+      <div class="sidebar-foot">
+        <button id="ai-settings" class="row-button"><span data-icon="key"></span><span>AI 设置</span><small id="key-state"></small></button>
+        <details class="demo">
+          <summary>演示控制</summary>
+          <label>场景
+            <select id="scenario">
+              <option value="normal">正常</option>
+              <option value="validation-failed">校验失败</option>
+              <option value="validator-unavailable">校验器不可用</option>
+              <option value="request-failed">请求失败</option>
+              <option value="service-down">编辑服务不可用</option>
+            </select>
+          </label>
+          <label class="check"><input type="checkbox" id="long-sample">下次导入使用长名称示例</label>
+          <button id="clear-data" class="text-button">清除本机演示数据</button>
+        </details>
+        <p class="privacy">完整配置只在本机处理。AI 只收到匿名出口编号与地区。</p>
+      </div>
+    </aside>
+    <div class="scrim" id="scrim" hidden></div>
+
+    <main class="main">
+      <header class="header">
+        <button id="sidebar-toggle" class="icon-button narrow-only" aria-label="显示会话列表" aria-expanded="false"><span data-icon="sidebar"></span></button>
+        <div class="identity">
+          <h1 id="title">Veer Editor</h1>
+          <p id="meta">仅编辑分流规则 · 不控制代理</p>
+        </div>
+        <div class="header-actions">
+          <button id="regions" class="icon-button" aria-label="出口地区" title="出口地区" disabled><span data-icon="globe"></span><span id="regions-badge" class="dot-badge" hidden></span></button>
+          <button id="export" class="icon-button" aria-label="导出配置副本" title="导出配置副本（⌘E）" disabled><span data-icon="export"></span></button>
+          <button id="inspector-toggle" class="icon-button" aria-label="显示检查器" aria-expanded="false" aria-controls="inspector" title="检查器（⌘I）" disabled><span data-icon="panel"></span></button>
+          <button id="theme" class="icon-button" aria-label="切换深浅色"><span data-icon="moon"></span></button>
+        </div>
+      </header>
+      <div id="service-banner" class="service-banner" hidden></div>
+
+      <div class="workspace" id="workspace">
+        <section class="chat" aria-label="对话">
+          <div id="timeline" class="timeline" tabindex="0" aria-label="对话历史">
+            <section id="landing" class="landing">
+              <button id="landing-import" class="import-plus" aria-label="导入配置文件或订阅链接"><span data-icon="plus"></span></button>
+              <h2>从一份配置开始</h2>
+              <p>导入 Mihomo 配置或订阅链接。每份配置成为一个会话，保存在本机侧栏。</p>
+            </section>
+            <div id="messages" class="messages"></div>
+          </div>
+          <button id="latest" class="latest" hidden><span data-icon="down"></span>回到最新</button>
+          <div class="composer-wrap">
+            <div id="menu" class="menu" role="listbox" aria-label="补全" hidden></div>
+            <form id="composer" class="composer">
+              <label class="sr-only" for="prompt">描述分流修改</label>
+              <textarea id="prompt" rows="1" placeholder="导入配置以开始" disabled
+                aria-autocomplete="list" aria-controls="menu" aria-expanded="false"></textarea>
+              <div class="composer-bar">
+                <div class="segmented" role="radiogroup" aria-label="解析方式">
+                  <button type="button" role="radio" data-mode="local" aria-checked="true">本地解析</button>
+                  <button type="button" role="radio" data-mode="ai" aria-checked="false">AI 理解</button>
+                </div>
+                <button type="button" id="key-hint" class="hint-button" hidden><span data-icon="alert"></span>需要 Key</button>
+                <span class="composer-tips"><kbd>/</kbd> 操作 · <kbd>@</kbd> 服务或出口</span>
+                <span id="work-status" class="work-status" role="status"></span>
+                <button id="send" class="send" aria-label="发送" disabled><span data-icon="up"></span></button>
+              </div>
+            </form>
+            <p class="composer-note">逐项审批后才写入草稿；草稿不会应用到代理。</p>
+          </div>
+        </section>
+
+        <div id="splitter" class="splitter" role="separator" aria-orientation="vertical" aria-label="调整检查器宽度" tabindex="0" hidden></div>
+
+        <section id="inspector" class="inspector" aria-label="检查器" hidden>
+          <header class="inspector-head">
+            <div class="tabs" role="tablist" aria-label="检查器内容">
+              <button role="tab" id="tab-diff" data-tab="diff" aria-selected="true">变更</button>
+              <button role="tab" id="tab-rules" data-tab="rules" aria-selected="false">规则</button>
+              <button role="tab" id="tab-test" data-tab="test" aria-selected="false">测试</button>
+            </div>
+            <button id="inspector-close" class="icon-button" aria-label="关闭检查器"><span data-icon="close"></span></button>
+          </header>
+          <div id="inspector-body" class="inspector-body" role="tabpanel"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" role="status" hidden><span id="toast-text"></span><button id="toast-close" class="icon-button small" aria-label="关闭提示"><span data-icon="close"></span></button></div>
+
+  <dialog id="import-dialog" aria-labelledby="import-title">
+    <header class="dialog-head"><h2 id="import-title">新建会话</h2><button class="icon-button" data-close aria-label="关闭"><span data-icon="close"></span></button></header>
+    <p>原型只载入内置示例，不读取文件，也不下载订阅。</p>
+    <button id="sample-file" class="option"><span data-icon="file"></span><span><strong>从文件导入 · 演示</strong><small>载入合成 Mihomo 配置</small></span><span data-icon="right"></span></button>
+    <div class="url-block">
+      <label for="url">从 HTTPS 订阅导入 · 演示</label>
+      <input id="url" value="https://example.invalid/veer-demo.yaml" readonly>
+      <small>真实版本只接受 HTTPS，不跟随重定向；链接默认隐藏且不保存。</small>
+      <button id="sample-url" class="primary">载入订阅示例</button>
+    </div>
+  </dialog>
+
+  <dialog id="regions-dialog" aria-labelledby="regions-title">
+    <header class="dialog-head"><h2 id="regions-title">出口地区</h2><button class="icon-button" data-close aria-label="关闭"><span data-icon="close"></span></button></header>
+    <p>地区根据组名推断，未实测。AI 只看到“出口编号＋地区”，看不到组名。</p>
+    <div id="regions-content"></div>
+  </dialog>
+
+  <dialog id="ai-dialog" aria-labelledby="ai-title">
+    <header class="dialog-head"><h2 id="ai-title">AI 设置</h2><button class="icon-button" data-close aria-label="关闭"><span data-icon="close"></span></button></header>
+    <dl class="kv">
+      <div><dt>API 地址</dt><dd>https://api.deepseek.com</dd></div>
+      <div><dt>模型</dt><dd>deepseek-chat</dd></div>
+    </dl>
+    <fieldset class="choices">
+      <legend>Key 状态 · 演示</legend>
+      <label><input type="radio" name="key" value="none"><span><strong>未设置</strong><small>只能使用本地解析</small></span></label>
+      <label><input type="radio" name="key" value="session"><span><strong>本次会话 Key</strong><small>只在内存中，重新打开后清除</small></span></label>
+      <label><input type="radio" name="key" value="saved"><span><strong>已保存到钥匙串</strong><small>按 API 地址保存，秘密不回显</small></span></label>
+    </fieldset>
+    <p class="note">原型没有 Key 输入框。请勿在此页面输入真实密钥。</p>
+  </dialog>
+
+  <dialog id="export-dialog" aria-labelledby="export-title">
+    <header class="dialog-head"><h2 id="export-title">导出配置副本</h2><button class="icon-button" data-close aria-label="关闭"><span data-icon="close"></span></button></header>
+    <div id="export-content"></div>
+    <div class="dialog-actions"><button data-close class="secondary">取消</button><button id="export-confirm" class="primary">导出演示副本</button></div>
+  </dialog>
+</body>
+</html>

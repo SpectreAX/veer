@@ -1,0 +1,33 @@
+# Veer 演示配置：节点地址为保留的 example.com，不可用于真实代理。
+mixed-port: 7890
+mode: rule
+log-level: info
+proxies:
+  - name: JP Tokyo Demo
+    type: trojan
+    server: jp.example.com
+    port: 443
+    password: demo-only
+  - name: US Seattle Demo
+    type: trojan
+    server: us.example.com
+    port: 443
+    password: demo-only
+proxy-groups:
+  - name: 日本出口
+    type: select
+    proxies: [JP Tokyo Demo]
+  - name: 美国出口
+    type: select
+    proxies: [US Seattle Demo]
+  - name: 默认代理
+    type: select
+    proxies: [日本出口, 美国出口, DIRECT]
+dns:
+  enable: true
+  enhanced-mode: fake-ip
+  nameserver: [https://dns.alidns.com/dns-query]
+rules:
+  - DOMAIN-SUFFIX,netflix.com,默认代理 # 原有 Netflix 规则
+  - DOMAIN-SUFFIX,example.com,DIRECT
+  - MATCH,默认代理

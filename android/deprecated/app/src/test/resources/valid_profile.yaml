@@ -1,0 +1,19 @@
+proxies:
+  - name: DIRECT-TEST
+    type: http
+    server: 127.0.0.1
+    port: 65535
+proxy-groups:
+  - name: PROXY
+    type: select
+    proxies:
+      - DIRECT
+      - DIRECT-TEST
+dns:
+  enable: true
+  nameserver:
+    - 223.5.5.5
+  fallback:
+    - tls://1.1.1.1:853
+rules:
+  - MATCH,DIRECT

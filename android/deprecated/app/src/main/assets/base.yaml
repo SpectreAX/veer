@@ -1,0 +1,80 @@
+# Veer Phase 1.0 base configuration.
+# Routes all traffic via DIRECT so we can verify tun + fake-IP plumbing
+# without depending on a remote proxy. Replace `rules` / `proxies` later.
+
+mixed-port: 7890
+allow-lan: false
+mode: rule
+log-level: info
+ipv6: false
+
+# The bundled direct profile does not need DNS fallback. Imported profiles may
+# use fallback/fallback-filter; GeoDatabaseManager verifies bundled GeoIP data
+# before TUN establishment so that path never downloads through the VPN.
+geo-auto-update: false
+
+# ConfigManager injects the app-private Unix Controller path and credential.
+
+dns:
+  enable: true
+  # Android TUN intercepts DNS with tun.dns-hijack below. Do not bind a local
+  # :53 listener: app UIDs cannot open privileged ports and the failed bind
+  # would leave Builder.addDnsServer() traffic without a resolver.
+  enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.1/16
+  fake-ip-filter:
+    - "*.lan"
+    - "localhost.ptlogin2.qq.com"
+  default-nameserver:
+    - 223.5.5.5
+    - 1.1.1.1
+  nameserver:
+    - https://1.1.1.1/dns-query
+    - https://cloudflare-dns.com/dns-query
+
+# tun.enable and tun.file-descriptor are overridden at runtime by veer_core.Start
+# once the Android VpnService hands us its file descriptor. The bridge duplicates
+# the descriptor first so Kotlin and sing-tun have independent ownership.
+tun:
+  enable: false
+  # Full userspace TCP/UDP handling; requires the AAR's with_gvisor build tag.
+  stack: gvisor
+  device: ""
+  auto-route: false
+  auto-detect-interface: false
+  dns-hijack:
+    - any:53
+  mtu: 9000
+
+# Recover hostnames for apps that use their own DoH resolver. Without this,
+# domain/GEOSITE rules can miss real-IP TUN connections and fall through to MATCH.
+sniffer:
+  enable: true
+  force-dns-mapping: true
+  parse-pure-ip: true
+  override-destination: true
+  sniff:
+    HTTP:
+      ports:
+        - 80
+        - 8080-8880
+      override-destination: true
+    TLS:
+      ports:
+        - 443
+        - 8443
+    QUIC:
+      ports:
+        - 443
+        - 8443
+
+proxies: []
+
+proxy-groups:
+  - name: PROXY
+    type: select
+    proxies:
+      - DIRECT
+
+rules:
+  - MATCH,DIRECT
