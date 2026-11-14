@@ -1,0 +1,176 @@
+{
+  "date": "2026-11-14",
+  "source_repository": "SpectreAX/veer-releases",
+  "destination_repository": "SpectreAX/veer",
+  "source_commit": "76f9eb2946e063fc1fa19fdff8c606f62f7d1405",
+  "scope": "Historical releases copied without rebuilding or modifying DMGs. Appcast enclosure URLs point to the copied assets. GitHub assigns new release IDs and publication timestamps.",
+  "releases": [
+    {
+      "tag": "v1.0.0",
+      "title": "Veer 1.0.0",
+      "original_published_at": "2026-10-29T15:48:56Z",
+      "prerelease": false,
+      "original_url": "https://github.com/SpectreAX/veer-releases/releases/tag/v1.0.0",
+      "destination_url": "https://github.com/SpectreAX/veer/releases/tag/v1.0.0",
+      "original_assets": [
+        {
+          "name": "appcast.xml",
+          "size": 959,
+          "digest": "sha256:9eab9c8191ac2b06b81d33869a28f6bfe0c3015f647cdad2e3c07a271297a8d3"
+        },
+        {
+          "name": "Veer-1.0.0.dmg",
+          "size": 23798741,
+          "digest": "sha256:206ccbea659297c6984fb5d1f8bb443c44bfdd83d30cd40e255ce38ea43a7023"
+        }
+      ],
+      "migrated_appcast_sha256": "ab07b9f2d629813c8f9cdc1de31000d8032b10c9147adddd111b8fad09a59a23",
+      "destination_published_at": "2026-11-14T05:40:28Z"
+    },
+    {
+      "tag": "v1.0.1",
+      "title": "Veer 1.0.1",
+      "original_published_at": "2026-10-29T15:49:42Z",
+      "prerelease": false,
+      "original_url": "https://github.com/SpectreAX/veer-releases/releases/tag/v1.0.1",
+      "destination_url": "https://github.com/SpectreAX/veer/releases/tag/v1.0.1",
+      "original_assets": [
+        {
+          "name": "appcast.xml",
+          "size": 932,
+          "digest": "sha256:5df65c3e7b3e32c578a729ba871edcbd248326ea23d1f4dba0f6bad4b01cdc28"
+        },
+        {
+          "name": "Veer-1.0.1.dmg",
+          "size": 23798771,
+          "digest": "sha256:197502696a34e1cad4a3226838b394ed80d35ab6359f2afb68056bf7ef5f53d0"
+        }
+      ],
+      "migrated_appcast_sha256": "71b31ac1c818c334790bc2b639f1fcc1a7d402ce2a8823e1d4821d7424c73ea6",
+      "destination_published_at": "2026-11-14T05:40:30Z"
+    },
+    {
+      "tag": "v1.0.2",
+      "title": "Veer 1.0.2",
+      "original_published_at": "2026-10-29T18:16:13Z",
+      "prerelease": false,
+      "original_url": "https://github.com/SpectreAX/veer-releases/releases/tag/v1.0.2",
+      "destination_url": "https://github.com/SpectreAX/veer/releases/tag/v1.0.2",
+      "original_assets": [
+        {
+          "name": "appcast.xml",
+          "size": 1739,
+          "digest": "sha256:fd7f758fdb861ae72efe84c5c6ad69f0717c505b6286961d3bca248ae21ffbc3"
+        },
+        {
+          "name": "Veer-1.0.2.dmg",
+          "size": 23828021,
+          "digest": "sha256:71c6e9b2f260d73583d8f8338d923c0fa614fd1dcfcb697a6d4f60ec00228215"
+        }
+      ],
+      "migrated_appcast_sha256": "c91d0f50e4560ccc8b66f42b346b466d50031c256192c877b9b172d660148d8d",
+      "destination_published_at": "2026-11-14T05:40:32Z"
+    },
+    {
+      "tag": "v1.0.3",
+      "title": "Veer 1.0.3",
+      "original_published_at": "2026-10-30T06:40:59Z",
+      "prerelease": false,
+      "original_url": "https://github.com/SpectreAX/veer-releases/releases/tag/v1.0.3",
+      "destination_url": "https://github.com/SpectreAX/veer/releases/tag/v1.0.3",
+      "original_assets": [
+        {
+          "name": "appcast.xml",
+          "size": 1702,
+          "digest": "sha256:c2d9475cc21e16d76b871d5f9c5ca5dc4a21f309e07176d175a07217106bd5b1"
+        },
+        {
+          "name": "Veer-1.0.3.dmg",
+          "size": 23920375,
+          "digest": "sha256:fd1d1d44248f0fe24075dc2d8021cc8010e5976cfcc2e1694acb79c2793b91ac"
+        }
+      ],
+      "migrated_appcast_sha256": "2bb5de9f6eb5154fe38fa2c549a28c9d8ba0562a344fe558fe689d7a55a87fe5",
+      "destination_published_at": "2026-11-14T05:40:34Z"
+    },
+    {
+      "tag": "v1.0.4",
+      "title": "Veer 1.0.4",
+      "original_published_at": "2026-11-01T06:47:36Z",
+      "prerelease": false,
+      "original_url": "https://github.com/SpectreAX/veer-releases/releases/tag/v1.0.4",
+      "destination_url": "https://github.com/SpectreAX/veer/releases/tag/v1.0.4",
+      "original_assets": [
+        {
+          "name": "appcast.xml",
+          "size": 2447,
+          "digest": "sha256:0c0e2fd0745652f8defba8821806ac832a02645398fe4d194ec2c34375da536c"
+        },
+        {
+          "name": "Veer-1.0.4.dmg",
+          "size": 24401582,
+          "digest": "sha256:9c857a296810524fac7ed5a9e01aa74584cbb86859d357a95f613fc62224aa96"
+        }
+      ],
+      "migrated_appcast_sha256": "abc2a6dcfa3388ccd546ca9794715aedf4a1a3360099f15eb0e7b1e13d5111d4",
+      "destination_published_at": "2026-11-14T05:40:36Z"
+    },
+    {
+      "tag": "v1.0.5",
+      "title": "Veer 1.0.5",
+      "original_published_at": "2026-11-11T06:55:07Z",
+      "prerelease": false,
+      "original_url": "https://github.com/SpectreAX/veer-releases/releases/tag/v1.0.5",
+      "destination_url": "https://github.com/SpectreAX/veer/releases/tag/v1.0.5",
+      "original_assets": [
+        {
+          "name": "appcast.xml",
+          "size": 2100,
+          "digest": "sha256:09b6fc52292fce145cb4beb6c4ed2edb330cfab5e510bcdf035273ab3307b9ad"
+        },
+        {
+          "name": "Veer-1.0.5.dmg",
+          "size": 24639673,
+          "digest": "sha256:a8b81d5e6d75785878be85a701550d26e2955f26632d47b1612027d7c0e52382"
+        }
+      ],
+      "migrated_appcast_sha256": "4dbabb256b73c7a084d81620881e614941e79082c05ec2dfa9218cab024b5bde",
+      "destination_published_at": "2026-11-14T05:40:38Z"
+    },
+    {
+      "tag": "v1.0.6",
+      "title": "Veer 1.0.6",
+      "original_published_at": "2026-11-11T10:11:54Z",
+      "prerelease": false,
+      "original_url": "https://github.com/SpectreAX/veer-releases/releases/tag/v1.0.6",
+      "destination_url": "https://github.com/SpectreAX/veer/releases/tag/v1.0.6",
+      "original_assets": [
+        {
+          "name": "appcast.xml",
+          "size": 1685,
+          "digest": "sha256:0a860e2557e72d69fa2f1732db3abaf32d81093bd745b3e6eddf15ce2a8c5e76"
+        },
+        {
+          "name": "Veer-1.0.6.dmg",
+          "size": 24720500,
+          "digest": "sha256:149cbb9a5aabcdbdfa86a27593cfaca1d16a92cfda3eacfb2a9881312dfe05f7"
+        }
+      ],
+      "migrated_appcast_sha256": "07fb4db515804ed4e1d99185d3ae4e57733003cc095721fb6180d382b1b915b2",
+      "destination_published_at": "2026-11-14T05:40:40Z"
+    }
+  ],
+  "destination_visibility": "private",
+  "legacy_archived": true,
+  "legacy_notice_commit": "76f048bb836cc4f8c36308dd8f856b598f568616",
+  "verification": {
+    "downloaded_destination_assets": 14,
+    "identical_dmgs": 7,
+    "ed25519_signature_passes": 7,
+    "test_count": 448,
+    "old_public_feed_after_archive": "HTTP 200, original SHA-256",
+    "old_latest_dmg_after_archive": "HTTP 200, original SHA-256",
+    "new_anonymous_feed": "HTTP 404 (private repository)",
+    "sparkle_end_to_end": "NOT VERIFIED"
+  }
+}
