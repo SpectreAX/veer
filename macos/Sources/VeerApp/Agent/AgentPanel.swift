@@ -58,6 +58,9 @@ struct AgentPanel: View {
                     .disabled(proxy.activeProfile == nil)
                 Button { proxy.page = .agent } label: { Label(String(localized: "在 Agent 页打开"), systemImage: "arrow.up.left.and.arrow.down.right") }
                     .help(String(localized: "在 Agent 页打开，查看全部对话"))
+                // Over a window near the screen's edge the toolbar's own switch can be covered.
+                Button { proxy.agentPanel = false } label: { Label(String(localized: "隐藏 Agent 面板"), systemImage: "sidebar.trailing") }
+                    .help(String(localized: "隐藏 Agent 面板（⌥⌘I）"))
             }
             .labelStyle(.iconOnly)
             .buttonStyle(.borderless)

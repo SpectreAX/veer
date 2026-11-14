@@ -1178,6 +1178,7 @@
 "Agent 面板" = "Agent Panel";
 "显示 Agent 面板（⌥⌘I）" = "Show Agent Panel (⌥⌘I)";
 "隐藏 Agent 面板（⌥⌘I）" = "Hide Agent Panel (⌥⌘I)";
+"隐藏 Agent 面板" = "Hide Agent Panel";
 
 /* Toolbar search */
 "查找" = "Find";
