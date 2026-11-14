@@ -104,6 +104,8 @@ final class PanelDividerConnector: NSView {
 
     func configure(presented: Bool, width: Double, animated: Bool, trigger: Bool? = nil,
                    closed: (() -> Void)? = nil, widthChanged: @escaping (Double) -> Void) {
+        // Opened or closed by the person, not shown or hidden by a page switch.
+        let toggled = self.trigger != nil && self.trigger != (trigger ?? presented)
         let shouldAnimate = animated && self.trigger != (trigger ?? presented)
         self.trigger = trigger ?? presented
         let changed = self.presented != presented || abs(restingWidth - PanelSplitMetrics.width(width)) > 0.5
@@ -112,7 +114,7 @@ final class PanelDividerConnector: NSView {
         self.widthChanged = widthChanged
         self.closed = closed
         connect()
-        if attached, changed || (!animated && driver != nil) { move(animated: shouldAnimate) }
+        if attached, changed || (!animated && driver != nil) { move(animated: shouldAnimate, resizesWindow: toggled) }
     }
 
     override func viewDidMoveToWindow() {
@@ -131,14 +133,16 @@ final class PanelDividerConnector: NSView {
                                                                          object: split, queue: .main) { [weak self] _ in
                     MainActor.assumeIsolated { self?.resized() }
                 }
-                move(animated: false)
+                move(animated: false, resizesWindow: false)
                 return
             }
             ancestor = view.superview
         }
     }
 
-    private func move(animated: Bool) {
+    /// `resizesWindow` only for the person's own toggle: a page switch (to the Agent page and back)
+    /// or the window being restored at launch leaves the window's size alone.
+    private func move(animated: Bool, resizesWindow: Bool) {
         driver?.stop()
         driver = nil
         guard let split else { return }
@@ -151,7 +155,7 @@ final class PanelDividerConnector: NSView {
         // A window resized at every frame redraws its whole surface each time and hitched on nearly
         // every frame (137 to 142 per 18 toggles against 17 to 30 squeezing the page). So, as
         // Telegram Desktop does, the window takes its new size at once, with the panel.
-        if let frames = windowFrames(panelChange: target - start) {
+        if resizesWindow, let frames = windowFrames(panelChange: target - start) {
             setWindowFrame(frames.to)
             position(target)
             window?.displayIfNeeded()
@@ -193,8 +197,10 @@ final class PanelDividerConnector: NSView {
         } else if let before = frameBeforeGrowing, let grown = grownFrame, PanelWindowGrowth.same(frame, grown) {
             target = before
         } else {
-            // Moved or resized meanwhile, or opened before this launch: give back the panel's width.
-            target = PanelWindowGrowth.shrunk(frame, by: -panelChange, minWidth: window.minSize.width)
+            // Moved or resized meanwhile: give back what opening added, which the screen's width may
+            // have capped; opened before this launch, the panel's width.
+            let added = frameBeforeGrowing.flatMap { before in grownFrame.map { $0.width - before.width } } ?? -panelChange
+            target = PanelWindowGrowth.shrunk(frame, by: added, minWidth: window.minSize.width)
         }
         if panelChange < 0 { frameBeforeGrowing = nil; grownFrame = nil }
         return PanelWindowGrowth.same(frame, target) ? nil : (frame, target)
