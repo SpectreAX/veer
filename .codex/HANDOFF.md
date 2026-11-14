@@ -1,5 +1,13 @@
 # Veer macOS handoff
 
+## Agent panel widens the window, Telegram-style (2026-11-14, Claude; replaces the side window)
+
+After trying both, the user chose Telegram Desktop's third-column behavior (see its `SessionController::resizeForThirdSection` / `closeThirdSection` and `MainWindow::tryToExtendWidthBy`). The panel is the in-window native column again; `PanelSplitView(growsWindow: true)` resizes the window once, instantly, as the panel opens (wider to the right, also moved left near the screen edge, capped at the screen width) and restores the previous frame on close if the window was not moved or resized meanwhile, otherwise gives back the panel width. Full screen, zoomed, or screen-wide windows keep their size and the divider animates as before. `AgentSideWindow` was removed; the panel Hide button and the snapshot-mode quit guard stay. Rules: `PanelWindowGrowth` (VeerUI) with `PanelWindowGrowthTests`.
+
+Measured with isolated probes (18 toggles × 2 rounds, 1080×720 dark zh), hitches Overview/map: squeeze 24,17 / 27,30; side window 28,28 / 23,24; per-frame window growth 137,140 / 138,142 (abandoned: each frame rebuilds the window surface); instant growth 18,18 / 18,18, i.e. one ~85–100 ms stall per toggle. Logged page width stayed 1079 pt throughout. Instant growth is not the smoothest; it was chosen for one window and no page reflow.
+
+verify.sh PASS 466 (UI27/Proxy111/Core294/App34). dist/Veer.app rebuilt from this tree and replaced at the user's request (signed, not launched). NOT VERIFIED at commit time: snapshot audit and design review (run on the PR), real-window growth/restore, multi-display, VoiceOver, macOS 14.
+
 ## Agent panel as an attached side window (2026-11-14, Claude)
 
 User decisions: attached child window (not free), overlap against the screen edge when there is no room, in-window column only in full screen. `AgentSideWindow.swift` (NSPanel child of the main window via `addChildWindow`; `AgentSidePlacement` rules tested). Overlap starts below the main window's top row so the toolbar's panel switch and start/stop stay visible; the panel header gained "Hide Agent Panel". ⌘W hides the panel; its top row drags the main window; undo goes to the main window's manager; restore at launch does not take the keyboard. The sidebar focused value is also published from the panel's hosting controller, but whether the menu command reads it there is NOT VERIFIED.

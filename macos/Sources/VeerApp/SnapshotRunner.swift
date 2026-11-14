@@ -268,9 +268,9 @@ enum SnapshotRunner {
                 sampleThread(agent, status: .pending)
             }),
             Scene(name: "24b-panel-setup", store: { running(panel: true) }, view: AnyView(MainView())),
-            // A window as wide as the screen: the panel has no room beside it and opens over its
-            // right side, below the window's top row.
-            Scene(name: "24j-panel-overlap", size: NSScreen.main.map { CGSize(width: $0.visibleFrame.width, height: 720) } ?? CGSize(width: 1440, height: 720),
+            // A window as wide as the screen: no room to widen it, so the panel takes the page's width.
+            Scene(name: "24j-panel-screen-wide",
+                  size: NSScreen.main.map { CGSize(width: $0.visibleFrame.width, height: 720) } ?? CGSize(width: 1440, height: 720),
                   store: { running(panel: true) }, view: AnyView(MainView()), agent: { agent in
                       agent.settings.provider = .ollama
                       sampleThread(agent, status: .pending)
