@@ -219,15 +219,15 @@ struct MainView: View {
     private var pageTitle: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(store.page.title).font(.headline).allowsHitTesting(false)
-            if !profileName.isEmpty { ProfileMenu(name: profileName) }
+            if !profileName.isEmpty { ProfileMenu(name: profileName, maximumNameWidth: roomyTitle ? 160 : 90) }
         }
         .lineLimit(1)
     }
 
-    /// Short enough to stay clear of the toolbar, even with the sidebar at its widest in the smallest
-    /// window. The menu it opens has it in full.
+    /// Keep the full name; the menu label bounds its visible width using native text truncation.
+    /// Measuring and shortening every prefix here repeated Core Text work on each split layout.
     private var profileName: String {
-        (store.activeProfile?.name ?? "").shortened(toFit: roomyTitle ? 160 : 90, font: .preferredFont(forTextStyle: .caption1))
+        store.activeProfile?.name ?? ""
     }
 
     private var sidebarAndPage: some View {
@@ -354,6 +354,7 @@ private struct ClearOfSidebarButton<Content: View>: View {
 private struct ProfileMenu: View {
     @Environment(ProxyStore.self) private var store
     let name: String
+    let maximumNameWidth: CGFloat
 
     var body: some View {
         Menu {
@@ -375,6 +376,9 @@ private struct ProfileMenu: View {
         } label: {
             HStack(spacing: Spacing.xs) {
                 Text(verbatim: name)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: maximumNameWidth, alignment: .leading)
                 Image(systemName: "chevron.down").font(.caption2.weight(.semibold))
             }
             .font(.caption)

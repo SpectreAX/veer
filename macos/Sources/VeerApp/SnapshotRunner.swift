@@ -412,6 +412,9 @@ enum SnapshotRunner {
                 store.agentPanel = true
                 return store
             }, view: AnyView(MainView().defaultAppStorage(mapDefaults()))),
+            Scene(name: "18h-proxies-map-window-wide", size: CGSize(width: 1440, height: 900), store: { running(page: .proxies) },
+                  view: AnyView(MainView().defaultAppStorage(mapDefaults()))),
+            Scene(name: "04j-overview-wide", size: CGSize(width: 1440, height: 900), store: { running() }, view: AnyView(MainView())),
             Scene(name: "19-profiles-update-failed", store: {
                 let store = running(page: .proxies)
                 if var first = store.profiles.first {

@@ -2,6 +2,26 @@
 
 本计划按 [REQUIREMENTS.md](REQUIREMENTS.md) 和 [SPEC.md](SPEC.md) 推进，取代 [PLAN_2026-10-29.md](PLAN_2026-10-29.md) 的第 2 到第 4 阶段。那份文档的第 1 阶段（可用的代理）已经完成并提交。
 
+## 概览与节点地图随面板换排（2026-11-14，Claude）
+
+分支 `fix/macos-panel-heavy-pages`。Agent 面板开关时，概览卡片行和节点地图按面板停下后的目标宽度排：
+概览只在动画开始时换排一次；地图地区卡片列数按目标宽度固定，图例按地图卡片停下后的内宽换行，
+不再途中在一行和两行之间来回；国家轮廓和覆盖色画成图片后缩放（按停下后的宽度画，每次开关画一次），
+选中国家描边实时画，增强对比度下整张地图实时画。`NodeMapLayout` 收拢三条宽度规则并有单元测试。
+
+**测量（本会话，独立样例）：** HEAD 与本改动各建一个探针 app（独立 Bundle ID、临时 Store、无内核、
+Agent 不落盘），代码驱动 20 次开关、去掉 2 次预热，Instruments 只录 Hitches + os_signpost，
+统计每次开关 320 ms 窗口内的 hitch；1080×720、深色、中文、macOS 27.3，基线与改动交替运行。
+概览：36/37 次（1200/1250 ms）→ 22/20 次（983/950 ms）。节点地图（10×65 个唯一节点）最终版：
+61/54 次（1367/1300 ms）→ 32/29 次（1150/1067 ms）。约减半，但每次开关仍有约一次 hitch，尚不顺滑。
+单机两轮，不是统计结论。
+
+**检查：** verify.sh 通过（458 项：20 UI、111 Proxy、294 Core、33 App）。截图看过 18c/18e/18f/18g/18h、
+04j、24、24c（浅深、中英按场景），修掉了 18c 图例撑宽整页的问题；新增 1440×900 的 18h、04j 场景。
+Apple 设计审查无 Critical/Major，按其 Minor 修了线宽随缩放变细、增强对比度不重画和 1180 常量。
+保留 Minor：窄宽度下图例分隔线可能落在行尾（改动前已有）。
+NOT VERIFIED：增强对比度实机、面板移动中的实际画面、VoiceOver、macOS 14、全屏/多屏。
+
 ## 发布仓库归并（2026-11-14，Codex）
 
 `SpectreAX/veer-releases` 的 1.0.0–1.0.6 共 7 个 Release、14 个附件已迁入 Veer Releases，
@@ -23,6 +43,13 @@
 未发布新的开发构建，未启动真实应用；Sparkle 端到端升级与实机项 NOT VERIFIED。
 交付分支为 `codex/unify-releases`，基于 main@0533e50；主线交付见该分支的提交/PR 记录。
 此前动画修复安全保存在 `codex/macos-motion-profile`（源码6b2b6ff，交付文档至87c6501），未混入历史发布。
+## 动画定位方案（2026-11-13，Codex）
+
+执行分支 codex/macos-motion-profile，基线 main@0533e50。本轮已实现并验收：概览按当前proposal同帧排版，提问栏移到原生safeAreaInset底部独立保留区，配置名交给系统Text截断；连接指标仅刷新prepared∪visible单元格并保留全缓存/固定列。没有截图遮罩、逐帧高度状态或分栏驱动改动。
+
+最终完整verify PASS454（20UI+111Proxy+294Core+29App），日志 .codex/local/motion-20261113/native-title-final-verify.log。独立查看52张inset状态图+40张最终标题图及新动态关键帧，Critical0/Major0，保留底部滚动锚点偏移Minor。轻量呈现对照18次热开合含100ms收尾：hitch45→14（749.99→233.33ms），这是本轮单次样例改善，仍有偶发掉帧，不保证所有页固定FPS。无收益/退化的高度动画、Layout.Cache、逐帧panel比例实验均已撤回。
+
+详细修改、证据、未覆盖项与下一步见 [审查报告](reviews/2026-11-13-panel-motion.md)、根plans/README.md及.codex/HANDOFF.md。macOS14、VoiceOver、全屏/多屏和最终650节点压力场景仍NOT VERIFIED。修复源码已提交为6b2b6ff并推送到origin/codex/macos-motion-profile；用户要求的开发构建已完成，Apple Development签名/深度严格校验和本次重跑454项检查通过。构建交付记录见.codex/HANDOFF.md。用户随后要求替换，已于23:40将已签名构建安装至原Developer/Veer/macos/dist/Veer.app，原包按时间戳备份，签名和摘要一致；未启动应用、未更改代理/TUN或发布Release。
 
 ## Android 仓库归档迁移（2026-11-13）
 

@@ -6,11 +6,13 @@ import VeerProxy
 /// reflows with the window. Mode, switches and profile are in its toolbar.
 struct OverviewView: View {
     @Environment(ProxyStore.self) private var store
-    /// Halves side by side need about this much; narrower (the Agent panel open in a small
-    /// window), each row's halves stack, and below the second width the quarter cards too.
-    static let stackBelow: CGFloat = 720, stackPairsBelow: CGFloat = 460
-    @State private var width: CGFloat = 0
-    private var stacked: Bool { width < Self.stackBelow }
+    @Environment(\.pageTargetWidth) private var pageTargetWidth
+
+    /// The page's content is never wider than this; the cards' arrangement depends on it too.
+    static let maxContentWidth: CGFloat = 1180
+
+    /// The cards' width once the Agent panel has finished opening or closing.
+    private var cardsTargetWidth: CGFloat? { pageTargetWidth.map { max(0, min($0, Self.maxContentWidth) - 2 * Spacing.xl) } }
 
     var body: some View {
         content
@@ -36,24 +38,31 @@ struct OverviewView: View {
                     } else if let notice = store.notice {
                         StatusBadge(kind: .warning, text: notice).fixedSize(horizontal: false, vertical: true)
                     }
-                    // The panel brings its own composer.
-                    if !store.agentPanel { AgentAskBar() }
                     SuggestionCards()
-                    // Rows of two equal halves: cards shrink with the window (a Grid sizes cells to
-                    // their widest content and overflowed it).
-                    row { StatusCard() } right: { pair { TrafficCard(direction: .upload) } and: { TrafficCard(direction: .download) } }
-                    row { ServicesCard() } right: { ConnectionsCard() }
+                    OverviewCardsLayout(hasTraffic: true, targetWidth: cardsTargetWidth) {
+                        StatusCard()
+                        TrafficCard(direction: .upload)
+                        TrafficCard(direction: .download)
+                    }
+                    OverviewCardsLayout(targetWidth: cardsTargetWidth) {
+                        ServicesCard()
+                        ConnectionsCard()
+                    }
                     if store.isRunning { GroupsCard() }
                 }
                 .padding(Spacing.xl)
-                .frame(maxWidth: 1180)
+                .frame(maxWidth: Self.maxContentWidth)
                 .frame(maxWidth: .infinity)
-                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { new in
-                    // Choose card arrangements at the actual width. Using the wider destination
-                    // while the native column is still narrow squeezes text into vertical strips.
-                    var layout = Transaction(animation: nil)
-                    layout.disablesAnimations = true
-                    withTransaction(layout) { width = new }
+            }
+            // Reserve space outside the scrolling cards. Showing the panel changes only the
+            // viewport's bottom edge instead of inserting a bar above every card.
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if !store.agentPanel {
+                    AgentAskBar()
+                        .padding(Spacing.xl)
+                        .frame(maxWidth: Self.maxContentWidth)
+                        .frame(maxWidth: .infinity)
+                        .background(Color.surface)
                 }
             }
             .task(id: store.isRunning) {
@@ -69,25 +78,75 @@ struct OverviewView: View {
     }
 }
 
-extension OverviewView {
-    /// Two halves of equal width and height, or one above the other when the page is narrow.
-    func row<Left: View, Right: View>(@ViewBuilder _ left: () -> Left, @ViewBuilder right: () -> Right) -> some View {
-        let layout = stacked ? AnyLayout(VStackLayout(alignment: .leading, spacing: Spacing.lg)) : AnyLayout(HStackLayout(alignment: .top, spacing: Spacing.lg))
-        return layout {
-            left().frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
-            right().frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .fixedSize(horizontal: false, vertical: true)
+/// Page-width breakpoints, including the page's horizontal margins.
+nonisolated enum OverviewArrangement: Equatable, Sendable {
+    static let stackBelow: CGFloat = 720, stackPairsBelow: CGFloat = 460
+    case columns, stackedRows, stackedPairs
+
+    init(width: CGFloat) {
+        if width < Self.stackPairsBelow { self = .stackedPairs } else if width < Self.stackBelow { self = .stackedRows } else { self = .columns }
     }
 
-    func pair<Left: View, Right: View>(@ViewBuilder _ left: () -> Left, @ViewBuilder and right: () -> Right) -> some View {
-        let layout = width < Self.stackPairsBelow
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Spacing.lg))
-            : AnyLayout(HStackLayout(alignment: .top, spacing: Spacing.lg))
-        return layout {
-            left().frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
-            right().frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
+    var stacksRows: Bool { self != .columns }
+    var stacksPairs: Bool { self == .stackedPairs }
+}
+
+/// Chooses and measures the card rows in the same layout pass as the real width proposal.
+/// Geometry callbacks plus @State kept the previous arrangement alive for one narrower frame.
+///
+/// While the Agent panel opens or closes, the rows are arranged for the width the page is going
+/// to, so they change once, as the motion starts, never part way or at the end. Narrowing, they
+/// then follow the page down to it. Widening, they are laid out at that width from the start and
+/// the page's edge uncovers them as the panel slides away: at the page's own narrower width, the
+/// wide arrangement would squeeze the text into narrow strips.
+nonisolated struct OverviewCardsLayout: Layout {
+    var hasTraffic = false
+    /// The cards' width once the panel has stopped; nil away from the split.
+    var targetWidth: CGFloat?
+
+    /// The width the cards are laid out at: never less than where they are going.
+    func layoutWidth(_ width: CGFloat) -> CGFloat { max(width, targetWidth ?? 0) }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? subviews.map { $0.sizeThatFits(.unspecified).width }.reduce(0, +)
+        let frames = frames(width: layoutWidth(width), subviews: subviews)
+        // The proposed width, even when laid out wider: the page's edge covers the rest.
+        return CGSize(width: width, height: frames.map(\.maxY).max() ?? 0)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for (view, frame) in zip(subviews, frames(width: layoutWidth(bounds.width), subviews: subviews)) {
+            view.place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+                       proposal: ProposedViewSize(frame.size))
         }
+    }
+
+    private func frames(width: CGFloat, subviews: Subviews) -> [CGRect] {
+        let arrangement = OverviewArrangement(width: (targetWidth ?? width) + 2 * Spacing.xl)
+        let rows: [[Int]] = if hasTraffic {
+            switch arrangement {
+            case .columns: [[0, 1, 2]]
+            case .stackedRows: [[0], [1, 2]]
+            case .stackedPairs: [[0], [1], [2]]
+            }
+        } else {
+            arrangement.stacksRows ? [[0], [1]] : [[0, 1]]
+        }
+        var frames: [CGRect] = [], y: CGFloat = 0
+        for row in rows {
+            let half = max(0, (width - Spacing.lg) / 2)
+            let widths = row.count == 3 ? [half, max(0, (half - Spacing.lg) / 2), max(0, (half - Spacing.lg) / 2)]
+                : Array(repeating: max(0, (width - CGFloat(row.count - 1) * Spacing.lg) / CGFloat(row.count)), count: row.count)
+            let heights = zip(row, widths).map { subviews[$0.0].sizeThatFits(.init(width: $0.1, height: nil)).height }
+            let height = heights.max() ?? 0
+            var x: CGFloat = 0
+            for cardWidth in widths {
+                frames.append(CGRect(x: x, y: y, width: cardWidth, height: height))
+                x += cardWidth + Spacing.lg
+            }
+            y += height + Spacing.lg
+        }
+        return frames
     }
 }
 
