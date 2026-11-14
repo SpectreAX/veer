@@ -41,6 +41,7 @@ enum SnapshotRunner {
                         try? await Task.sleep(for: .milliseconds(700))
                         capture(window, to: path)
                     }
+                    window.childWindows?.forEach { $0.orderOut(nil) }
                     window.orderOut(nil)
                 }
                 // Laid out and shown, never run: nothing here can register the helper.
@@ -267,7 +268,34 @@ enum SnapshotRunner {
                 sampleThread(agent, status: .pending)
             }),
             Scene(name: "24b-panel-setup", store: { running(panel: true) }, view: AnyView(MainView())),
-            // The smallest window: the overview's rows stack beside the panel.
+            // A window as wide as the screen: the panel has no room beside it and opens over its
+            // right side, below the window's top row.
+            Scene(name: "24j-panel-overlap", size: NSScreen.main.map { CGSize(width: $0.visibleFrame.width, height: 720) } ?? CGSize(width: 1440, height: 720),
+                  store: { running(panel: true) }, view: AnyView(MainView()), agent: { agent in
+                      agent.settings.provider = .ollama
+                      sampleThread(agent, status: .pending)
+                  }),
+            Scene(name: "24k-panel-wide", size: CGSize(width: 1440, height: 900), store: {
+                let store = running(panel: true)
+                store.agentPanelWidth = 520
+                return store
+            }, view: AnyView(MainView()), agent: attachmentThread),
+            Scene(name: "24l-panel-sidebar-hidden", store: { running(panel: true) },
+                  view: AnyView(MainView(sidebarVisibility: .detailOnly)), agent: { agent in
+                      agent.settings.provider = .ollama
+                  }),
+            Scene(name: "24m-panel-smallest", size: CGSize(width: 860, height: 560), store: {
+                let store = running(panel: true)
+                store.agentPanelWidth = 320
+                return store
+            }, view: AnyView(MainView()), agent: attachmentThread),
+            Scene(name: "24n-panel-failed", store: {
+                let store = failed(page: .overview)
+                store.agentPanel = true
+                return store
+            }, view: AnyView(MainView()), agent: { agent in
+                agent.settings.provider = .ollama
+            }),
             Scene(name: "24c-panel-narrow", size: CGSize(width: 860, height: 640), store: { running(panel: true) }, view: AnyView(MainView()), agent: { agent in
                 agent.settings.provider = .ollama
             }),
@@ -648,7 +676,22 @@ enum SnapshotRunner {
 
     /// The window as the screen shows it (sidebar material included); falls back to drawing the
     /// view hierarchy, which leaves vibrancy out.
+    private typealias WindowsImageFunction = @convention(c) (CGRect, CFArray, UInt32) -> Unmanaged<CGImage>?
+
     static func capture(_ window: NSWindow, to url: URL) {
+        // With the Agent panel's window beside it, both, as one picture.
+        if let children = window.childWindows, !children.isEmpty,
+           let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGWindowListCreateImageFromArray") {
+            let function = unsafeBitCast(symbol, to: WindowsImageFunction.self)
+            // The array holds window numbers as its values, not objects.
+            // The image API composites front to back, so an overlapping child precedes its parent.
+            var ids = (children.reversed() + [window]).map { UnsafeRawPointer(bitPattern: $0.windowNumber) }
+            if let array = CFArrayCreate(nil, &ids, ids.count, nil),
+               let image = function(.null, array, (1 << 0) | (1 << 3))?.takeRetainedValue() {
+                try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?.write(to: url)
+                return
+            }
+        }
         if let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGWindowListCreateImage") {
             let function = unsafeBitCast(symbol, to: WindowImageFunction.self)
             // optionIncludingWindow = 1 << 3; boundsIgnoreFraming = 1 << 0, bestResolution = 1 << 3

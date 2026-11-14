@@ -102,7 +102,8 @@ struct MainView: View {
     /// it past the window's edge.
     private var split: some View {
         @Bindable var store = store
-        return PanelSplitView(isPresented: panelShown, width: $store.agentPanelWidth, animationTrigger: store.agentPanel) {
+        // A column only in full screen, which has no room beside the window; otherwise a window of its own.
+        return PanelSplitView(isPresented: panelShown && isFullScreen, width: $store.agentPanelWidth, animationTrigger: store.agentPanel) {
             sidebarAndPage
         } panel: {
             AgentPanelColumn(showsDivider: false)
@@ -117,6 +118,8 @@ struct MainView: View {
         // width, and any item it holds lands in an overflow button that throws the rest aside. An
         // item's content also snaps to a new page rather than animating.
         .background(EmptyWindowToolbar(isFullScreen: $isFullScreen))
+        .background(AgentSideWindowConnector(isPresented: panelShown && !isFullScreen, store: store, agent: agent,
+                                             sidebar: store.onboarding == nil ? sidebarAnimator : nil))
         .onGeometryChange(for: Bool.self) { $0.size.width >= Metrics.roomyTitleWidth } action: { roomyTitle = $0 }
         .overlay(alignment: .topLeading) {
             sidebarButton
@@ -464,10 +467,14 @@ private struct EmptyWindowToolbar: NSViewRepresentable {
 
 /// The top row of the window, which moves it as a title bar does. With no items in the toolbar,
 /// clicks pass through it to whatever is below.
-private struct WindowDragArea: NSViewRepresentable {
+struct WindowDragArea: NSViewRepresentable {
+    var movesParent = false
+
     final class Area: NSView {
+        var movesParent = false
+
         override func mouseDown(with event: NSEvent) {
-            guard let window else { return }
+            guard let window = (movesParent ? window?.parent : nil) ?? window else { return }
             guard event.clickCount == 2 else { return window.performDrag(with: event) }
             switch UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick") {
             case "Minimize": window.performMiniaturize(nil)
@@ -478,7 +485,7 @@ private struct WindowDragArea: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> Area { Area() }
-    func updateNSView(_ view: Area, context: Context) {}
+    func updateNSView(_ view: Area, context: Context) { view.movesParent = movesParent }
 }
 
 /// A page that later steps fill in.

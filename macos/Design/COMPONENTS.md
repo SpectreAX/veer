@@ -44,6 +44,7 @@ Use the native control first, then a `VeerUI` component, then a new one. Shared 
 | `AttachmentChip` | A file or image going with an Agent instruction, removable in the composer. A row of name, state and remove button that no system control offers. Keyboard and VoiceOver through its plain remove button; its label says what was hidden or cut. Same in light and dark through `subtleFill`, and on macOS 14 |
 | `ColumnFit` | Not a control: which table columns to hide so that the rest fit, for tables that narrow beside a panel |
 | `PanelSplitView` | SwiftUI HSplitView with an AppKit divider animator; keeps page and Agent panel in disjoint real columns, preserving the page preference and focus tree |
+| `AgentSideWindow` | The Agent panel as a borderless-looking `NSPanel` child of the main window, flush to its right edge or overlapping it against the screen edge. Width-only resize within the column's range; its top row drags the main window; ⌘W hides it. Restored at launch without taking the keyboard. Follows the window's appearance; Reduce Motion skips the fade |
 | `ConnectionsTable` | Native NSTableView: SwiftUI Table hosted-cell measurement made each live split-divider step expensive; retains native multi-selection, context actions, keyboard commands and stable row IDs |
 | `KeyCap`, `ShortcutHint` | Keyboard shortcut display |
 | `ChoiceRow` | A row in a choice list |

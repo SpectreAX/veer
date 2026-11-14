@@ -73,8 +73,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        // Snapshots draw sample stores. These two hold the person's real conversations and proxy
+        // state, loaded at launch all the same, and quitting must not write them back.
+        guard !Self.isSnapshotRun(ProcessInfo.processInfo.environment) else { return }
         Self.agent.flush()
         Self.store.shutdown()
+    }
+
+    nonisolated static func isSnapshotRun(_ environment: [String: String]) -> Bool {
+        environment["VEER_SNAPSHOT_DIR"] != nil
     }
 
     /// Closing the window keeps the proxy running in the menu bar.
