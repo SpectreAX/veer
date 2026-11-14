@@ -24,8 +24,13 @@ enum SnapshotRunner {
                     let content = scene.view.defaultAppStorage(UserDefaults(suiteName: "veer-snapshot-\(UUID().uuidString)")!)
                     let view = scene.fullScreen
                         ? AnyView(content.environment(store).environment(agent).tint(.veerAccent))
+                        : scene.resizable
+                        ? AnyView(content.environment(store).environment(agent).tint(.veerAccent)
+                            .frame(minWidth: scene.size.width, minHeight: scene.size.height))
                         : AnyView(content.environment(store).environment(agent).tint(.veerAccent).frame(width: scene.size.width, height: scene.size.height))
                     let window = NSWindow(contentRect: CGRect(origin: .zero, size: scene.size), styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
+                    // As the app's window: a fixed one counts as zoomed, and the Agent panel does not widen it.
+                    if scene.resizable { window.styleMask.insert(.resizable) }
                     window.appearance = NSAppearance(named: name)
                     // As `.windowStyle(.hiddenTitleBar)` leaves the app's window.
                     window.titleVisibility = .hidden
@@ -106,6 +111,8 @@ enum SnapshotRunner {
         var agent: ((AgentStore) -> Void)? = nil
         /// Takes the window into full screen, in its own Space, for the capture.
         var fullScreen = false
+        /// Resizable with a minimum size, as the app's own window is.
+        var resizable = false
     }
 
     // swiftlint:disable:next function_body_length
@@ -268,9 +275,18 @@ enum SnapshotRunner {
                 sampleThread(agent, status: .pending)
             }),
             Scene(name: "24b-panel-setup", store: { running(panel: true) }, view: AnyView(MainView())),
-            // A window as wide as the screen: the panel has no room beside it and opens over its
-            // right side, below the window's top row.
-            Scene(name: "24j-panel-overlap", size: NSScreen.main.map { CGSize(width: $0.visibleFrame.width, height: 720) } ?? CGSize(width: 1440, height: 720),
+            // Opened after the window is up, as a click does: the window widens and the page keeps its width.
+            Scene(name: "24k-panel-opened", store: {
+                let store = running()
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(250))
+                    store.agentPanel = true
+                }
+                return store
+            }, view: AnyView(MainView()), resizable: true),
+            // A window as wide as the screen: no room to widen it, so the panel takes the page's width.
+            Scene(name: "24j-panel-screen-wide",
+                  size: NSScreen.main.map { CGSize(width: $0.visibleFrame.width, height: 720) } ?? CGSize(width: 1440, height: 720),
                   store: { running(panel: true) }, view: AnyView(MainView()), agent: { agent in
                       agent.settings.provider = .ollama
                       sampleThread(agent, status: .pending)

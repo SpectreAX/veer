@@ -27,8 +27,8 @@ Brand expression must not damage native usability.
 - `NavigationSplitView` sidebar in two groups: Proxy and AI.
 - `⌘1`–`⌘5` switch the sidebar's pages. Tools has subpages with a back button and `⌘[`. Important
   commands are also in the menu bar.
-- The Agent panel is a window of its own attached to the main window's right edge, and a plain column
-  beside the page in full screen.
+- The Agent panel is a plain column beside the page. Opening it widens the window by the panel's width,
+  so the page keeps its own, and closing it gives the width back.
 
 ## Toolbar
 
@@ -95,8 +95,8 @@ as a violation unless its reason no longer holds. Anything not listed here is no
 | Sidebar selection stays in the accent color when the focus moves | Pages put the cursor in their own field, and the system's dimming then flashes between two looks on every click. The product owner asked for one look | SPEC 5, `selectionHighlight` |
 | Own search field instead of `.searchable` | Several `.searchable` pages crash `NSToolbar` with a duplicate identifier on page switch (1.0.3 crash) | SPEC 5, `ToolbarSearchField` |
 | Sidebar hides and shows by moving the native split view's divider, not through `NavigationSplitView`'s own collapse | Its collapse reused a stale page image, and reversing it mid-way in an 860-wide window grew the window to 1040. SwiftUI has no control of the divider, so `SidebarAnimator` drives the split view item it already has; with Reduce Motion it switches at once | `SidebarAnimator`, `MainView` |
-| Full-screen Agent panel uses a live native split divider driven from SwiftUI's HSplitView | SwiftUI's inspector could crash on rapid reversal; picture crossfades duplicated table text. PanelSplitView keeps the existing SwiftUI preference and focus tree, while an AppKit NSAnimation moves the real divider. Page and panel have disjoint bounds, and Reduce Motion changes the divider immediately | PanelSplitView, PanelDividerConnector, MainView |
-| Agent panel is an attached child window outside full screen, not a column or inspector | Opening it keeps the page at its full width. SwiftUI cannot attach one window to another, so `addChildWindow` does it; it moves, minimizes and closes with the main window. With no room beside the window it overlaps the window's right side against the screen edge, and in full screen it is the column instead. The product owner chose this | `AgentSideWindow`, `MainView` |
+| Agent panel uses a live native split divider driven from SwiftUI's HSplitView | SwiftUI's inspector could crash on rapid reversal; picture crossfades duplicated table text. PanelSplitView keeps the existing SwiftUI preference and focus tree, while an AppKit NSAnimation moves the real divider. Page and panel have disjoint bounds, and Reduce Motion changes the divider immediately | PanelSplitView, PanelDividerConnector, MainView |
+| Opening the Agent panel widens the window, as Telegram Desktop does for its third column | Squeezing the page reflowed heavy pages on every toggle, and an attached side window split focus, menus and shadow across two windows. The window widens to the right, or also moves left near the screen's edge, never past the screen's width, and closing restores the frame. Full screen, a zoomed window or one already as wide as the screen keep their size and the page gives up the width | PanelSplitView (`growsWindow`), `PanelWindowGrowth`, MainView |
 | Plain Agent column instead of `.inspector` | `NSSplitViewController` throws if the inspector changes mid-animation (crash on 2026-10-30) | `AgentPanelColumn` |
 | Veer green tint instead of the system accent color | Brand color, used only on small areas. Custom accent colors are out of scope for v1 | `Color.veerAccent` |
 | Fixed chart palette | Categorical colors need stable, color-blind-checked pairs that the system colors do not give. Every chart has a legend with exact counts | `ChartPalette` |
