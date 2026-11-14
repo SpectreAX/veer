@@ -112,20 +112,44 @@ private struct MapCard: View {
                 Text(verbatim: summary).font(.callout).foregroundStyle(.secondary)
             }
             WorldMap(regions: regions, selected: selected, choose: choose)
-            FlowLayout(spacing: Spacing.md) {
-                legend(.success, String(localized: "低于 200 ms"))
-                legend(.warning, String(localized: "200 到 500 ms"))
-                legend(.failure, String(localized: "更慢或失败"))
-                legend(.neutral, String(localized: "未测速"))
-                Rectangle().fill(Color.primary.opacity(0.15)).frame(width: 1, height: Spacing.md)
-                coverage(1, String(localized: "1 到 2 个节点"))
-                coverage(3, String(localized: "3 到 9 个节点"))
-                coverage(10, String(localized: "10 个以上"))
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            legend
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .panel()
+    }
+
+    @Environment(\.pageTargetWidth) private var targetWidth
+
+    /// Wrapped at the card's width once the Agent panel has stopped, the same as its width at rest.
+    /// Wrapped at its width on the way, it went from one line to two and back, and moved everything
+    /// below it. Never wider than the card: mid-motion, the page's edge covers what does not fit.
+    @ViewBuilder private var legend: some View {
+        let items = FlowLayout(spacing: Spacing.md) { latencyItems; coverageDivider; coverageItems }
+        if let targetWidth {
+            items
+                .frame(width: NodeMapLayout.cardInsideWidth(pageWidth: targetWidth), alignment: .leading)
+                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+        } else {
+            items
+        }
+    }
+
+    @ViewBuilder private var latencyItems: some View {
+        legend(.success, String(localized: "低于 200 ms"))
+        legend(.warning, String(localized: "200 到 500 ms"))
+        legend(.failure, String(localized: "更慢或失败"))
+        legend(.neutral, String(localized: "未测速"))
+    }
+
+    private var coverageDivider: some View {
+        Rectangle().fill(Color.primary.opacity(0.15)).frame(width: 1, height: Spacing.md)
+    }
+
+    @ViewBuilder private var coverageItems: some View {
+        coverage(1, String(localized: "1 到 2 个节点"))
+        coverage(3, String(localized: "3 到 9 个节点"))
+        coverage(10, String(localized: "10 个以上"))
     }
 
     private func coverage(_ count: Int, _ title: String) -> some View {
@@ -152,9 +176,13 @@ private struct WorldMap: View {
     let choose: (String) -> Void
     @State private var hoveredDot: String?
     @State private var hoveredCountry: String?
+    @Environment(\.pageTargetWidth) private var pageTargetWidth
+
+    /// The map's width once the Agent panel has stopped: the map card's inside.
+    private var targetMapWidth: CGFloat? { pageTargetWidth.map(NodeMapLayout.cardInsideWidth(pageWidth:)) }
 
     /// Latitudes shown: Antarctica and the far north add nothing here.
-    private static let north = 84.0, south = -58.0
+    static let north = 84.0, south = -58.0
 
     var body: some View {
         GeometryReader { proxy in
@@ -163,8 +191,10 @@ private struct WorldMap: View {
             let hovered = hoveredDot ?? hoveredCountry
             let positions = dotPositions(codes, in: size)
             ZStack(alignment: .topLeading) {
-                CountriesLayer()
-                CoverageLayer(counts: counts, selected: selected)
+                MapDrawing(key: "countries", width: size.width, targetWidth: targetMapWidth) { CountriesLayer() }
+                MapDrawing(key: "coverage \(counts.sorted { $0.key < $1.key })", width: size.width, targetWidth: targetMapWidth) {
+                    CoverageLayer(counts: counts)
+                }
                     .contentShape(Rectangle())
                     .onContinuousHover { phase in
                         if case .active(let location) = phase { hoveredCountry = country(at: location, in: size) } else { hoveredCountry = nil }
@@ -172,6 +202,7 @@ private struct WorldMap: View {
                     .onTapGesture { location in
                         if let code = country(at: location, in: size) { choose(code) }
                     }
+                SelectedOutline(selected: selected)
                 ForEach(codes, id: \.self) { code in
                     if let place = NodeLocator.place(code), let nodes = regions[code], let position = positions[code] {
                         dot(place: place, nodes: nodes)
@@ -296,7 +327,6 @@ private struct WorldMap: View {
     /// The countries with nodes.
     private struct CoverageLayer: View {
         let counts: [String: Int]
-        let selected: String?
 
         var body: some View {
             Canvas { context, size in
@@ -304,9 +334,24 @@ private struct WorldMap: View {
                     guard let code = shape.code, let count = counts[code] else { continue }
                     let path = WorldMap.path(shape, in: size)
                     context.fill(path, with: .color(WorldMap.shade(count)), style: FillStyle(eoFill: true))
-                    if code == selected { context.stroke(path, with: .color(Color.veerAccent), lineWidth: 1.5) }
                 }
             }
+            .accessibilityHidden(true)
+        }
+    }
+
+    /// The chosen country's outline, drawn live at every width so that it stays 1.5 pt: in the
+    /// scaled picture it thinned with the map. One country is cheap to draw.
+    private struct SelectedOutline: View {
+        let selected: String?
+
+        var body: some View {
+            Canvas { context, size in
+                for shape in WorldMap.countries where shape.code != nil && shape.code == selected {
+                    context.stroke(WorldMap.path(shape, in: size), with: .color(Color.veerAccent), lineWidth: 1.5)
+                }
+            }
+            .allowsHitTesting(false)
             .accessibilityHidden(true)
         }
     }
@@ -326,12 +371,22 @@ private struct RegionGrid: View {
     let selected: String?
     let choose: (String) -> Void
 
+    @Environment(\.pageTargetWidth) private var targetWidth
+
+    /// As many as fit the width the page has or is going to, so the cards do not move from three
+    /// columns to two and back while the Agent panel moves; then they only stretch.
+    private var columns: [GridItem] {
+        guard let targetWidth else { return [GridItem(.adaptive(minimum: NodeMapLayout.regionCardWidth), spacing: Spacing.sm)] }
+        let count = NodeMapLayout.regionColumns(pageWidth: targetWidth)
+        return Array(repeating: GridItem(.flexible(minimum: 0), spacing: Spacing.sm), count: count)
+    }
+
     private var sortedCodes: [String] {
         regions.keys.compactMap { $0 }.sorted { (regions[$0]?.count ?? 0, $1) > (regions[$1]?.count ?? 0, $0) }
     }
 
     var body: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: Spacing.sm)], spacing: Spacing.sm) {
+        LazyVGrid(columns: columns, spacing: Spacing.sm) {
             ForEach(sortedCodes, id: \.self) { code in
                 if let place = NodeLocator.place(code), let nodes = regions[code] {
                     card(code: code, title: "\(place.flag) \(place.name)", nodes: nodes)
@@ -418,5 +473,72 @@ private struct RegionNodes: View {
         .buttonStyle(.plain)
         .disabled(!usable)
         .help(usable ? String(localized: "在“\(main?.name ?? "")”中使用这个节点") : node.name)
+    }
+}
+
+/// A map layer drawn once into a picture and shown scaled. Its outlines are a few thousand points,
+/// which drawing again at every width cost the Agent panel's motion every other frame; a picture
+/// only scales. It is drawn at the map's width once the panel stops, so at rest its lines are
+/// exact, and again when what it shows or the appearance changes. With Increase Contrast on, the
+/// layer itself: a picture cannot be given that setting.
+private struct MapDrawing<Layer: View>: View {
+    let key: String
+    /// The map's width now, and once the Agent panel has stopped (nil outside the main window).
+    let width: CGFloat
+    let targetWidth: CGFloat?
+    @ViewBuilder var layer: () -> Layer
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.displayScale) private var displayScale
+    @State private var drawn: Image?
+
+    private var pictureWidth: CGFloat { NodeMapLayout.pictureWidth(mapWidth: width, targetMapWidth: targetWidth) }
+    private var size: CGSize { CGSize(width: pictureWidth, height: pictureWidth * (WorldMap.north - WorldMap.south) / 360) }
+
+    private var currentKey: String { "\(key) \(colorScheme) \(contrast) \(displayScale) \(pictureWidth)" }
+
+    var body: some View {
+        Group {
+            // The last picture, scaled, until the new one is drawn: the layer itself in between
+            // would cost the frame the picture saves.
+            if contrast == .standard, let drawn {
+                drawn.resizable().interpolation(.high)
+            } else {
+                // Until the first picture is ready, the layer itself.
+                layer()
+            }
+        }
+        .accessibilityHidden(true)
+        .task(id: currentKey) { if contrast == .standard { draw() } }
+    }
+
+    private func draw() {
+        let renderer = ImageRenderer(content: layer()
+            .frame(width: size.width, height: size.height)
+            .environment(\.colorScheme, colorScheme))
+        renderer.scale = displayScale
+        if let image = renderer.cgImage { drawn = Image(decorative: image, scale: displayScale) }
+    }
+}
+
+/// The node map's width rules, chosen from the width the page has or is going to.
+nonisolated enum NodeMapLayout {
+    static let regionCardWidth: CGFloat = 220
+
+    /// Region cards at least 220 wide, 8 apart, inside the page's 24 pt margins.
+    static func regionColumns(pageWidth: CGFloat) -> Int {
+        max(1, Int((pageWidth - 2 * Spacing.xl + Spacing.sm) / (regionCardWidth + Spacing.sm)))
+    }
+
+    /// The map card's inside, where the map and its legend are, on a page this wide: less the
+    /// page's 24 pt margins and the card's 16 pt padding on each side.
+    static func cardInsideWidth(pageWidth: CGFloat) -> CGFloat {
+        max(0, pageWidth - 2 * Spacing.xl - 2 * Spacing.lg)
+    }
+
+    /// The map's width once the Agent panel has stopped, so it is drawn once as the motion starts
+    /// and never at the widths on the way; its own width outside the main window.
+    static func pictureWidth(mapWidth: CGFloat, targetMapWidth: CGFloat?) -> CGFloat {
+        max(1, (targetMapWidth ?? mapWidth).rounded(.up))
     }
 }

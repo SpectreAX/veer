@@ -58,6 +58,33 @@ import Testing
         #expect(abs(host.fittingSize.height - 80) < 0.001)
     }
 
+    @Test func overviewArrangesForTheTargetWidthWhileThePanelMoves() {
+        func cards(pageWidth: CGFloat, target: CGFloat?) -> some View {
+            OverviewCardsLayout(hasTraffic: true, targetWidth: target.map { $0 - 48 }) {
+                Color.clear.frame(height: 40)
+                Color.clear.frame(height: 40)
+                Color.clear.frame(height: 40)
+            }
+            .frame(width: pageWidth - 48)
+        }
+        let host = NSHostingView(rootView: cards(pageWidth: 1080, target: 1080))
+        // Opening from 1080 to 700: stacked from the first frame, not part way through.
+        for width in [1080.0, 1000, 900, 800, 720, 700] {
+            host.rootView = cards(pageWidth: width, target: 700)
+            #expect(abs(host.fittingSize.height - 96) < 0.001)
+            // It reports the width it was given, even when laid out wider.
+            #expect(abs(host.fittingSize.width - (width - 48)) < 0.001)
+        }
+        // Closing from 700 to 1080: one row from the start, laid out at the wider width.
+        for width in [700.0, 719, 800, 1080] {
+            host.rootView = cards(pageWidth: width, target: 1080)
+            #expect(abs(host.fittingSize.height - 40) < 0.001)
+        }
+        #expect(OverviewCardsLayout(targetWidth: 1032).layoutWidth(652) == 1032)
+        #expect(OverviewCardsLayout(targetWidth: 652).layoutWidth(1032) == 1032)
+        #expect(OverviewCardsLayout().layoutWidth(652) == 652)
+    }
+
     @Test func theGridCountsColumnsAsAnAdaptiveOneWould() {
         // Inside 24 pt margins, tiles at least 180 wide, 8 apart.
         #expect(GroupSection.columnCount(pageWidth: 880) == 4)

@@ -6,6 +6,13 @@ import VeerProxy
 /// reflows with the window. Mode, switches and profile are in its toolbar.
 struct OverviewView: View {
     @Environment(ProxyStore.self) private var store
+    @Environment(\.pageTargetWidth) private var pageTargetWidth
+
+    /// The page's content is never wider than this; the cards' arrangement depends on it too.
+    static let maxContentWidth: CGFloat = 1180
+
+    /// The cards' width once the Agent panel has finished opening or closing.
+    private var cardsTargetWidth: CGFloat? { pageTargetWidth.map { max(0, min($0, Self.maxContentWidth) - 2 * Spacing.xl) } }
 
     var body: some View {
         content
@@ -32,19 +39,19 @@ struct OverviewView: View {
                         StatusBadge(kind: .warning, text: notice).fixedSize(horizontal: false, vertical: true)
                     }
                     SuggestionCards()
-                    OverviewCardsLayout(hasTraffic: true) {
+                    OverviewCardsLayout(hasTraffic: true, targetWidth: cardsTargetWidth) {
                         StatusCard()
                         TrafficCard(direction: .upload)
                         TrafficCard(direction: .download)
                     }
-                    OverviewCardsLayout {
+                    OverviewCardsLayout(targetWidth: cardsTargetWidth) {
                         ServicesCard()
                         ConnectionsCard()
                     }
                     if store.isRunning { GroupsCard() }
                 }
                 .padding(Spacing.xl)
-                .frame(maxWidth: 1180)
+                .frame(maxWidth: Self.maxContentWidth)
                 .frame(maxWidth: .infinity)
             }
             // Reserve space outside the scrolling cards. Showing the panel changes only the
@@ -53,7 +60,7 @@ struct OverviewView: View {
                 if !store.agentPanel {
                     AgentAskBar()
                         .padding(Spacing.xl)
-                        .frame(maxWidth: 1180)
+                        .frame(maxWidth: Self.maxContentWidth)
                         .frame(maxWidth: .infinity)
                         .background(Color.surface)
                 }
@@ -86,24 +93,36 @@ nonisolated enum OverviewArrangement: Equatable, Sendable {
 
 /// Chooses and measures the card rows in the same layout pass as the real width proposal.
 /// Geometry callbacks plus @State kept the previous arrangement alive for one narrower frame.
+///
+/// While the Agent panel opens or closes, the rows are arranged for the width the page is going
+/// to, so they change once, as the motion starts, never part way or at the end. Narrowing, they
+/// then follow the page down to it. Widening, they are laid out at that width from the start and
+/// the page's edge uncovers them as the panel slides away: at the page's own narrower width, the
+/// wide arrangement would squeeze the text into narrow strips.
 nonisolated struct OverviewCardsLayout: Layout {
     var hasTraffic = false
+    /// The cards' width once the panel has stopped; nil away from the split.
+    var targetWidth: CGFloat?
+
+    /// The width the cards are laid out at: never less than where they are going.
+    func layoutWidth(_ width: CGFloat) -> CGFloat { max(width, targetWidth ?? 0) }
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = proposal.width ?? subviews.map { $0.sizeThatFits(.unspecified).width }.reduce(0, +)
-        let frames = frames(width: width, subviews: subviews)
+        let frames = frames(width: layoutWidth(width), subviews: subviews)
+        // The proposed width, even when laid out wider: the page's edge covers the rest.
         return CGSize(width: width, height: frames.map(\.maxY).max() ?? 0)
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        for (view, frame) in zip(subviews, frames(width: bounds.width, subviews: subviews)) {
+        for (view, frame) in zip(subviews, frames(width: layoutWidth(bounds.width), subviews: subviews)) {
             view.place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
                        proposal: ProposedViewSize(frame.size))
         }
     }
 
     private func frames(width: CGFloat, subviews: Subviews) -> [CGRect] {
-        let arrangement = OverviewArrangement(width: width + 2 * Spacing.xl)
+        let arrangement = OverviewArrangement(width: (targetWidth ?? width) + 2 * Spacing.xl)
         let rows: [[Int]] = if hasTraffic {
             switch arrangement {
             case .columns: [[0, 1, 2]]
