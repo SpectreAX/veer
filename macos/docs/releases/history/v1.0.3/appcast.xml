@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Veer</title>
+    <item>
+      <title>Veer 1.0.3</title>
+      <pubDate>Fri, 30 Oct 2026 06:40:38 +0000</pubDate>
+      <sparkle:version>4</sparkle:version>
+      <sparkle:shortVersionString>1.0.3</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<p>Veer 1.0.3 测试版 · Test build</p>
+<ul>
+<li>Agent 侧边面板：每一页右侧都能直接和 AI 对话，“问 AI”不再跳转页面；工具栏 ✦ 或 ⌥⌘I 开关，⌘N 随时新建对话。 / Agent side panel: talk to the AI beside any page, and “Ask AI” no longer leaves the page. Toggle it with ✦ in the toolbar or ⌥⌘I; ⌘N starts a conversation anywhere.</li>
+<li>概览顶部新增提问栏；窗口较窄时概览卡片自动上下排列。 / An ask bar at the top of the overview; overview cards stack in narrow windows.</li>
+<li>名字里看不出地区的节点，按服务器 IP 自动识别地区（离线，可右键手动改）。 / Nodes whose names show no region are placed by their server's IP, offline; right-click to correct.</li>
+<li>节点很多的策略组，菜单按地区分成子菜单。 / Large groups split their node menus into regions.</li>
+</ul>]]></description>
+      <enclosure url="https://github.com/SpectreAX/veer-releases/releases/download/v1.0.3/Veer-1.0.3.dmg" type="application/octet-stream" sparkle:edSignature="KbC4xk4mchvTQgfy7sqLJMjsb8ZajD5hc1jRrDqgg4bSSu/PwyZzZlQcHQ49qoJoqD8GCo+e14B9JVkfF8qZBA==" length="23920375" />
+    </item>
+  </channel>
+</rss>

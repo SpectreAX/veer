@@ -29,10 +29,25 @@
 - [ ] 有 Developer ID 后：设置 `VEER_SIGN_IDENTITY="Developer ID Application: …"` 和 `VEER_NOTARY_PROFILE`，公证通过，`xcrun stapler validate` 通过。
 
 ## 4. 发布（你确认后再做）
-- [ ] `scripts/release.sh --notes dist/notes.html --publish`：在 `SpectreAX/veer-releases` 建 `v<版本>` release，上传 DMG 和 `appcast.xml`。
-- [ ] 打开 `https://github.com/SpectreAX/veer-releases/releases/latest/download/appcast.xml`，内容是这次的版本。
+- [ ] 提交并推送本次源码，确认工作区干净；在准确的发布提交上打 `macos-v<版本>` 并推送标签。不要覆盖已有版本或把迁移的历史标签指向新源码。
+- [ ] `scripts/release.sh --notes dist/notes.html --publish`：在 `SpectreAX/veer` 建 `macos-v<版本>` release，上传 DMG 和 `appcast.xml`；`--verify-tag` 要求远端源码标签已存在。
+- [ ] 打开 `https://github.com/SpectreAX/veer/releases/latest/download/appcast.xml`，内容是这次的版本，下载地址指向同仓库同标签的 DMG。
 - [ ] 用上一个版本的 Veer 点“检查更新…”，能看到新版本、下载并安装，重启后“关于”里是新版本。
-- [ ] 提交并推送这次的代码改动，打 tag `macos-v<版本>`。
+
+## 历史发布迁移（2026-11-14）
+
+`SpectreAX/veer-releases` 的 1.0.0–1.0.6 迁入本仓库，保留原 `v<版本>` 标签、更新说明、
+未公证测试版性质和 DMG 字节。只将迁入 appcast 的安装包 URL 改成 Veer 的对应附件，
+EdDSA 签名、长度、版本和原始发布日期均不变。GitHub 新 Release 的发布日期由平台重新生成；
+原日期和校验值保存在 [迁移清单](releases/migration-2026-11-14.json)。
+
+这不发布新版本，也不把当前开发构建冒充为旧版。现有 1.0.0–1.0.6 安装包内仍是旧 `SUFeedURL`；
+归档旧仓库只会保留旧 feed，不会自动重定向到新仓库。要迁移已安装客户端，用户须手动安装一个
+使用新 feed 的后续版本，或在归档前另行发布经过验收、提高版本和 build 号的过渡版本。
+本轮不重签、覆盖历史安装包，不声称实测 Sparkle 升级。
+
+私有仓库的下载需要 GitHub 权限；未带授权的 Sparkle 请求无法访问。公开下载和自动更新需要
+公开仓库或另设公开分发服务，不能将仓库写入令牌内置进客户端。
 
 ## 注意
 - Sparkle 的私钥在登录钥匙串里（账户 `com.yamax.veer`）。换电脑或重装系统前先导出备份：`.build/artifacts/sparkle/Sparkle/bin/generate_keys --account com.yamax.veer -x <文件>`。丢了私钥，已安装的 Veer 就收不到更新了。

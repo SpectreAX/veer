@@ -2,6 +2,23 @@
 
 本计划按 [REQUIREMENTS.md](REQUIREMENTS.md) 和 [SPEC.md](SPEC.md) 推进，取代 [PLAN_2026-10-29.md](PLAN_2026-10-29.md) 的第 2 到第 4 阶段。那份文档的第 1 阶段（可用的代理）已经完成并提交。
 
+## 发布仓库归并（2026-11-14，Codex）
+
+`SpectreAX/veer-releases` 的 1.0.0–1.0.6 共 7 个 Release、14 个附件已迁入 Veer Releases，
+最新保持 1.0.6。DMG 原字节、原签名不变，迁入 appcast 只改下载仓库路径。原始说明、appcast、
+发布日期和校验值保存在 [发布归并记录](releases/README.md)，README 和 Git 历史以非压缩 subtree 保留。
+旧仓库已更新迁移说明并确认 archived=true；旧公开 feed 和最新 DMG 仍返回 HTTP 200、摘要不变。
+
+发布脚本和源 Info.plist 已切换到 Veer；后续发布要求远端已有 `macos-v<版本>` 源码标签。
+Veer 保持私有，新附件需要访问权限，普通 Sparkle 请求不能访问新 feed；旧安装包仍检查旧地址，
+不会因本次归档自动切换。迁移已安装客户端需另行安排新版本/过渡版本或手动安装，不伪造 1.0.6 升级。
+
+本轮完整 verify 通过 448 项（20 UI、111 Proxy、294 Core、23 App）；14 个新附件实际下载并校验，
+7 个原 DMG 的 Ed25519 签名验证通过。脚本隔离检查、plist、语法和 diff 检查通过。
+未发布新的开发构建，未启动真实应用；Sparkle 端到端升级与实机项 NOT VERIFIED。
+交付分支为 `codex/unify-releases`，基于 main@0533e50；主线交付见该分支的提交/PR 记录。
+此前动画修复安全保存在 `codex/macos-motion-profile`（源码6b2b6ff，交付文档至87c6501），未混入历史发布。
+
 ## Android 仓库归档迁移（2026-11-13）
 
 用户要求将 GitHub 的 `SpectreAX/veer-android` 合并到 Veer 的 `android/deprecated/`，并归档原仓库。

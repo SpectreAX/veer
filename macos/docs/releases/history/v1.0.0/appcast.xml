@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Veer</title>
+    <item>
+      <title>Veer 1.0.0</title>
+      <pubDate>Thu, 29 Oct 2026 15:48:50 +0000</pubDate>
+      <sparkle:version>1</sparkle:version>
+      <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<p>Veer 1.0.0 测试版 · Test build</p>
+<ul>
+<li>这是第一个公开的测试版本，还没有经过公证。 / First test build; not notarized yet.</li>
+</ul>]]></description>
+      <enclosure url="https://github.com/SpectreAX/veer-releases/releases/download/v1.0.0/Veer-1.0.0.dmg" type="application/octet-stream" sparkle:edSignature="WFO3UxvAH8+EGFiVVYqsiiLe/UItPCDgkCmnO1yswM+PM1bn++ilR5+Zr4UYjE56mbA4Ih18KNDJZxp8xPBKDg==" length="23798741" />
+    </item>
+  </channel>
+</rss>
