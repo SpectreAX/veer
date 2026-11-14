@@ -43,11 +43,22 @@ EdDSA 签名、长度、版本和原始发布日期均不变。GitHub 新 Releas
 
 这不发布新版本，也不把当前开发构建冒充为旧版。现有 1.0.0–1.0.6 安装包内仍是旧 `SUFeedURL`；
 归档旧仓库只会保留旧 feed，不会自动重定向到新仓库。要迁移已安装客户端，用户须手动安装一个
-使用新 feed 的后续版本，或在归档前另行发布经过验收、提高版本和 build 号的过渡版本。
+使用新 feed 的后续版本，或通过经过验收、提高版本和 build 号的过渡版本完成自动迁移。
 本轮不重签、覆盖历史安装包，不声称实测 Sparkle 升级。
 
-私有仓库的下载需要 GitHub 权限；未带授权的 Sparkle 请求无法访问。公开下载和自动更新需要
-公开仓库或另设公开分发服务，不能将仓库写入令牌内置进客户端。
+用户随后明确选择公开 Veer，仓库已改为公开，新 feed 和附件无需 GitHub 授权即可访问。
+每次发布仍须检查匿名下载和 appcast 中的 URL；仓库公开不会修改已安装客户端内置的旧更新地址。
+
+## 已安装客户端的更新源过渡（下次新版发布）
+
+本次只确认公开访问，未创建过渡版本。下一次获得用户发布授权时：
+
+1. 按本清单验收新版本，版本及 build 高于 1.0.6 / 7，包内使用 Veer 的新 feed，沿用原 Sparkle 公钥。
+2. 只在 Veer Releases 发布，匿名下载并核对新 appcast 的版本、签名、长度和 DMG URL。
+3. 如需让仍检查旧源的客户端自动迁移，短暂解除 `veer-releases` 归档，仅将其 latest Release 的
+   `appcast.xml` 更新为新 appcast，指向 Veer 中的新 DMG；不移动旧标签、不覆盖旧 DMG、不另建旧仓库 Release。
+4. 验证旧 feed 返回新版本、匿名下载与签名正确，立即恢复旧仓库归档。
+5. 由用户在旧 Veer 上检查、下载并安装，重启后确认版本和新 feed。没有实际运行就保持 NOT VERIFIED。
 
 ## 注意
 - Sparkle 的私钥在登录钥匙串里（账户 `com.yamax.veer`）。换电脑或重装系统前先导出备份：`.build/artifacts/sparkle/Sparkle/bin/generate_keys --account com.yamax.veer -x <文件>`。丢了私钥，已安装的 Veer 就收不到更新了。

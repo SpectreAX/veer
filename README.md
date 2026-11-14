@@ -15,8 +15,8 @@ macOS 版独立构建，不依赖其他仓库：`cd macos && scripts/build-mihom
 安装包和版本说明统一放在本仓库的 [Releases](https://github.com/SpectreAX/veer/releases)。
 原 `SpectreAX/veer-releases` 的 1.0.0–1.0.6 按原版本迁入，安装包保持原样；这是历史发布迁移，
 不包含之后的动画修复。原仓库转为只读归档，保留旧下载链接。
-Veer 保持私有，迁入后的下载需要仓库访问权限，普通 Sparkle 请求无法访问新 feed；
-公开下载与自动更新需另行确定分发方式。旧版本内置的旧更新地址不会自动切换。
+Veer 已公开，安装包和 Sparkle 更新源无需登录即可访问。
+旧版本内置的旧更新地址不会自动切换，仍可从归档仓库获取原 1.0.6 更新。
 
 迁入的历史版本仍使用原 `v<版本>` 标签；后续 macOS 发布使用源码标签 `macos-v<版本>`。
 发布流程见 [`macos/docs/RELEASE.md`](macos/docs/RELEASE.md)，校验和与迁移边界见
