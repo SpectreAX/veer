@@ -160,7 +160,7 @@
       "destination_published_at": "2026-11-14T05:40:40Z"
     }
   ],
-  "destination_visibility": "private",
+  "destination_visibility": "public",
   "legacy_archived": true,
   "legacy_notice_commit": "76f048bb836cc4f8c36308dd8f856b598f568616",
   "verification": {
@@ -170,7 +170,23 @@
     "test_count": 448,
     "old_public_feed_after_archive": "HTTP 200, original SHA-256",
     "old_latest_dmg_after_archive": "HTTP 200, original SHA-256",
-    "new_anonymous_feed": "HTTP 404 (private repository)",
-    "sparkle_end_to_end": "NOT VERIFIED"
+    "new_anonymous_feed": "HTTP 200 (public repository, no credentials)",
+    "sparkle_end_to_end": "NOT VERIFIED",
+    "new_anonymous_feed_at_initial_copy": "HTTP 404 (private repository)",
+    "anonymous_destination_assets_verified": 14
+  },
+  "destination_visibility_at_initial_copy": "private",
+  "legacy_public_notice_commit": "987b14e5b58b9cd083008f071ca9bd04e1fd877b",
+  "visibility_confirmation": {
+    "date": "2026-11-14",
+    "user_decision": "Make full source/history public for public downloads and update hosting",
+    "destination_public": true,
+    "legacy_archived": true,
+    "anonymous_asset_downloads": 14,
+    "ed25519_signatures_verified": 7,
+    "latest_dmg_integrity_and_bundle_signature": "PASS",
+    "published_bundle_feed": "https://github.com/SpectreAX/veer-releases/releases/latest/download/appcast.xml",
+    "installed_client_migration": "NOT VERIFIED; needs a later transition version",
+    "full_tests_rerun": 448
   }
 }

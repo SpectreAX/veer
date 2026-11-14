@@ -23,20 +23,25 @@ DMG 放在 GitHub Releases，不将约 169 MB 的历史二进制加入 Git。迁
 手动安装新包或先发过渡版本；不能复用 1.0.6/build 7 来伪造升级。旧客户端的 Sparkle 端到端迁移
 为 **NOT VERIFIED**，本轮不启动真实应用、不替换用户安装。
 
-本次保留 Veer 的私有状态，下载和新 feed 均需要 GitHub 权限，现有普通 Sparkle 请求不能使用；
-没有将含完整源码及历史的仓库改为公开。公开分发需要用户另外确定方式。
+用户随后明确选择公开 Veer，已将包含完整源码及 Git 历史（含 Android 归档）的仓库改为公开。
+新 feed 和安装包无需 GitHub 登录或令牌即可访问，旧仓库继续保留只读归档和原公开下载。
 
 ## 本次检查
 
 7 个历史 Release 已发布，最新为 1.0.6；14 个新附件已实际下载，大小和 SHA-256 均符合预期。
 7 个 DMG 使用 Info.plist 中的公钥验证 Ed25519 签名全部通过。原始提交可达，subtree 文件树一致，
 标签未移动。旧仓库归档状态已确认，归档后的旧公开 feed 和最新 DMG 均 HTTP 200、摘要不变；
-新私有 feed 的匿名请求为 HTTP 404，认证下载通过。
+最初私有状态时新 feed 匿名请求为 HTTP 404；在收到公开授权并更改可见性后，重新检查匿名下载。
+公开后全部 14 个附件及新 latest feed 均匿名 HTTP 200，大小和 SHA-256 正确，7 个 DMG 的
+Ed25519 签名通过。最新 1.0.6 DMG 完整性及深度严格包签名通过；只读挂载检查确认 build 7、
+内置旧 feed，随后已卸载，没有启动应用。旧 feed 内容不变，旧仓库说明已更正为公开并确认归档。
 
 本轮完整 `verify.sh`：448 项通过（20 UI + 111 Proxy + 294 Core + 23 App），格式、严格 lint 和构建通过。
 脚本语法、plist、diff 检查和隔离发布脚本检查通过；隔离检查替代构建、签名和上传，验证无 `--publish`
 不发布，以及新 URL、源码标签要求、显式 latest 和发布参数。没有新的产品 UI 改动，未重复视觉审查。
 本地证据在忽略的 `.codex/local/release-migration-20261114/`，没有将安装包或本机凭据加入 Git。
+公开确认这一步再次运行完整 verify，仍为 448 项通过；匿名访问、签名和挂载记录位于
+`.codex/local/release-public-20261114/`。既有客户端过渡步骤见 [发布清单](../RELEASE.md)，端到端升级仍 NOT VERIFIED。
 
 依据：[Sparkle feed 配置](https://sparkle-project.org/documentation/publishing/#setting-the-feed-programmatically)、
 [GitHub 仓库归档规则](https://docs.github.com/en/repositories/archiving-a-github-repository/archiving-repositories)。

@@ -25,7 +25,8 @@
   各平台独立构建；归档内容不加入当前客户端的构建。VeerCore 的共同修复按需手动移植。
 - macOS 安装包和 appcast 统一在 `SpectreAX/veer` 的 Releases 发布；旧 `veer-releases` 的
   1.0.0–1.0.6 保留原包和原标签，原仓库只读归档。后续使用已推送的 `macos-v<版本>` 源码标签。
-  迁移边界（私有仓库访问、已安装客户端仍用旧 feed）见 `docs/releases/README.md`。
+  用户已明确同意将 Veer 完整源码及 Git 历史（含 Android 归档）公开，安装包和新 feed 无需登录。
+  已安装客户端仍用旧 feed，迁移边界见 `docs/releases/README.md`。
 - 目标是帮助不熟悉 YAML 的订阅用户；原生主窗口和 Agent 是核心界面。
   macOS 免费、没有试用检查；商店版和移动端内核选型是后续独立工作。
 - 一个构建支持 macOS 14 起的系统；新系统的 Glass API 留在 VeerUI，并保留回退。
