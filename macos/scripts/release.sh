@@ -1,7 +1,7 @@
 #!/bin/zsh
 # Prepares a release: the DMG, its Sparkle signature and dist/appcast.xml with this version.
 # Nothing leaves this Mac unless --publish is given; then both go to a GitHub release
-# v<version> on SpectreAX/veer-releases, where SUFeedURL reads releases/latest/download/appcast.xml.
+# macos-v<version> on SpectreAX/veer, where SUFeedURL reads releases/latest/download/appcast.xml.
 #   scripts/release.sh [--notes notes.html] [--publish]
 set -eu
 cd "${0:A:h}/.."
@@ -13,15 +13,16 @@ while (( $# )); do
     *) print -u2 "未知参数：$1"; exit 1 ;;
   esac
 done
-repo=SpectreAX/veer-releases
+repo=SpectreAX/veer
 dmg="$(scripts/make-dmg.sh)"
 info="$PWD/dist/Veer.app/Contents/Info.plist"
 version="$(plutil -extract CFBundleShortVersionString raw "$info")"
 build="$(plutil -extract CFBundleVersion raw "$info")"
 minimum="$(plutil -extract LSMinimumSystemVersion raw "$info")"
+tag="macos-v$version"
 # The EdDSA key generate_keys stored in the login keychain under this account.
 signature="$(.build/artifacts/sparkle/Sparkle/bin/sign_update --account com.yamax.veer "$dmg")"
-url="https://github.com/$repo/releases/download/v$version/${dmg:t}"
+url="https://github.com/$repo/releases/download/$tag/${dmg:t}"
 cat > dist/appcast.xml <<XML
 <?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
@@ -42,5 +43,5 @@ XML
 print -r -- "$dmg"
 print -r -- "$PWD/dist/appcast.xml"
 if $publish; then
-  gh release create "v$version" "$dmg" dist/appcast.xml --repo "$repo" --title "Veer $version" --notes "${notes:-Veer $version}"
+  gh release create "$tag" "$dmg" dist/appcast.xml --repo "$repo" --verify-tag --latest --title "Veer $version" --notes "${notes:-Veer $version}"
 fi

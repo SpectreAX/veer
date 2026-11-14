@@ -386,10 +386,10 @@ Agent 是 Veer 的主要功能，所以除了 Agent 页，它在每一页右侧�
 - **颜色：** 沿用现有的设计令牌，浅色和深色都要检查。Veer 自己选的文字颜色对比度至少 4.5:1，包括选中卡片的浅绿底上；玻璃上的按钮以实际渲染为准（玻璃会提亮底色）。绿色放在文字或勾选标记后面用 `accentFill` 配白色，作为页面上的文字或小图标用 `veerAccent`，两者在深色下不同。系统设置了“提高对比度”时用更强的一组。延迟颜色：小于 200ms 为好，200 到 500ms 为一般，大于 500ms 为差，超时用红色。
 
 ## 11. 更新、备份与诊断
-- **Sparkle 2：** 用 SPM 依赖。`SUFeedURL` 是 `https://github.com/SpectreAX/veer-releases/releases/latest/download/appcast.xml`；`SUPublicEDKey` 写在 Info.plist 里。每天检查一次，有更新时先问用户再安装。
+- **Sparkle 2：** 用 SPM 依赖。`SUFeedURL` 是 `https://github.com/SpectreAX/veer/releases/latest/download/appcast.xml`；`SUPublicEDKey` 写在 Info.plist 里。每天检查一次，有更新时先问用户再安装。私有仓库的附件需要 GitHub 授权，普通 Sparkle 请求无法直接访问。
 - **备份（应做）：** “文件 → 备份…”导出一个 zip，包含 `profiles/`、`routing/`、`threads/`、设置（不含 API Key），订阅链接可选（默认不含）。恢复前显示将覆盖哪些内容，确认后再执行。
 - **诊断包（应做）：** “关于 → 导出诊断包”生成一个 zip，包含最近的日志、匿名化后的生效配置、版本、系统版本、内核版本，不含任何密钥和订阅链接。导出前先预览内容。
-- **发布脚本：** `scripts/make-dmg.sh` 生成 `dist/Veer-<版本>.dmg`（设置 `VEER_NOTARY_PROFILE` 时公证并装订）；`scripts/release.sh` 用 `sign_update --account com.yamax.veer` 签名、写 `dist/appcast.xml`，加 `--publish` 才上传到 `SpectreAX/veer-releases` 的 `v<版本>` release。appcast 只放最新一版。用 Developer ID 签名时，`build-app.sh` 自动加上 hardened runtime 和时间戳。
+- **发布脚本：** `scripts/make-dmg.sh` 生成 `dist/Veer-<版本>.dmg`（设置 `VEER_NOTARY_PROFILE` 时公证并装订）；`scripts/release.sh` 用 `sign_update --account com.yamax.veer` 签名、写 `dist/appcast.xml`，加 `--publish` 才上传到 `SpectreAX/veer` 的 `macos-v<版本>` release，要求该源码标签已经推送。迁移的 1.0.0–1.0.6 保留原 `v<版本>` 标签及安装包。appcast 只放最新一版。用 Developer ID 签名时，`build-app.sh` 自动加上 hardened runtime 和时间戳。
 
 ## 12. 测试
 - **单元测试：**
