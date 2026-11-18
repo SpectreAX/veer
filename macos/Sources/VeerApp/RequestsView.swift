@@ -66,6 +66,7 @@ struct RequestsView: View {
     private func table(_ shown: [ClosedRequest]) -> some View {
         ConnectionsTable(rows: shown.map(\.row), closed: shown, selection: $selection,
                          ask: { row in agent.open(asking: String(localized: "为什么 \(row.host) 走了“\(row.policy)”？")) },
-                         addRule: { addingRule = $0 })
+                         addRule: { addingRule = $0 },
+                         testRoute: { store.testRoute($0) })
     }
 }

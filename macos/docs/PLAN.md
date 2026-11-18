@@ -2,6 +2,13 @@
 
 本计划按 [REQUIREMENTS.md](REQUIREMENTS.md) 和 [SPEC.md](SPEC.md) 推进，取代 [PLAN_2026-10-29.md](PLAN_2026-10-29.md) 的第 2 到第 4 阶段。那份文档的第 1 阶段（可用的代理）已经完成并提交。
 
+## 分流测试（2026-11-18，Claude）
+
+- 评估 honk（daeuniverse/honk）后，借鉴它的路由模拟：工具 → 分流测试（SPEC 5.10）。honk 是 Linux eBPF、GPL-3.0、早期 alpha，不能当内核，也不能用它的代码，只借鉴想法。
+- `VeerCore/RouteTrace.swift`：按 Mihomo 的规则逐条三值判断（匹配 / 不匹配 / 无法判断及原因），AND/OR/NOT 三值组合，DST-PORT、NETWORK、规则集（domain / ipcidr / classical、MetaCubeX 地理数据集）。`VeerProxy/RouteTestSource.swift`：按启动内核的方式生成配置，读内核文件夹里的 GeoSite.dat / geoip.metadb 和规则集文件（只读内核文件夹内），MRS 读不了。需要 IP 时经阿里 DoH 解析一次（隐私设置里已写明）。连接页、请求页的右键菜单和选中后的操作加“测试分流”。
+- 本会话检查：verify.sh 通过（531 项，新增 RouteTraceTests 9、RouteTestSourceTests 2、RouteTestTests 3）；dist 重建并签名；截图 `dist/snapshots/2026-11-18-235250` 新增 09z-route-test、24o-narrow-route，看过中英、浅深、窄窗口和工具页；设计审查无 Critical/Major，修了 4 条 Minor（进度指示、Esc 取消、无命中时的文案、显示菜单里工具子页的顺序）。
+- 未验证：键盘 Tab 顺序与 VoiceOver、面板输入框里 Return 不触发“测试”、1440 宽窗口、macOS 14；`rules/` 下按 URL MD5 找规则集文件的约定没有在本机文件上得到印证（找不到时如实报告读不到）。
+
 ## macOS 26 接口收回 VeerUI（2026-11-18，Claude）
 
 - 设计审查指出 `TopRowBar`、`AgentPanel`、`ConversationView` 在 VeerApp 里直接调用 `safeAreaBar`、`scrollEdgeEffectStyle`（违反 CLAUDE.md 第 4 条）。新增 `VeerUI/ScrollEdge.swift`：`ScrollEdge.available`、`softScrollEdge(_:)`、`scrollEdgeBar(edge:spacing:content:)`（macOS 26 之前为普通 `safeAreaInset`）；删除未使用的 `softTopScrollEdge()`。VeerApp 里不再有 `#available(macOS 26`。

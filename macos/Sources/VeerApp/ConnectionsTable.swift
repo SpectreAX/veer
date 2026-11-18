@@ -12,6 +12,8 @@ struct ConnectionsTable: NSViewRepresentable {
     @Binding var selection: Set<ConnectionRow.ID>
     var ask: (ConnectionRow) -> Void
     var addRule: (ConnectionRow) -> Void
+    /// Opens the route tester on the row's destination; the menu leaves it out when nil.
+    var testRoute: ((ConnectionRow) -> Void)?
     /// Nil where there is nothing left to close.
     var close: ((Set<ConnectionRow.ID>) -> Void)?
 
@@ -227,6 +229,7 @@ struct ConnectionsTable: NSViewRepresentable {
             let menu = NSMenu()
             menu.addItem(item(String(localized: "问 AI：为什么这样走？"), action: #selector(askAboutRoute)))
             menu.addItem(item(String(localized: "为这个主机添加规则…"), action: #selector(addHostRule)))
+            if parent.testRoute != nil { menu.addItem(item(String(localized: "测试分流"), action: #selector(testHostRoute))) }
             menu.addItem(.separator())
             menu.addItem(item(String(localized: "复制主机"), action: #selector(copyContextHosts)))
             if parent.close != nil {
@@ -245,6 +248,7 @@ struct ConnectionsTable: NSViewRepresentable {
         private var contextRow: ConnectionRow? { rows.first { contextIDs.contains($0.id) } }
         @objc private func askAboutRoute() { if let row = contextRow { parent.ask(row) } }
         @objc private func addHostRule() { if let row = contextRow { parent.addRule(row) } }
+        @objc private func testHostRoute() { if let row = contextRow { parent.testRoute?(row) } }
         @objc private func copyContextHosts() { copy(contextIDs) }
         @objc private func closeContextConnections() { parent.close?(contextIDs) }
 
