@@ -14,7 +14,7 @@ public enum Diagnostics {
     }
 
     public static func collect(appVersion: String, coreVersion: String?, settings: RuntimeSettings, state: String?,
-                               effectiveConfig: String?, logs: [String], coreTail: [String]) -> [Item] {
+                               effectiveConfig: String?, logs: [String], coreTail: [String], startup: String? = nil) -> [Item] {
         let system = ProcessInfo.processInfo.operatingSystemVersionString
         var info = """
         Veer \(appVersion)
@@ -35,6 +35,8 @@ public enum Diagnostics {
         }
         items.append(Item(name: "logs.txt", text: logs.suffix(500).joined(separator: "\n")))
         if !coreTail.isEmpty { items.append(Item(name: "core-output.txt", text: coreTail.joined(separator: "\n"))) }
+        // How long each step of the latest start took (`StartupTimeline`).
+        if let startup, !startup.isEmpty { items.append(Item(name: "startup.txt", text: startup + "\n")) }
         return items
     }
 

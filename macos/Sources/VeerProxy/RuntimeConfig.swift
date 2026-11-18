@@ -134,27 +134,12 @@ public enum RuntimeConfig {
             guard case .mapping(let mapping)? = try? Yams.compose(yaml: text), let section = mapping[Node("dns")] else { return nil }
             dns = section
         }
-        var rules = blocks["rules"]
-        let leading = leadingRules(settings, hot: hot, quoted: true)
-        if !leading.isEmpty {
-            if var text = rules {
-                for rule in leading.reversed() {
-                    guard let next = TopLevelBlocks.prepending(rule, toSequence: text) else { return nil }
-                    text = next
-                }
-                rules = text
-            } else {
-                rules = "rules:\n" + leading.map { "  - \($0)\n" }.joined()
-            }
-        }
-        var providers = blocks["rule-providers"]
-        if let hot {
-            if let text = providers {
-                guard let merged = TopLevelBlocks.appending(hot.providerEntries, toMapping: text) else { return nil }
-                providers = merged
-            } else {
-                providers = "rule-providers:\n" + hot.providerEntries.map { "  \($0)\n" }.joined()
-            }
+        let rules: String?, providers: String?
+        do {
+            rules = try rulesBlock(blocks["rules"], leading: leadingRules(settings, hot: hot, quoted: true))
+            providers = try providersBlock(blocks["rule-providers"], hot: hot)
+        } catch is NotPlain {
+            return nil
         }
         let dropped = Set(removed + overridden)
         var output = ""
@@ -168,6 +153,25 @@ public enum RuntimeConfig {
         let ours = overrides(settings, controllerPort: controllerPort, secret: secret, profileDNS: dns, hasGeodataSource: blocks["geox-url"] != nil)
         output += "# Veer\n" + ConfigImporter.readableUnicode(try Yams.serialize(node: Node(ours), allowUnicode: true))
         return output
+    }
+
+    /// A section written in a way that cannot be added to as text (`rules: [a, b]`).
+    private struct NotPlain: Error {}
+
+    /// The profile's `rules` with Veer's rules first; nil when there are neither.
+    private static func rulesBlock(_ block: String?, leading: [String]) throws -> String? {
+        guard !leading.isEmpty else { return block }
+        guard let block else { return "rules:\n" + leading.map { "  - \($0)\n" }.joined() }
+        guard let text = TopLevelBlocks.prepending(leading, toSequence: block) else { throw NotPlain() }
+        return text
+    }
+
+    /// The profile's `rule-providers` with the hot rule sets added.
+    private static func providersBlock(_ block: String?, hot: HotRuleSets?) throws -> String? {
+        guard let hot else { return block }
+        guard let block else { return "rule-providers:\n" + hot.providerEntries.map { "  \($0)\n" }.joined() }
+        guard let merged = TopLevelBlocks.appending(hot.providerEntries, toMapping: block) else { throw NotPlain() }
+        return merged
     }
 
     /// The whole profile parsed and written again: for text the faster path cannot cut safely.
@@ -324,21 +328,25 @@ struct TopLevelBlocks {
         return lines.joined(separator: "\n") + "\n"
     }
 
-    /// `rule` as the first item of a block-style sequence (`rules:` then `- …` lines), without a
-    /// second copy of it. Nil for anything else, such as `rules: [a, b]`.
-    static func prepending(_ rule: String, toSequence block: String) -> String? {
+    /// `rules`, in order, as the first items of a block-style sequence (`rules:` then `- …`
+    /// lines), without a second copy of any. Nil for anything else, such as `rules: [a, b]`.
+    /// All at once: one pass per rule over ten thousand lines was a tenth of a second at each start.
+    static func prepending(_ rules: [String], toSequence block: String) -> String? {
         var lines = block.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        guard let header = lines.first, let colon = header.firstIndex(of: ":"),
-              header[header.index(after: colon)...].trimmingCharacters(in: .whitespaces).isEmpty
-                || header[header.index(after: colon)...].trimmingCharacters(in: .whitespaces).hasPrefix("#") else { return nil }
-        let items = lines.dropFirst().filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty && !$0.trimmingCharacters(in: .whitespaces).hasPrefix("#") }
-        let indent = items.first.map { String($0.prefix { $0 == " " }) } ?? "  "
-        guard items.allSatisfy({ $0.hasPrefix(indent + "- ") || $0.hasPrefix(indent + "  ") }) else { return nil }
-        lines.removeAll { line in
-            let item = line.trimmingCharacters(in: .whitespaces)
-            return item == "- \(rule)" || item == "- '\(rule)'" || item == "- \"\(rule)\""
+        guard let header = lines.first, let colon = header.firstIndex(of: ":") else { return nil }
+        let rest = header[header.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+        guard rest.isEmpty || rest.hasPrefix("#") else { return nil }
+        let items = lines.dropFirst().map { $0.trimmingCharacters(in: .whitespaces) }
+        let indent = zip(lines.dropFirst(), items).first { !$0.1.isEmpty && !$0.1.hasPrefix("#") }.map { String($0.0.prefix { $0 == " " }) } ?? "  "
+        for (line, item) in zip(lines.dropFirst(), items) where !item.isEmpty && !item.hasPrefix("#") {
+            guard line.hasPrefix(indent + "- ") || line.hasPrefix(indent + "  ") else { return nil }
         }
-        lines.insert(indent + "- " + rule, at: 1)
+        let copies = Set(rules.flatMap { ["- \($0)", "- '\($0)'", "- \"\($0)\""] })
+        var kept = [header]
+        kept.reserveCapacity(lines.count + rules.count)
+        kept += rules.map { indent + "- " + $0 }
+        for (line, item) in zip(lines.dropFirst(), items) where !copies.contains(item) { kept.append(line) }
+        lines = kept
         return lines.joined(separator: "\n")
     }
 }

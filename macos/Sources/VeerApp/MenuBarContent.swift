@@ -8,7 +8,8 @@ struct MenuBarLabel: View {
 
     var body: some View {
         HStack(spacing: Spacing.xs) {
-            Image(systemName: "arrow.triangle.branch")
+            // Veer's own mark, a template the system tints; dimmed while the core is not running.
+            Image(nsImage: MenuBarMark.image)
                 .opacity(store.isRunning ? 1 : 0.5)
             if store.showRateInMenuBar, store.isRunning {
                 Text(verbatim: "↑\(Format.rate(store.uploadRate)) ↓\(Format.rate(store.downloadRate))")

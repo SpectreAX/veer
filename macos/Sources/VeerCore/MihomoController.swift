@@ -103,6 +103,33 @@ public struct MihomoController: Sendable {
         return providers.providers
     }
 
+    /// A node list the core reads from a file or a link. Groups appear here too, as "Compatible".
+    public struct ProxyProviderState: Sendable, Equatable, Decodable {
+        public let updatedAt: String?
+        public let vehicleType: String?
+
+        public var loaded: Bool { updatedAt.map { !$0.hasPrefix("0001-01-01") } ?? false }
+    }
+
+    public func proxyProviders() async throws -> [String: ProxyProviderState] {
+        struct Providers: Decodable { let providers: [String: ProxyProviderState] }
+        let providers: Providers = try await decode(request("GET", "/providers/proxies"))
+        return providers.providers
+    }
+
+    /// Whether every rule set and node list has loaded. While a starting core reads them it takes
+    /// no traffic at all, and it reads the rule sets last. One that failed never counts as loaded,
+    /// so false can also mean "finished, with failures": `TunnelProbe` tells those apart.
+    public func providersLoaded() async throws -> Bool {
+        async let rules = ruleProviders()
+        async let nodes = proxyProviders()
+        return try await Self.allLoaded(rules: rules, nodes: nodes)
+    }
+
+    static func allLoaded(rules: [String: RuleProviderState], nodes: [String: ProxyProviderState]) -> Bool {
+        rules.values.allSatisfy(\.loaded) && nodes.values.filter { $0.vehicleType != "Compatible" }.allSatisfy(\.loaded)
+    }
+
     /// The core's open connections (`GET /connections`); closed ones are gone from it.
     public func closeAllConnections() async throws {
         try await expectNoContent(request("DELETE", "/connections"))

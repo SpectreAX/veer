@@ -23,7 +23,7 @@ public enum EditReplay {
         }
     }
 
-    public enum Outcome: Sendable, Equatable {
+    public enum Outcome: Sendable, Equatable, Codable {
         case applied
         /// Applied, with a difference the user should know about.
         case adjusted(String)
@@ -33,20 +33,20 @@ public enum EditReplay {
         case conflict(String)
     }
 
-    public struct ItemResult: Sendable, Identifiable, Equatable {
+    public struct ItemResult: Sendable, Identifiable, Equatable, Codable {
         public var id: Int { item.id }
         /// The change as it was first written.
         public let item: ChangeItem
         public let outcome: Outcome
     }
 
-    public struct EditResult: Sendable, Identifiable, Equatable {
+    public struct EditResult: Sendable, Identifiable, Equatable, Codable {
         public let id: UUID
         public let prompt: String
         public let items: [ItemResult]
     }
 
-    public struct Result: Sendable, Equatable {
+    public struct Result: Sendable, Equatable, Codable {
         public let text: String
         public let edits: [EditResult]
 

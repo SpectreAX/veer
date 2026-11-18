@@ -12,12 +12,11 @@ struct SplitDetailViewport<Content: View>: View {
         GeometryReader { geometry in
             let width = SplitDetailLayout.visibleWidth(proposed: geometry.size.width, split: splitWidth,
                                                        leading: geometry.frame(in: .named(coordinateSpace)).minX)
+            let target = targetSplitWidth.map { max(0, $0 - geometry.frame(in: .named(coordinateSpace)).minX) }
             VisibleDetailLayout(width: width) {
-                content.environment(\.pageTargetWidth, targetSplitWidth.map {
-                    max(0, $0 - geometry.frame(in: .named(coordinateSpace)).minX)
-                })
+                content.environment(\.pageTargetWidth, target)
             }
-                .clipped()
+                .clipShape(PageClip())
                 .animation(nil, value: width)
         }
     }
@@ -34,6 +33,13 @@ extension EnvironmentValues {
 struct VisibleDetailLayout: Layout {
     var width: CGFloat
 
+    /// No alignment guides of its own: the default placed every subview again to find them.
+    func explicitAlignment(of guide: HorizontalAlignment, in bounds: CGRect, proposal: ProposedViewSize,
+                           subviews: Subviews, cache: inout ()) -> CGFloat? { nil }
+
+    func explicitAlignment(of guide: VerticalAlignment, in bounds: CGRect, proposal: ProposedViewSize,
+                           subviews: Subviews, cache: inout ()) -> CGFloat? { nil }
+
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let proposed = proposal.replacingUnspecifiedDimensions(by: .zero)
         return CGSize(width: min(width, proposed.width), height: proposed.height)
@@ -47,5 +53,17 @@ struct VisibleDetailLayout: Layout {
 enum SplitDetailLayout {
     nonisolated static func visibleWidth(proposed: CGFloat, split: CGFloat, leading: CGFloat) -> CGFloat {
         max(0, min(proposed, split - leading))
+    }
+}
+
+/// The page's clip. On macOS 26 only at the sides and the bottom: above, scrolling content passes
+/// under the window's top row, where the system softens it (see `TopRowBar`). Before macOS 26 nothing
+/// softens it, so the page is clipped below the row as well.
+struct PageClip: Shape {
+    nonisolated static let softensAbove: Bool = { if #available(macOS 26, *) { true } else { false } }()
+
+    nonisolated func path(in rect: CGRect) -> Path {
+        let above: CGFloat = Self.softensAbove ? MainView.topRowHeight : 0
+        return Path(CGRect(x: rect.minX, y: rect.minY - above, width: rect.width, height: rect.height + above))
     }
 }

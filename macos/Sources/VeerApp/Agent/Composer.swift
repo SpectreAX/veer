@@ -102,6 +102,11 @@ struct ComposerView: View {
             .padding(.horizontal, Spacing.lg)
             .padding(.top, Spacing.md)
             .padding(.bottom, Spacing.sm)
+            // One glass shape for the field, its controls and its padding, applied after the padding so
+            // it covers all of them. The conversation scrolls on behind it and the glass blurs it, on the
+            // Agent page and in the panel alike. The system adapts the glass to the window's state,
+            // the appearance, and the transparency and contrast settings; nothing of Veer's is drawn
+            // over it. Before macOS 26, the regular material, which blurs too.
             .glassSurface(in: RoundedRectangle(cornerRadius: Radius.large + Spacing.xs, style: .continuous))
             .overlay {
                 if droppingFiles {
@@ -351,6 +356,12 @@ struct ComposerTextView: NSViewRepresentable {
         textView.onMarkedTextChange = { [weak coordinator] composing in coordinator?.setComposing(composing) }
         textView.onPasteFiles = { [weak coordinator] in coordinator?.parent.onPasteFiles($0) }
         textView.onPasteImage = { [weak coordinator] in coordinator?.parent.onPasteImage($0) }
+        // A draft put in before the field had its width (an example, "Ask AI") was measured at
+        // width zero and stayed one line tall with its first line cut off; so was any draft when
+        // the panel was resized.
+        textView.onWidthChange = { [weak coordinator, weak textView] in
+            if let textView, textView.frame.width > 0 { coordinator?.recalculate(textView) }
+        }
         // Text only: a text view would otherwise take a dropped file and type its path, before the
         // composer around it could attach it.
         textView.unregisterDraggedTypes()
@@ -370,13 +381,14 @@ struct ComposerTextView: NSViewRepresentable {
         textView.isAutomaticTextReplacementEnabled = false
         textView.textContainerInset = .zero
         textView.textContainer?.lineFragmentPadding = Spacing.xs
-        DispatchQueue.main.async { textView.window?.makeFirstResponder(textView) }
+        textView.concealed = context.environment.panelConcealed
+        coordinator.focus(textView)
         return scroll
     }
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         context.coordinator.parent = self
-        let textView = scroll.documentView as! NSTextView
+        guard let textView = scroll.documentView as? ComposerNSTextView else { return }
         if textView.string != text, !textView.hasMarkedText() {
             textView.string = text
             context.coordinator.recalculate(textView)
@@ -387,15 +399,33 @@ struct ComposerTextView: NSViewRepresentable {
                 replaceRequest = nil
             }
         }
+        let concealed = context.environment.panelConcealed
+        if textView.concealed != concealed {
+            textView.concealed = concealed
+            // Hidden beneath the page, the panel gives up the keyboard; shown, it takes it, as a
+            // panel built on opening did.
+            if !concealed {
+                context.coordinator.focus(textView)
+            } else if textView.window?.firstResponder === textView {
+                textView.window?.makeFirstResponder(nil)
+            }
+        }
         if context.coordinator.focusToken != focusToken {
             context.coordinator.focusToken = focusToken
-            DispatchQueue.main.async { textView.window?.makeFirstResponder(textView) }
+            context.coordinator.focus(textView)
         }
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: ComposerTextView
         var focusToken: Int
+
+        /// Refused while the Agent panel is concealed; a request then waits for it to open, which
+        /// focuses the composer anyway.
+        func focus(_ textView: ComposerNSTextView) {
+            guard !textView.concealed else { return }
+            DispatchQueue.main.async { textView.window?.makeFirstResponder(textView) }
+        }
 
         init(_ parent: ComposerTextView) {
             self.parent = parent
@@ -497,9 +527,20 @@ struct ComposerTextView: NSViewRepresentable {
 /// Reports when an input method starts or finishes composing, which NSTextView does not
 /// announce through textDidChange.
 final class ComposerNSTextView: NSTextView {
+    /// In a closed, opening or closing Agent panel, built beneath the page: it takes no keyboard
+    /// focus, by request, Tab or anything else. SwiftUI's `disabled` does not reach an AppKit view.
+    var concealed = false
     var onMarkedTextChange: ((Bool) -> Void)?
     var onPasteFiles: (([URL]) -> Void)?
     var onPasteImage: ((Data) -> Void)?
+    /// The text wraps to the width, so its height has to be measured again when that changes.
+    var onWidthChange: (() -> Void)?
+
+    override func setFrameSize(_ newSize: NSSize) {
+        let changed = abs(newSize.width - frame.width) > 0.5
+        super.setFrameSize(newSize)
+        if changed { onWidthChange?() }
+    }
 
     /// Without these, a plain text view disables Paste for a clipboard holding only an image, as a
     /// screenshot's does, and `paste` is never called.
@@ -508,6 +549,11 @@ final class ComposerNSTextView: NSTextView {
     }
 
     /// Copied files and images become attachments; SwiftUI has no paste hook for a text view's ⌘V.
+    /// Skipped by Tab; `becomeFirstResponder` refuses a direct request, which does not ask this.
+    override var acceptsFirstResponder: Bool { !concealed && super.acceptsFirstResponder }
+
+    override func becomeFirstResponder() -> Bool { !concealed && super.becomeFirstResponder() }
+
     override func paste(_ sender: Any?) {
         if !readAttachments(from: .general) { super.paste(sender) }
     }

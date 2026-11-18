@@ -9,18 +9,31 @@ import VeerProxy
 /// nodes below keep the room.
 struct ProfileBar: View {
     @Environment(ProxyStore.self) private var store
+    @Environment(\.panelReserve) private var panelReserve
     @State private var pendingDeletion: Profile?
     @State private var details: Profile?
 
     private static let tileWidth: CGFloat = 320
     private static let stackedHeight: CGFloat = 220
 
+    static func rowWidth(count: Int) -> CGFloat {
+        CGFloat(count) * tileWidth + CGFloat(max(0, count - 1)) * Spacing.sm
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
-            ViewThatFits(in: .horizontal) {
+            // In a row the tiles share the width, each at least `tileWidth`, so the row's need is
+            // known; the choice of a row or a stack holds while the Agent panel moves, and the
+            // tiles' widths follow the page in either.
+            SteadyChoice(requiredWidth: Self.rowWidth(count: store.profiles.count)) {
                 HStack(spacing: Spacing.sm) {
                     tiles(width: Self.tileWidth)
                 }
+                // A row only where it would still fit beside the open Agent panel: the same
+                // arrangement with the panel open or closed, so the cards never change places or
+                // jump in width as it moves.
+                .frame(minWidth: 0, idealWidth: Self.rowWidth(count: store.profiles.count) + panelReserve, maxWidth: .infinity)
+            } narrow: {
                 ScrollViewReader { reader in
                     ScrollView {
                         VStack(spacing: Spacing.sm) { tiles(width: nil) }
@@ -94,7 +107,9 @@ private struct ProfileTile: View {
     @Environment(ProxyStore.self) private var store
     let profile: Profile
     let active: Bool
-    /// Fixed in a row; the whole width when stacked.
+    /// The least it takes in a row, where the tiles share the page's width; the whole width when
+    /// stacked. Never a fixed width: the card's edge follows the page's at every frame while the
+    /// Agent panel moves.
     let width: CGFloat?
     let showDetails: () -> Void
     let delete: () -> Void
@@ -135,7 +150,7 @@ private struct ProfileTile: View {
         }
         .padding(.horizontal, Spacing.md)
         .padding(.vertical, Spacing.sm)
-        .frame(minWidth: width, maxWidth: width ?? .infinity)
+        .frame(minWidth: width, idealWidth: width, maxWidth: .infinity)
         .frame(maxHeight: .infinity)
         .background(active ? Color.veerAccent.opacity(0.12) : hovering ? Color.subtleFill : Color.clear,
                     in: RoundedRectangle(cornerRadius: Radius.medium, style: .continuous))

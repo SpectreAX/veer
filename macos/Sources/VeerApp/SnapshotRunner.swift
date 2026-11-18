@@ -312,6 +312,13 @@ enum SnapshotRunner {
             }, view: AnyView(MainView()), agent: { agent in
                 agent.settings.provider = .ollama
             }),
+            Scene(name: "24l-panel-widest-smallest", size: CGSize(width: 860, height: 560), store: {
+                let store = running(panel: true)
+                store.agentPanelWidth = 520
+                return store
+            }, view: AnyView(MainView()), agent: attachmentThread),
+            Scene(name: "24m-panel-wide-sidebar-hidden", size: CGSize(width: 1440, height: 900), store: { running(panel: true) },
+                  view: AnyView(MainView(sidebarVisibility: .detailOnly)), agent: attachmentThread),
             Scene(name: "24c-panel-narrow", size: CGSize(width: 860, height: 640), store: { running(panel: true) }, view: AnyView(MainView()), agent: { agent in
                 agent.settings.provider = .ollama
             }),

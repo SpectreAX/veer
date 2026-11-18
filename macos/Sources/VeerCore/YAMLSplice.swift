@@ -9,7 +9,8 @@ struct SourceLines {
     let endsWithNewline: Bool
 
     init(_ text: String) {
-        newline = text.contains("\r\n") ? "\r\n" : "\n"
+        // The byte first: Foundation's search alone took 30 ms on a large profile.
+        newline = text.utf8.contains(UInt8(ascii: "\r")) && text.contains("\r\n") ? "\r\n" : "\n"
         endsWithNewline = text.hasSuffix("\n")
         var parts = text.components(separatedBy: "\n")
         if endsWithNewline { parts.removeLast() }
@@ -61,12 +62,21 @@ enum YAMLSplice {
             || value.contains(": ") || value.contains(" #") || value.hasSuffix(":")
             || ["true", "false", "yes", "no", "on", "off", "null", "~", "y", "n"].contains(value.lowercased())
             || Double(value) != nil
-        if !plainUnsafe, let parsed = try? Yams.load(yaml: "- " + value) as? [String], parsed == [value] { return value }
+        if !plainUnsafe, let parsed = load("- " + value) as? [String], parsed == [value] { return value }
         let escaped = value.replacingOccurrences(of: "'", with: "''")
         return "'\(escaped)'"
     }
 
     // MARK: rules
+
+    /// Yams' default, read once. Left to itself Yams asks for it on every parse, and each time
+    /// that copies the whole process environment: 0.2 ms, which a parse per rule line of a
+    /// ten-thousand-rule profile turned into seconds at every start. An enum with no state: safe to share.
+    nonisolated(unsafe) static let encoding = Parser.Encoding.default
+
+    static func load(_ yaml: String) -> Any? { try? Yams.load(yaml: yaml, .default, .default, encoding) }
+
+    static func compose(_ yaml: String) -> Node? { try? Yams.compose(yaml: yaml, .default, .default, encoding) }
 
     struct RuleItem {
         var leading: [String]
@@ -93,7 +103,7 @@ enum YAMLSplice {
         guard items.count == expected.count else { return nil }
         for (item, value) in zip(items, expected) {
             let text = String(item.line.dropFirst(indent ?? 0))
-            guard let parsed = try? Yams.load(yaml: text) as? [Any], parsed.count == 1, (parsed[0] as? String) == value else { return nil }
+            guard let parsed = load(text) as? [Any], parsed.count == 1, (parsed[0] as? String) == value else { return nil }
         }
         return (items, String(repeating: " ", count: indent ?? 2))
     }
@@ -177,7 +187,7 @@ enum YAMLSplice {
         let starts = body.filter { !SourceLines.isTrivia(lines.lines[$0]) && SourceLines.indentation(lines.lines[$0]) == indent }
         var remove: [Range<Int>] = [], found = Set<String>()
         for (n, start) in starts.enumerated() {
-            guard let key = (try? Yams.compose(yaml: String(lines.lines[start].dropFirst(indent))))??.mapping?.keys.first?.string else { throw unsafe }
+            guard let key = compose(String(lines.lines[start].dropFirst(indent)))?.mapping?.keys.first?.string else { throw unsafe }
             guard keys.contains(key) else { continue }
             var end = n + 1 < starts.count ? starts[n + 1] : region.end
             // Comments above the next entry belong to it.

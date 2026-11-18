@@ -25,6 +25,9 @@ public struct VeerPaths: Sendable {
     public var secrets: URL { root.appendingPathComponent("secrets.json") }
     /// One "my routing" layer per profile.
     public var routing: URL { root.appendingPathComponent("routing", isDirectory: true) }
+    /// Effective configs kept between launches (`EffectiveConfigCache`). Rebuilt when missing, so
+    /// not part of a backup.
+    public var effectiveCache: URL { root.appendingPathComponent("cache", isDirectory: true).appendingPathComponent("effective", isDirectory: true) }
     /// Agent conversations, one JSON file each.
     public var threads: URL { root.appendingPathComponent("threads", isDirectory: true) }
     /// What was running when Veer last quit, and the proxy settings it replaced.

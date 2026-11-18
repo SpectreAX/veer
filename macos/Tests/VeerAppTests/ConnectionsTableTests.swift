@@ -11,7 +11,7 @@ import VeerCore
         var selection: Set<String> = [first.id]
         let binding = Binding(get: { selection }, set: { selection = $0 })
         func view(_ rows: [ConnectionRow]) -> ConnectionsTable {
-            ConnectionsTable(rows: rows, hiddenColumns: [], selection: binding, ask: { _ in }, addRule: { _ in }, close: { _ in })
+            ConnectionsTable(rows: rows, selection: binding, ask: { _ in }, addRule: { _ in }, close: { _ in })
         }
         let coordinator = view(rows).makeCoordinator()
         let scroll = coordinator.makeScrollView()
@@ -34,7 +34,7 @@ import VeerCore
         var closed: Set<String> = []
         var asked: String?
         var adding: String?
-        let view = ConnectionsTable(rows: rows, hiddenColumns: [], selection: .constant(Set(rows.prefix(2).map(\.id))),
+        let view = ConnectionsTable(rows: rows, selection: .constant(Set(rows.prefix(2).map(\.id))),
                                     ask: { asked = $0.id }, addRule: { adding = $0.id }, close: { closed = $0 })
         let coordinator = view.makeCoordinator()
         let scroll = coordinator.makeScrollView()
@@ -52,14 +52,14 @@ import VeerCore
         withExtendedLifetime(scroll) {}
     }
 
-    @Test func shrinkingRowsWhileChangingColumnsDoesNotLeaveStaleRowAccess() {
+    @Test func shrinkingRowsDoesNotLeaveStaleRowAccess() {
         let rows = metricRows(upload: 0)
         #expect(Set(rows.map(\.id)).count == 600)
-        let view = ConnectionsTable(rows: rows, hiddenColumns: [], selection: .constant([]),
+        let view = ConnectionsTable(rows: rows, selection: .constant([]),
                                     ask: { _ in }, addRule: { _ in }, close: { _ in })
         let coordinator = view.makeCoordinator()
         let scroll = coordinator.makeScrollView()
-        coordinator.update(ConnectionsTable(rows: [], hiddenColumns: ["rule", "chain"], selection: .constant([]),
+        coordinator.update(ConnectionsTable(rows: [], selection: .constant([]),
                                              ask: { _ in }, addRule: { _ in }, close: { _ in }))
         #expect(coordinator.table.numberOfRows == 0)
         #expect(coordinator.tableView(coordinator.table, viewFor: coordinator.table.tableColumns.first, row: 599) == nil)
@@ -75,7 +75,7 @@ import VeerCore
                           uploadRate: 0, downloadRate: 0)
         }
         let rows = (0..<600).map(row)
-        let view = ConnectionsTable(rows: rows, hiddenColumns: [], selection: .constant([rows[100].id]),
+        let view = ConnectionsTable(rows: rows, selection: .constant([rows[100].id]),
                                     ask: { _ in }, addRule: { _ in }, close: { _ in })
         let coordinator = view.makeCoordinator()
         let scroll = coordinator.makeScrollView()
@@ -88,7 +88,7 @@ import VeerCore
         let topID = rows[before].id
         let offset = table.visibleRect.minY - table.rect(ofRow: before).minY
         let updated = [row(-1)] + Array(rows.dropFirst(4))
-        coordinator.update(ConnectionsTable(rows: updated, hiddenColumns: [], selection: view.$selection,
+        coordinator.update(ConnectionsTable(rows: updated, selection: view.$selection,
                                              ask: { _ in }, addRule: { _ in }, close: { _ in }))
         let after = table.row(at: NSPoint(x: 0, y: table.visibleRect.minY))
         #expect(updated[after].id == topID)
@@ -105,22 +105,19 @@ import VeerCore
     @Test func columnsAndKeyboardActionsRetainNativeBehavior() throws {
         let rows = SnapshotRunner.sampleConnections()
         var closed: Set<String> = []
-        var view = ConnectionsTable(rows: rows, hiddenColumns: ["rule", "chain"], selection: .constant([rows[0].id]),
+        var view = ConnectionsTable(rows: rows, selection: .constant([rows[0].id]),
                                     ask: { _ in }, addRule: { _ in }, close: { closed = $0 })
         let coordinator = view.makeCoordinator()
         let scroll = coordinator.makeScrollView()
         let table = coordinator.table
-        #expect(table.tableColumns.filter(\.isHidden).map(\.identifier.rawValue).sorted() == ["chain", "rule"])
-        let host = try #require(table.tableColumns.first)
-        host.width = 200
-        coordinator.update(view)
-        #expect(host.width == 200)
-        view = ConnectionsTable(rows: rows, hiddenColumns: [], selection: view.$selection,
+        let process = try #require(table.tableColumns.dropFirst().first)
+        process.width = 200
+        view = ConnectionsTable(rows: Array(rows.dropLast()), selection: view.$selection,
                                 ask: { _ in }, addRule: { _ in }, close: { closed = $0 })
         coordinator.update(view)
+        // No update takes a column away or puts a dragged width back.
         #expect(table.tableColumns.allSatisfy { !$0.isHidden })
-        // AppKit also redistributes spare width; the manually dragged width must be discarded.
-        #expect(host.width != 200)
+        #expect(process.width == 200)
         let event = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
                                                   windowNumber: 0, context: nil, characters: "\u{7f}",
                                                   charactersIgnoringModifiers: "\u{7f}", isARepeat: false, keyCode: 51))
@@ -134,7 +131,7 @@ import VeerCore
     }
 
     @Test func columnsKeepTheirPlaceAndOnlyTheHostTakesTheSlack() {
-        let view = ConnectionsTable(rows: SnapshotRunner.sampleConnections(), hiddenColumns: [], selection: .constant([]),
+        let view = ConnectionsTable(rows: SnapshotRunner.sampleConnections(), selection: .constant([]),
                                     ask: { _ in }, addRule: { _ in }, close: { _ in })
         let coordinator = view.makeCoordinator()
         let scroll = coordinator.makeScrollView()
@@ -158,7 +155,7 @@ import VeerCore
 
     @Test func liveMetricUpdatesPreserveTheViewportAndReachOffscreenCells() throws {
         let rows = metricRows(upload: 0)
-        let view = ConnectionsTable(rows: rows, hiddenColumns: [], selection: .constant([rows[100].id]),
+        let view = ConnectionsTable(rows: rows, selection: .constant([rows[100].id]),
                                     ask: { _ in }, addRule: { _ in }, close: { _ in })
         let coordinator = view.makeCoordinator()
         let scroll = coordinator.makeScrollView()
@@ -172,7 +169,7 @@ import VeerCore
         let column = table.column(withIdentifier: .init("traffic"))
         let before = try #require((table.view(atColumn: column, row: row, makeIfNecessary: true) as? NSTableCellView)?.textField?.stringValue)
         let updated = metricRows(upload: 100_000)
-        coordinator.update(ConnectionsTable(rows: updated, hiddenColumns: [], selection: view.$selection,
+        coordinator.update(ConnectionsTable(rows: updated, selection: view.$selection,
                                              ask: { _ in }, addRule: { _ in }, close: { _ in }))
         let after = try #require((table.view(atColumn: column, row: row, makeIfNecessary: true) as? NSTableCellView)?.textField?.stringValue)
         #expect(after != before)
@@ -186,7 +183,7 @@ import VeerCore
 
     @Test func changedRowContentStillRefreshesNativeCells() throws {
         let original = metricRows(upload: 0)
-        let view = ConnectionsTable(rows: original, hiddenColumns: [], selection: .constant([]),
+        let view = ConnectionsTable(rows: original, selection: .constant([]),
                                     ask: { _ in }, addRule: { _ in }, close: { _ in })
         let coordinator = view.makeCoordinator()
         let scroll = coordinator.makeScrollView()
@@ -196,7 +193,7 @@ import VeerCore
         let column = table.column(withIdentifier: .init("host"))
         let oldHeight = coordinator.tableView(table, heightOfRow: 0)
         coordinator.update(ConnectionsTable(rows: metricRows(upload: 0, firstHost: "changed.example", firstNetwork: "udp"),
-                                             hiddenColumns: [], selection: .constant([]),
+                                             selection: .constant([]),
                                              ask: { _ in }, addRule: { _ in }, close: { _ in }))
         let cell = try #require(table.view(atColumn: column, row: 0, makeIfNecessary: true) as? NSTableCellView)
         #expect(cell.textField?.stringValue == "changed.example")
@@ -205,7 +202,7 @@ import VeerCore
     }
 
     @Test func preloadedRowsOutsideTheViewportReceiveCurrentMetrics() throws {
-        let view = ConnectionsTable(rows: metricRows(upload: 0), hiddenColumns: [], selection: .constant([]),
+        let view = ConnectionsTable(rows: metricRows(upload: 0), selection: .constant([]),
                                     ask: { _ in }, addRule: { _ in }, close: { _ in })
         let coordinator = view.makeCoordinator()
         let scroll = coordinator.makeScrollView()
@@ -222,7 +219,7 @@ import VeerCore
         table.preparedContentRect = table.visibleRect.union(cachedRect)
         let column = table.column(withIdentifier: .init("traffic"))
         let before = try #require((table.view(atColumn: column, row: cachedRow, makeIfNecessary: true) as? NSTableCellView)?.textField?.stringValue)
-        coordinator.update(ConnectionsTable(rows: metricRows(upload: 200_000), hiddenColumns: [], selection: .constant([]),
+        coordinator.update(ConnectionsTable(rows: metricRows(upload: 200_000), selection: .constant([]),
                                              ask: { _ in }, addRule: { _ in }, close: { _ in }))
         let prepared = try #require((table.view(atColumn: column, row: cachedRow, makeIfNecessary: false) as? NSTableCellView)?.textField?.stringValue)
         #expect(prepared != before)
@@ -240,5 +237,92 @@ import VeerCore
                                                        chains: [], rule: "Match", rulePayload: "", upload: upload, download: 0, start: nil),
                           uploadRate: upload, downloadRate: 0)
         }
+    }
+
+    @Test func aColumnFadesAsThePageEdgePassesItsEnd() {
+        // Inside, or ending on the edge.
+        #expect(ConnectionsTable.trailingAlpha(columnEnd: 300, viewportEnd: 400) == 1)
+        #expect(ConnectionsTable.trailingAlpha(columnEnd: 400.5, viewportEnd: 400) == 1)
+        // Part way past: part way gone, more with every point.
+        let near = ConnectionsTable.trailingAlpha(columnEnd: 405, viewportEnd: 400)
+        let far = ConnectionsTable.trailingAlpha(columnEnd: 412, viewportEnd: 400)
+        #expect(near < 1 && far < near && far > 0)
+        // Cut through: not drawn.
+        #expect(ConnectionsTable.trailingAlpha(columnEnd: 400 + ConnectionsTable.fadeSlack + ConnectionsTable.fadeBand, viewportEnd: 400) == 0)
+        #expect(ConnectionsTable.trailingAlpha(columnEnd: 900, viewportEnd: 400) == 0)
+    }
+
+    @Test func theSameColumnsStayAtEveryWidthAndOnlyThoseThatFitWholeAreDrawn() throws {
+        let view = ConnectionsTable(rows: SnapshotRunner.sampleConnections(), selection: .constant([]),
+                                    ask: { _ in }, addRule: { _ in }, close: { _ in })
+        let coordinator = view.makeCoordinator()
+        let scroll = coordinator.makeScrollView()
+        let table = coordinator.table
+        func drawn() -> [String] {
+            table.fadeTrailingColumns()
+            return table.tableColumns.filter { table.alpha(of: $0) == 1 }.map(\.identifier.rawValue)
+        }
+        func place(width: CGFloat) -> [CGFloat] {
+            scroll.frame = NSRect(x: 0, y: 0, width: width, height: 300)
+            scroll.layoutSubtreeIfNeeded()
+            return table.tableColumns.indices.map { table.rect(ofColumn: $0).minX }
+        }
+        let wide = place(width: 900)
+        #expect(drawn().count == 7)
+        // Beside the Agent panel: every column where it was (the host has given back its slack),
+        // the far ones not drawn, none hidden, and the header fading with its cells.
+        let narrow = place(width: 484)
+        #expect(drawn() == ["host", "process", "traffic", "speed"])
+        #expect(table.tableColumns.allSatisfy { !$0.isHidden })
+        let shift = wide[1] - narrow[1]
+        #expect(zip(wide, narrow).dropFirst().allSatisfy { abs(($0 - $1) - shift) < 0.5 })
+        let chain = try #require(table.tableColumns.last)
+        #expect((chain.headerCell as? FadingHeaderCell)?.alpha == 0)
+        let cell = try #require(coordinator.tableView(table, viewFor: chain, row: 0))
+        #expect(cell.alphaValue == 0)
+        // Scrolled sideways to the end, the far columns are the ones in view.
+        scroll.contentView.scroll(to: NSPoint(x: table.frame.width - scroll.contentView.bounds.width, y: 0))
+        #expect(drawn().contains("chain"))
+        // Wide again: all back, with nothing rebuilt.
+        _ = place(width: 900)
+        #expect(drawn().count == 7 && (chain.headerCell as? FadingHeaderCell)?.alpha == 1)
+        withExtendedLifetime(scroll) {}
+    }
+
+    @Test func endedRequestsShowWhenEachEndedAndOfferNoClosing() throws {
+        let rows = SnapshotRunner.sampleConnections()
+        let ended = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let requests = rows.enumerated().map { ClosedRequest(row: $1, closedAt: ended, fromLog: $0 == 1) }
+        let view = ConnectionsTable(rows: rows, closed: requests, selection: .constant([rows[0].id]), ask: { _ in }, addRule: { _ in })
+        let coordinator = view.makeCoordinator()
+        let scroll = coordinator.makeScrollView()
+        let table = coordinator.table
+        // The time first, no speed, and the two the route shows last.
+        #expect(table.tableColumns.map(\.identifier.rawValue) == ["closed", "host", "process", "traffic", "duration", "rule", "chain"])
+        func text(_ column: String, row: Int) -> String? {
+            let found = table.tableColumns.first { $0.identifier.rawValue == column }
+            return (coordinator.tableView(table, viewFor: found, row: row) as? NSTableCellView)?.textField?.stringValue
+        }
+        #expect(text("closed", row: 0) == ended.formatted(date: .omitted, time: .standard))
+        // Its length is what it was when it ended, not counted on from then.
+        let start = try #require(rows[0].start)
+        #expect(text("duration", row: 0) == Format.duration(since: start, now: ended))
+        // Seen only in the log: under a second, and no traffic to show.
+        #expect(text("duration", row: 1) == "< 1s" && text("traffic", row: 1) == "—")
+        #expect(text("host", row: 1) == rows[1].host)
+        // Nothing to close: not in the menu, and Delete does nothing.
+        let menu = try #require(coordinator.menu(for: 0))
+        #expect(menu.items.filter { !$0.isSeparatorItem }.count == 3)
+        let event = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                                                  windowNumber: 0, context: nil, characters: "\u{7f}",
+                                                  charactersIgnoringModifiers: "\u{7f}", isARepeat: false, keyCode: 51))
+        table.keyDown(with: event)
+        // Beside the Agent panel the same columns stay, and the far ones are not drawn.
+        scroll.frame = NSRect(x: 0, y: 0, width: 484, height: 300)
+        scroll.layoutSubtreeIfNeeded()
+        table.fadeTrailingColumns()
+        #expect(table.tableColumns.allSatisfy { !$0.isHidden })
+        #expect(table.tableColumns.filter { table.alpha(of: $0) == 1 }.map(\.identifier.rawValue) == ["closed", "host", "process", "traffic"])
+        withExtendedLifetime(scroll) {}
     }
 }

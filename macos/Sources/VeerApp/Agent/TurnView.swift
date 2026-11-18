@@ -22,7 +22,7 @@ struct TurnView: View {
                         }
                     }
                 }
-                UserBubble(text: turn.prompt)
+                UserBubble(text: turn.prompt).modifier(SoftenedUnderComposer())
                 AssistantTurn(turn: turn)
             }
         }
@@ -53,9 +53,9 @@ struct AssistantTurn: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.md) {
-            StepsView(turn: turn, expanded: $stepsExpanded)
+            StepsView(turn: turn, expanded: $stepsExpanded).modifier(SoftenedUnderComposer())
             if let reasoning = turn.reasoning, !reasoning.isEmpty {
-                ReasoningView(text: reasoning, running: turn.outcome == .running, source: turn.mode.label)
+                ReasoningView(text: reasoning, running: turn.outcome == .running, source: turn.mode.label).modifier(SoftenedUnderComposer())
             }
             if let understanding = turn.understanding, !understanding.isEmpty {
                 Label { Text(understanding).textSelection(.enabled).fixedSize(horizontal: false, vertical: true) } icon: {
@@ -64,15 +64,16 @@ struct AssistantTurn: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .accessibilityLabel(String(localized: "AI 的理解：\(understanding)"))
+                .modifier(SoftenedUnderComposer())
             }
             if let lookups = turn.lookups {
-                LookupHintsView(hints: lookups, local: turn.mode == .local)
+                LookupHintsView(hints: lookups, local: turn.mode == .local).modifier(SoftenedUnderComposer())
             }
             if let searches = turn.searches, !searches.isEmpty {
-                SearchRecordsView(records: searches, running: turn.outcome == .running)
+                SearchRecordsView(records: searches, running: turn.outcome == .running).modifier(SoftenedUnderComposer())
             }
             if let checks = turn.checks, !checks.isEmpty {
-                CheckRecordsView(records: checks, running: turn.outcome == .running)
+                CheckRecordsView(records: checks, running: turn.outcome == .running).modifier(SoftenedUnderComposer())
             }
             if let problem = turn.repairedFrom {
                 Label(String(localized: "第一次回答无法使用（\(problem)），已自动让 AI 修正。"), systemImage: "arrow.triangle.2.circlepath")
@@ -84,7 +85,7 @@ struct AssistantTurn: View {
             case .proposal(let proposal):
                 ProposalView(turn: turn, proposal: proposal)
             case .noChange(let text):
-                Text(text).foregroundStyle(.secondary)
+                Text(text).foregroundStyle(.secondary).modifier(SoftenedUnderComposer())
             case let .clarify(question, options):
                 ClarificationView(question: question, options: options, enabled: isLatest && !store.isArchived, fromPlan: turn.executionMode == .plan)
             case let .clarification(question, suggestions):
@@ -95,7 +96,7 @@ struct AssistantTurn: View {
                     Text(text).fixedSize(horizontal: false, vertical: true)
                 }
             case let .failure(message, opensSettings, canUseLocal):
-                FailureView(turn: turn, message: message, opensSettings: opensSettings, canUseLocal: canUseLocal)
+                FailureView(turn: turn, message: message, opensSettings: opensSettings, canUseLocal: canUseLocal).modifier(SoftenedUnderComposer())
             case .cancelled:
                 Text(String(localized: "已停止。分流没有变化。")).foregroundStyle(.secondary)
             case .runtime(let run):
@@ -103,7 +104,7 @@ struct AssistantTurn: View {
             }
             if turn.sentPayload != nil, turn.outcome != .running, turn.proposal == nil, !turn.isRuntime {
                 Button(String(localized: "查看发送给 AI 的内容")) { store.payloadTurnID = turn.id }
-                    .buttonStyle(.link).foregroundStyle(Color.veerAccent).font(.callout)
+                    .buttonStyle(.link).foregroundStyle(Color.veerAccent).font(.callout).modifier(SoftenedUnderComposer())
             }
         }
         .accessibilityElement(children: .contain)
@@ -240,7 +241,7 @@ struct ProposalView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.md) {
-            Text(summary).fixedSize(horizontal: false, vertical: true)
+            Text(summary).fixedSize(horizontal: false, vertical: true).modifier(SoftenedUnderComposer())
             VStack(spacing: Spacing.sm) {
                 ForEach(proposal.items) { item in
                     ChangeRow(item: item, accepted: proposal.accepted.contains(item.id), editable: editable,
@@ -249,6 +250,7 @@ struct ProposalView: View {
                     }
                     .background(Color.surfaceRaised, in: RoundedRectangle(cornerRadius: Radius.medium, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: Radius.medium, style: .continuous).strokeBorder(Color.separatorLine.opacity(0.7)))
+                    .modifier(SoftenedUnderComposer())
                 }
             }
 
@@ -256,7 +258,7 @@ struct ProposalView: View {
                 HStack(spacing: Spacing.sm) { ProgressView().controlSize(.small); Text(String(localized: "正在按你的选择重新生成并校验…")).foregroundStyle(.secondary) }
                     .font(.callout)
             } else {
-                ValidationView(result: proposal.validation)
+                ValidationView(result: proposal.validation).modifier(SoftenedUnderComposer())
             }
             actions
         }

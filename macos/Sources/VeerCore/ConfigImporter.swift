@@ -267,14 +267,21 @@ public enum ConfigImporter {
     /// characters back so the exported file is readable; keep the escaped form if anything differs.
     public static func readableUnicode(_ yaml: String) -> String {
         guard let regex = try? NSRegularExpression(pattern: #"(?<!\\)\\U([0-9A-Fa-f]{8})"#) else { return yaml }
-        let matches = regex.matches(in: yaml, range: NSRange(yaml.startIndex..., in: yaml))
+        let source = yaml as NSString
+        let matches = regex.matches(in: yaml, range: NSRange(location: 0, length: source.length))
         guard !matches.isEmpty else { return yaml }
-        var output = yaml
-        for match in matches.reversed() {
-            guard let range = Range(match.range, in: output), let hexRange = Range(match.range(at: 1), in: yaml),
-                  let code = UInt32(yaml[hexRange], radix: 16), let scalar = Unicode.Scalar(code) else { continue }
-            output.replaceSubrange(range, with: String(Character(scalar)))
+        // One pass over the text, piece by piece. Replacing inside the string instead made it
+        // find each place again from the start: seconds for a subscription full of flag emoji.
+        var output = ""
+        output.reserveCapacity(yaml.utf8.count)
+        var copied = 0
+        for match in matches {
+            guard let code = UInt32(source.substring(with: match.range(at: 1)), radix: 16), let scalar = Unicode.Scalar(code) else { continue }
+            output += source.substring(with: NSRange(location: copied, length: match.range.location - copied))
+            output.unicodeScalars.append(scalar)
+            copied = match.range.location + match.range.length
         }
+        output += source.substring(from: copied)
         // The pattern skips "\\U" after one backslash; only text with a doubled backslash ("\\\\U…",
         // an escaped backslash before a U) can fool it. Parsing a large config twice to prove
         // nothing changed took seconds, so the proof runs only then.

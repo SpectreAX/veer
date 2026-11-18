@@ -1,6 +1,7 @@
 import SwiftUI
 import Testing
 @testable import VeerApp
+import VeerUI
 
 @MainActor struct PanelResizeTests {
     @Test func overviewPlacesCardsInsideTheirWidthWithoutOverlap() throws {
@@ -58,42 +59,6 @@ import Testing
         #expect(abs(host.fittingSize.height - 80) < 0.001)
     }
 
-    @Test func overviewArrangesForTheTargetWidthWhileThePanelMoves() {
-        func cards(pageWidth: CGFloat, target: CGFloat?) -> some View {
-            OverviewCardsLayout(hasTraffic: true, targetWidth: target.map { $0 - 48 }) {
-                Color.clear.frame(height: 40)
-                Color.clear.frame(height: 40)
-                Color.clear.frame(height: 40)
-            }
-            .frame(width: pageWidth - 48)
-        }
-        let host = NSHostingView(rootView: cards(pageWidth: 1080, target: 1080))
-        // Opening from 1080 to 700: stacked from the first frame, not part way through.
-        for width in [1080.0, 1000, 900, 800, 720, 700] {
-            host.rootView = cards(pageWidth: width, target: 700)
-            #expect(abs(host.fittingSize.height - 96) < 0.001)
-            // It reports the width it was given, even when laid out wider.
-            #expect(abs(host.fittingSize.width - (width - 48)) < 0.001)
-        }
-        // Closing from 700 to 1080: one row from the start, laid out at the wider width.
-        for width in [700.0, 719, 800, 1080] {
-            host.rootView = cards(pageWidth: width, target: 1080)
-            #expect(abs(host.fittingSize.height - 40) < 0.001)
-        }
-        #expect(OverviewCardsLayout(targetWidth: 1032).layoutWidth(652) == 1032)
-        #expect(OverviewCardsLayout(targetWidth: 652).layoutWidth(1032) == 1032)
-        #expect(OverviewCardsLayout().layoutWidth(652) == 652)
-    }
-
-    @Test func theGridCountsColumnsAsAnAdaptiveOneWould() {
-        // Inside 24 pt margins, tiles at least 180 wide, 8 apart.
-        #expect(GroupSection.columnCount(pageWidth: 880) == 4)
-        #expect(GroupSection.columnCount(pageWidth: 499) == 2)
-        #expect(GroupSection.columnCount(pageWidth: 416) == 2)
-        #expect(GroupSection.columnCount(pageWidth: 415) == 1)
-        #expect(GroupSection.columnCount(pageWidth: 0) == 1)
-    }
-
     @Test func overviewChangesArrangementOnlyAtActualWidthBreakpoints() {
         #expect(OverviewArrangement(width: 0) == .stackedPairs)
         #expect(OverviewArrangement(width: 459) == .stackedPairs)
@@ -110,6 +75,79 @@ import Testing
         for width in stride(from: 800.0, through: 1080.0, by: 10) {
             #expect(OverviewArrangement(width: width) == .columns)
         }
+    }
+
+    @Test func overviewKnowsItsLayoutWidthsAtBothEndsOfAMotion() {
+        // Opening a 381 panel beside an 860 page: the cards' layout goes from 812 to 431.
+        #expect(OverviewView.motionWidths(pageWidth: 860, motion: PanelMotion(id: 1, widthChange: -381)) == 431...812)
+        #expect(OverviewView.motionWidths(pageWidth: 479, motion: PanelMotion(id: 2, widthChange: 381)) == 431...812)
+        // Wider than the content at both ends: one width, so nothing to blend.
+        let capped = OverviewView.motionWidths(pageWidth: 1700, motion: PanelMotion(id: 3, widthChange: -381))
+        #expect(capped.lowerBound == capped.upperBound)
+    }
+
+    /// Between any two arrangements, at every width on the way: the ends are the arrangements
+    /// themselves, no two cards overlap, and every card moves and resizes continuously.
+    @Test func overviewCardsGoFromOneArrangementToAnotherWithoutJumpsOrOverlap() {
+        struct Case {
+            let narrow: OverviewArrangement
+            let wide: OverviewArrangement
+            let range: ClosedRange<CGFloat>
+        }
+        let cases = [Case(narrow: .stackedPairs, wide: .stackedRows, range: 380...620),
+                     Case(narrow: .stackedRows, wide: .columns, range: 600...900),
+                     Case(narrow: .stackedPairs, wide: .columns, range: 380...900)]
+        for hasTraffic in [true, false] {
+            for item in cases {
+                let narrow = item.narrow, wide = item.wide, range = item.range
+                var previous: [CGRect]?
+                for step in 0...200 {
+                    let width = range.lowerBound + (range.upperBound - range.lowerBound) * CGFloat(step) / 200
+                    func items(_ arrangement: OverviewArrangement) -> [ArrangedItem] {
+                        // Cards 90 pt tall, taller when narrow, as wrapped text makes them.
+                        var items = OverviewCardsLayout.columns(arrangement, hasTraffic: hasTraffic, width: width)
+                        for index in items.indices { items[index].height = items[index].width < 250 ? 120 : 90 }
+                        for index in items.indices {
+                            items[index].height = items.filter { $0.row == items[index].row }.map(\.height).max() ?? 0
+                        }
+                        return items
+                    }
+                    let frames = ArrangementBlend.frames(narrow: items(narrow), wide: items(wide), spacing: Spacing.lg,
+                                                         progress: ArrangementBlend.progress(width: width, range: range))
+                    for first in frames.indices {
+                        for second in frames.indices where second > first {
+                            #expect(!frames[first].insetBy(dx: 0.5, dy: 0.5).intersects(frames[second].insetBy(dx: 0.5, dy: 0.5)),
+                                    "\(narrow)→\(wide) at \(width): \(first) over \(second)")
+                        }
+                    }
+                    if let previous {
+                        for (now, before) in zip(frames, previous) {
+                            // A 200th of the way: nothing may move by more than a few points, bar the
+                            // one step where a narrow card's taller text changes its row's height.
+                            #expect(abs(now.minX - before.minX) < 8 && abs(now.width - before.width) < 8 && abs(now.minY - before.minY) < 40,
+                                    "\(narrow)→\(wide) at \(width)")
+                        }
+                    }
+                    previous = frames
+                }
+                let start = ArrangementBlend.frames(narrow: OverviewCardsLayout.columns(narrow, hasTraffic: hasTraffic, width: range.lowerBound),
+                                                    wide: OverviewCardsLayout.columns(wide, hasTraffic: hasTraffic, width: range.lowerBound),
+                                                    spacing: Spacing.lg, progress: 0)
+                #expect(start.map(\.minX) == OverviewCardsLayout.columns(narrow, hasTraffic: hasTraffic, width: range.lowerBound).map(\.x))
+                let end = ArrangementBlend.frames(narrow: OverviewCardsLayout.columns(narrow, hasTraffic: hasTraffic, width: range.upperBound),
+                                                  wide: OverviewCardsLayout.columns(wide, hasTraffic: hasTraffic, width: range.upperBound),
+                                                  spacing: Spacing.lg, progress: 1)
+                #expect(end.map(\.minX) == OverviewCardsLayout.columns(wide, hasTraffic: hasTraffic, width: range.upperBound).map(\.x))
+            }
+        }
+    }
+
+    @Test func theContentSeesOnlyTheChangeBelowItsWidestWidth() {
+        let cap = OverviewView.maxContentWidth
+        #expect(OverviewView.contentMotion(pageWidth: 860, motion: PanelMotion(id: 1, widthChange: -381)).widthChange == -381)
+        #expect(OverviewView.contentMotion(pageWidth: cap + 500, motion: PanelMotion(id: 2, widthChange: -381)).widthChange == 0)
+        #expect(OverviewView.contentMotion(pageWidth: cap + 100, motion: PanelMotion(id: 3, widthChange: -381)).widthChange == -281)
+        #expect(OverviewView.contentMotion(pageWidth: cap - 281, motion: PanelMotion(id: 4, widthChange: 381)).widthChange == 281)
     }
 }
 
