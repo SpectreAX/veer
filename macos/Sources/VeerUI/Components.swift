@@ -330,19 +330,6 @@ public extension View {
     }
 }
 
-extension View {
-    /// The system's soft edge where scrolling content meets the bar above it, for the scroll views
-    /// in this view: macOS 26's own blur and fade, never one drawn by hand. Before macOS 26 there is
-    /// no such effect, and the view is left as it is.
-    @ViewBuilder public func softTopScrollEdge() -> some View {
-        if #available(macOS 26, *) {
-            scrollEdgeEffectStyle(.soft, for: .top)
-        } else {
-            self
-        }
-    }
-}
-
 /// Neighbouring glass shapes: `GlassEffectContainer` on macOS 26, its content before it. Shapes
 /// closer than `spacing` blend.
 public struct GlassGroup<Content: View>: View {
