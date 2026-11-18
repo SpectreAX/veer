@@ -1,5 +1,9 @@
 # Veer macOS handoff
 
+## Route Test (2026-11-18, Claude)
+
+Tools → Route Test (SPEC 5.10), an idea taken from honk's routing trace (honk itself is Linux-only eBPF, GPL-3.0, alpha: no code used). `VeerCore/RouteTrace.swift` decides each rule three ways (matched / not matched / undecided with a reason), with Kleene AND/OR/NOT, ports, network and rule sets; `VeerProxy/RouteTestSource.swift` builds the config as the core runs it and reads the core folder's GeoSite.dat, geoip.metadb and rule-set files (inside that folder only; MRS unreadable). IP rules resolve the domain once over Alibaba DoH, as the Agent's domain checks do (privacy pane updated). "Test Route" added to the Connections/Requests context menu and detail actions. verify.sh passed (531 tests); dist rebuilt; snapshots `dist/snapshots/2026-11-18-235250` (new 09z-route-test, 24o-narrow-route) looked at; design review: no Critical/Major, 4 Minor fixed. NOT VERIFIED: keyboard/VoiceOver, Return in the panel composer on this page, 1440 width, macOS 14, Mihomo's `rules/<md5(url)>` naming on real files.
+
 ## macOS 26 APIs back inside VeerUI (2026-11-18, Claude)
 
 `VeerUI/ScrollEdge.swift` adds `ScrollEdge.available`, `softScrollEdge(_:)` and `scrollEdgeBar(edge:spacing:content:)`; `TopRowBar`, `AgentPanel`, `ConversationView` and `PageClip` use them, and VeerApp has no `#available(macOS 26` left. Lint rule `no_macos26_api_outside_veerui` (error) keeps it that way; checked with a throwaway violating file. verify.sh passed (517 tests); dist rebuilt; snapshots `dist/snapshots/2026-11-18-224612` differ from the previous set only the way two runs of one build do. macOS 14/15 fallback NOT VERIFIED in a VM.

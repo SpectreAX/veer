@@ -3,7 +3,8 @@ import SwiftUI
 import VeerProxy
 
 enum Page: String, CaseIterable, Identifiable, Hashable {
-    case overview, proxies, connections, tools, requests, logs, dns, agent
+    // Tools' subpages in the order the Tools page lists them, which the View menu follows.
+    case overview, proxies, connections, tools, requests, dns, route, logs, agent
 
     /// What the sidebar lists, in order, for ⌘1 onward. The rest are subpages of Tools.
     static let sidebarPages: [Page] = [.overview, .proxies, .connections, .tools, .agent]
@@ -11,7 +12,7 @@ enum Page: String, CaseIterable, Identifiable, Hashable {
     /// The page a subpage goes back to.
     var parent: Page? {
         switch self {
-        case .requests, .logs, .dns: .tools
+        case .requests, .logs, .dns, .route: .tools
         default: nil
         }
     }
@@ -38,6 +39,7 @@ enum Page: String, CaseIterable, Identifiable, Hashable {
         case .requests: String(localized: "请求")
         case .logs: String(localized: "日志")
         case .dns: String(localized: "DNS")
+        case .route: String(localized: "分流测试")
         case .agent: String(localized: "Agent")
         }
     }
@@ -50,6 +52,7 @@ enum Page: String, CaseIterable, Identifiable, Hashable {
         case .requests: "clock.arrow.circlepath"
         case .logs: "text.alignleft"
         case .dns: "globe"
+        case .route: "arrow.triangle.branch"
         case .agent: "sparkles"
         }
     }
@@ -322,6 +325,7 @@ struct MainView: View {
             case .requests: RequestsView()
             case .logs: LogsView()
             case .dns: DNSView()
+            case .route: RouteTestView()
             case .agent: AgentView()
             }
         }

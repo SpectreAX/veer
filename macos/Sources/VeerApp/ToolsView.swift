@@ -14,6 +14,8 @@ struct ToolsView: View {
                         symbol: Page.requests.symbol, opensPage: true) { store.page = .requests }
                 ToolRow(title: String(localized: "DNS 查询"), detail: String(localized: "用内核的 DNS 设置解析域名"),
                         symbol: Page.dns.symbol, opensPage: true) { store.page = .dns }
+                ToolRow(title: Page.route.title, detail: String(localized: "看一个域名或 IP 会命中哪条规则、走哪个出口"),
+                        symbol: Page.route.symbol, opensPage: true) { store.page = .route }
                 ToolRow(title: Page.logs.title, detail: String(localized: "内核的实时日志"), symbol: Page.logs.symbol, opensPage: true) { store.page = .logs }
             }
             Section(String(localized: "数据")) {

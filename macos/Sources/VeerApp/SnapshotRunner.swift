@@ -346,6 +346,11 @@ enum SnapshotRunner {
             }, view: AnyView(MainView())),
             Scene(name: "24h-narrow-tools", size: CGSize(width: 860, height: 560), store: { running(page: .tools, panel: true) }, view: AnyView(MainView())),
             Scene(name: "24i-narrow-dns", size: CGSize(width: 860, height: 560), store: { running(page: .dns, panel: true) }, view: AnyView(MainView())),
+            Scene(name: "24o-narrow-route", size: CGSize(width: 860, height: 560), store: {
+                let store = running(page: .route, panel: true, config: routeSampleConfig)
+                store.routeTestRequest = RouteTestRequest(host: "www.github.com", network: "TCP")
+                return store
+            }, view: AnyView(MainView())),
             Scene(name: "25-fullscreen-connections-panel", store: {
                 let store = sample()
                 store.page = .connections
@@ -387,6 +392,12 @@ enum SnapshotRunner {
                 return store
             }, view: AnyView(MainView())),
             Scene(name: "09i-dns", store: { running(page: .dns) }, view: AnyView(MainView())),
+            // A GEOSITE rule this throwaway folder has no data for, then MATCH: offline, no lookup.
+            Scene(name: "09z-route-test", store: {
+                let store = running(page: .route, config: routeSampleConfig)
+                store.routeTestRequest = RouteTestRequest(host: "www.bilibili.com", network: "TCP")
+                return store
+            }, view: AnyView(MainView())),
             Scene(name: "04b-overview-suggestions", store: {
                 let store = running()
                 store.suggestions = [Suggestion(kind: .failing(host: "chatgpt.com", count: 4)),
@@ -588,7 +599,18 @@ enum SnapshotRunner {
       - MATCH,节点选择
     """
 
-    static func sample(profiles: Bool = true) -> ProxyStore {
+    /// The sample with the rules a route test shows: by domain, by the app, by geodata, a QUIC block.
+    static let routeSampleConfig = sampleConfig.replacingOccurrences(of: "  - MATCH,节点选择", with: """
+      - DOMAIN-SUFFIX,openai.com,节点选择
+      - DOMAIN-SUFFIX,github.com,节点选择
+      - PROCESS-NAME,Telegram,节点选择
+      - GEOSITE,cn,DIRECT
+      - GEOIP,CN,DIRECT,no-resolve
+      - AND,((NETWORK,UDP),(DST-PORT,443)),REJECT
+      - MATCH,节点选择
+    """)
+
+    static func sample(profiles: Bool = true, config: String = sampleConfig) -> ProxyStore {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("veer-snapshot-\(UUID().uuidString)")
         let defaults = UserDefaults(suiteName: "veer-snapshot-\(UUID().uuidString)")!
         // Scenes that want the Agent panel say so.
@@ -599,7 +621,7 @@ enum SnapshotRunner {
             let store = ProfileStore(paths: paths, secrets: FileKeyStore(url: paths.secrets))
             try? store.save(Profile(name: "我的机场 · 高速专线（这是一个很长的订阅名称，用来检查截断）", isSubscription: true,
                                     updatedAt: .now.addingTimeInterval(-2 * hour), nodeCount: 5,
-                                    usage: SubscriptionUsage(upload: 3 << 30, download: 57 << 30, total: 200 << 30, expire: nil)), text: sampleConfig)
+                                    usage: SubscriptionUsage(upload: 3 << 30, download: 57 << 30, total: 200 << 30, expire: nil)), text: config)
             try? store.save(Profile(name: "家里的路由器", isSubscription: false, updatedAt: .now.addingTimeInterval(-30 * 24 * hour), nodeCount: 3),
                             text: sampleConfig)
             if let first = store.loadAll().first {
@@ -619,8 +641,8 @@ enum SnapshotRunner {
         return store
     }
 
-    static func running(page: Page = .overview, tun: Bool = false, panel: Bool = false, lan: Bool = false) -> ProxyStore {
-        let store = sample()
+    static func running(page: Page = .overview, tun: Bool = false, panel: Bool = false, lan: Bool = false, config: String = sampleConfig) -> ProxyStore {
+        let store = sample(config: config)
         store.agentPanel = panel
         // Before the phase: turning TUN on in a running store restarts the core.
         store.settings.tun = tun

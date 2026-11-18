@@ -105,6 +105,7 @@ struct ConnectionsView: View {
         ConnectionsTable(rows: rows, selection: $selection,
                          ask: { row in ask(String(localized: "为什么 \(row.host) 走了“\(row.policy)”？")) },
                          addRule: { addingRule = $0 },
+                         testRoute: { store.testRoute($0) },
                          close: { ids in for id in ids { store.closeConnection(id) } })
     }
 
@@ -278,6 +279,7 @@ extension RouteMap where Actions == EmptyView {
 /// What the right-click menu offers for one connection or request, in view for the selected row.
 struct RouteActions: View {
     @Environment(AgentStore.self) private var agent
+    @Environment(ProxyStore.self) private var store
     let row: ConnectionRow
     let addRule: () -> Void
     /// Only for one still open.
@@ -294,6 +296,7 @@ struct RouteActions: View {
     @ViewBuilder private var buttons: some View {
         action(String(localized: "问 AI：为什么这样走？")) { agent.open(asking: String(localized: "为什么 \(row.host) 走了“\(row.policy)”？")) }
         action(String(localized: "为这个主机添加规则…"), perform: addRule)
+        action(String(localized: "测试分流")) { store.testRoute(row) }
         action(String(localized: "复制主机")) {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(row.host, forType: .string)

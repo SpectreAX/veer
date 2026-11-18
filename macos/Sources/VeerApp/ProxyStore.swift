@@ -58,6 +58,8 @@ final class ProxyStore {
     // MARK: State
 
     var page: Page = .overview
+    /// A destination for the route tester to check when it opens, from another page; it takes it once.
+    var routeTestRequest: RouteTestRequest?
     /// The Agent beside every page but its own (`AgentPanel`). Open until the user closes it.
     var agentPanel: Bool { didSet { defaults.set(agentPanel, forKey: "agentPanel") } }
     /// Its width, which the user drags.

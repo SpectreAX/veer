@@ -219,6 +219,19 @@ public struct RuleParts: Sendable, Equatable {
     public let flags: [String]
 
     public static func parse(_ line: String) -> RuleParts? {
+        let parts = split(line)
+        guard let first = parts.first, !first.isEmpty else { return nil }
+        let type = first.uppercased()
+        if type == "MATCH" {
+            guard parts.count > 1, !parts[1].isEmpty else { return nil }
+            return RuleParts(type: type, payload: nil, target: parts[1], flags: Array(parts.dropFirst(2)))
+        }
+        guard parts.count > 2, !parts[2].isEmpty else { return nil }
+        return RuleParts(type: type, payload: parts[1], target: parts[2], flags: Array(parts.dropFirst(3)))
+    }
+
+    /// The line's comma-separated parts, trimmed, with commas inside parentheses kept.
+    static func split(_ line: String) -> [String] {
         var parts: [String] = [], current = "", depth = 0
         for char in line.trimmingCharacters(in: .whitespaces) {
             switch char {
@@ -229,13 +242,6 @@ public struct RuleParts: Sendable, Equatable {
             }
         }
         parts.append(current.trimmingCharacters(in: .whitespaces))
-        guard let first = parts.first, !first.isEmpty else { return nil }
-        let type = first.uppercased()
-        if type == "MATCH" {
-            guard parts.count > 1, !parts[1].isEmpty else { return nil }
-            return RuleParts(type: type, payload: nil, target: parts[1], flags: Array(parts.dropFirst(2)))
-        }
-        guard parts.count > 2, !parts[2].isEmpty else { return nil }
-        return RuleParts(type: type, payload: parts[1], target: parts[2], flags: Array(parts.dropFirst(3)))
+        return parts
     }
 }
