@@ -3,8 +3,9 @@ import VeerCore
 import VeerProxy
 
 /// Nodes on a world map, with the regions below it and the chosen region's nodes below those.
-/// A dot's color is the region's best delay and its number the region's nodes; choosing a node
-/// uses it in the main group when that group has it.
+/// The map's greens say how many nodes each region has; choosing a region, on the map or below it,
+/// brings the map in on it and shows its nodes and delays. Choosing a node uses it in the main group
+/// when that group has it.
 struct NodeMapView: View {
     @Environment(ProxyStore.self) private var store
     /// The toolbar's search: nodes whose name or region contains it.
@@ -59,7 +60,9 @@ struct NodeMapView: View {
         // take the keyboard focus out of the search field, in the middle of typing.
         ScrollView {
             VStack(alignment: .leading, spacing: Spacing.lg) {
-                MapCard(regions: regions, selected: selected) { chosen = $0 }
+                // Brought in on a region only once the person has chosen one: the region of the node in
+                // use is marked, with the whole map in view.
+                MapCard(regions: regions, selected: selected, focus: chosen == selected ? chosen : nil) { chosen = $0 }
                 if regions.isEmpty {
                     Text(String(localized: "没有匹配“\(query)”的节点")).font(.callout).foregroundStyle(.secondary)
                 } else {
@@ -96,7 +99,10 @@ struct MapNode: Identifiable, Hashable {
 private struct MapCard: View {
     let regions: [String?: [MapNode]]
     let selected: String?
-    let choose: (String) -> Void
+    /// The region the map is brought in on.
+    let focus: String?
+    /// A region, or nil to go back to the whole map.
+    let choose: (String?) -> Void
 
     private var summary: String {
         let places = regions.keys.compactMap { $0 }.count
@@ -111,7 +117,7 @@ private struct MapCard: View {
                 Text("节点分布").font(.headline)
                 Text(verbatim: summary).font(.callout).foregroundStyle(.secondary)
             }
-            WorldMap(regions: regions, selected: selected, choose: choose)
+            WorldMap(regions: regions, selected: selected, focus: focus, choose: choose)
             legend
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -119,162 +125,95 @@ private struct MapCard: View {
         .panel()
     }
 
-    @Environment(\.pageTargetWidth) private var targetWidth
-
-    /// Wrapped at the card's width once the Agent panel has stopped, the same as its width at rest.
-    /// Wrapped at its width on the way, it went from one line to two and back, and moved everything
-    /// below it. Never wider than the card: mid-motion, the page's edge covers what does not fit.
-    @ViewBuilder private var legend: some View {
-        let items = FlowLayout(spacing: Spacing.md) { latencyItems; coverageDivider; coverageItems }
-        if let targetWidth {
-            items
-                .frame(width: NodeMapLayout.cardInsideWidth(pageWidth: targetWidth), alignment: .leading)
-                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-        } else {
-            items
+    /// The map's steps of green, and nothing else: delays are in the chosen region and its nodes.
+    /// Wrapped at the card's own width at every frame.
+    private var legend: some View {
+        FlowLayout(spacing: Spacing.md) {
+            step(0, String(localized: "没有节点"))
+            step(1, String(localized: "1 到 2 个节点"))
+            step(3, String(localized: "3 到 9 个节点"))
+            step(10, String(localized: "10 到 19 个"))
+            step(20, String(localized: "20 个以上"))
         }
     }
 
-    @ViewBuilder private var latencyItems: some View {
-        legend(.success, String(localized: "低于 200 ms"))
-        legend(.warning, String(localized: "200 到 500 ms"))
-        legend(.failure, String(localized: "更慢或失败"))
-        legend(.neutral, String(localized: "未测速"))
-    }
-
-    private var coverageDivider: some View {
-        Rectangle().fill(Color.primary.opacity(0.15)).frame(width: 1, height: Spacing.md)
-    }
-
-    @ViewBuilder private var coverageItems: some View {
-        coverage(1, String(localized: "1 到 2 个节点"))
-        coverage(3, String(localized: "3 到 9 个节点"))
-        coverage(10, String(localized: "10 个以上"))
-    }
-
-    private func coverage(_ count: Int, _ title: String) -> some View {
+    private func step(_ count: Int, _ title: String) -> some View {
         HStack(spacing: Spacing.xs) {
-            RoundedRectangle(cornerRadius: Radius.tiny).fill(WorldMap.shade(count)).frame(width: Spacing.md, height: Spacing.sm)
-            Text(verbatim: title).lineLimit(1)
-        }
-    }
-
-    private func legend(_ kind: StatusKind, _ title: String) -> some View {
-        HStack(spacing: Spacing.xs) {
-            Circle().fill(kind.color).frame(width: Spacing.sm, height: Spacing.sm)
+            RoundedRectangle(cornerRadius: Radius.tiny).fill(WorldMap.fill(count)).frame(width: Spacing.md, height: Spacing.sm)
             Text(verbatim: title).lineLimit(1)
         }
     }
 }
 
-/// Countries from Natural Earth (public domain) in an equirectangular projection, shaded by how
-/// many nodes they have, with a dot for each region that has nodes. Regions too small to have a
-/// shape at this scale (Singapore, Hong Kong) are the dot alone.
+/// Countries from Natural Earth (public domain) in an equirectangular projection, each filled by
+/// how many nodes it has: a choropleth, with no badge on any region. Regions too small to have a
+/// shape at this scale (Singapore, Hong Kong) are a small mark of the same green. Choosing a region
+/// brings the map in on it and names it with its nodes and best delay; the map can also be pinched
+/// and dragged, and put back.
 private struct WorldMap: View {
     let regions: [String?: [MapNode]]
     let selected: String?
-    let choose: (String) -> Void
-    @State private var hoveredDot: String?
-    @State private var hoveredCountry: String?
-    @Environment(\.pageTargetWidth) private var pageTargetWidth
+    let focus: String?
+    let choose: (String?) -> Void
+    @State private var viewport = MapViewport.world
+    /// Where a drag or pinch started.
+    @State private var gestureStart: MapViewport?
+    @State private var hovered: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// The map's width once the Agent panel has stopped: the map card's inside.
-    private var targetMapWidth: CGFloat? { pageTargetWidth.map(NodeMapLayout.cardInsideWidth(pageWidth:)) }
-
-    /// Latitudes shown: Antarctica and the far north add nothing here.
-    static let north = 84.0, south = -58.0
+    /// A mark this far from the pointer takes the click, so a region with no shape can be chosen.
+    private static let markReach: CGFloat = 10
 
     var body: some View {
         GeometryReader { proxy in
             let size = proxy.size
-            let codes = regions.keys.compactMap { $0 }.sorted()
-            let hovered = hoveredDot ?? hoveredCountry
-            let positions = dotPositions(codes, in: size)
-            ZStack(alignment: .topLeading) {
-                MapDrawing(key: "countries", width: size.width, targetWidth: targetMapWidth) { CountriesLayer() }
-                MapDrawing(key: "coverage \(counts.sorted { $0.key < $1.key })", width: size.width, targetWidth: targetMapWidth) {
-                    CoverageLayer(counts: counts)
+            MapSurface(viewport: viewport, counts: counts, selected: selected, hovered: hovered, callout: callout)
+                .contentShape(Rectangle())
+                .onContinuousHover { phase in
+                    if case .active(let location) = phase { hovered = region(at: location, in: size) } else { hovered = nil }
                 }
-                    .contentShape(Rectangle())
-                    .onContinuousHover { phase in
-                        if case .active(let location) = phase { hoveredCountry = country(at: location, in: size) } else { hoveredCountry = nil }
+                .gesture(SpatialTapGesture().onEnded { tap in
+                    // A region is chosen; anywhere else puts the whole map back.
+                    choose(region(at: tap.location, in: size))
+                })
+                .simultaneousGesture(DragGesture(minimumDistance: 4)
+                    .onChanged { drag in
+                        guard viewport.scale > 1 else { return }
+                        let start = gestureStart ?? viewport
+                        gestureStart = start
+                        viewport = start.panned(by: drag.translation, in: size)
                     }
-                    .onTapGesture { location in
-                        if let code = country(at: location, in: size) { choose(code) }
+                    .onEnded { _ in gestureStart = nil })
+                .simultaneousGesture(MagnifyGesture()
+                    .onChanged { pinch in
+                        let start = gestureStart ?? viewport
+                        gestureStart = start
+                        viewport = MapViewport(scale: start.scale * pinch.magnification, center: start.center)
                     }
-                SelectedOutline(selected: selected)
-                ForEach(codes, id: \.self) { code in
-                    if let place = NodeLocator.place(code), let nodes = regions[code], let position = positions[code] {
-                        dot(place: place, nodes: nodes)
-                            .position(position)
-                            .zIndex(hovered == code || selected == code ? 1 : 0)
+                    .onEnded { _ in gestureStart = nil })
+                .overlay(alignment: .topTrailing) {
+                    if viewport != .world {
+                        Button { choose(nil); show(.world) } label: { Label(String(localized: "显示整张地图"), systemImage: "arrow.up.left.and.arrow.down.right") }
+                            .labelStyle(.iconOnly)
+                            .secondaryAction()
+                            .controlSize(.small)
+                            .help("显示整张地图")
+                            .padding(Spacing.xs)
                     }
                 }
-                if let hovered, let place = NodeLocator.place(hovered), let nodes = regions[hovered], let position = positions[hovered] {
-                    tooltip(place: place, nodes: nodes, at: position, in: size)
-                        .zIndex(2)
-                }
-            }
         }
-        .aspectRatio(360 / (Self.north - Self.south), contentMode: .fit)
+        .aspectRatio(MapProjection.aspect, contentMode: .fit)
         .frame(maxWidth: .infinity)
+        .clipShape(RoundedRectangle(cornerRadius: Radius.medium, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(String(localized: "节点分布地图"))
+        .accessibilityValue(callout?.text ?? String(localized: "没有选中地区；地区在下面的列表里"))
+        // In on the region chosen, or back out.
+        .onChange(of: focus, initial: true) { _, focus in show(focus.flatMap(Self.viewport(for:)) ?? .world) }
     }
 
-    private func dot(place: NodeLocator.Place, nodes: [MapNode]) -> some View {
-        let best = nodes.map(\.delay).reduce(nil, NodeMapView.better)
-        let isSelected = selected == place.code
-        let size: CGFloat = isSelected ? 28 : 22
-        return Button { choose(place.code) } label: {
-            Text(verbatim: "\(nodes.count)")
-                .font(.caption2.weight(.bold).monospacedDigit())
-                .foregroundStyle(.white)
-                .minimumScaleFactor(0.6)
-                .lineLimit(1)
-                .padding(Spacing.xxs)
-                .frame(width: size, height: size)
-                .background(Format.delayKind(best).color, in: Circle())
-                .overlay(Circle().strokeBorder(Color.white.opacity(0.95), lineWidth: isSelected ? 2.5 : 1.5))
-                .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .onHover { inside in
-            if inside { hoveredDot = place.code } else if hoveredDot == place.code { hoveredDot = nil }
-        }
-        .accessibilityLabel(String(localized: "\(place.name)，\(String(nodes.count)) 个节点，最低延迟 \(Format.delay(best))"))
-        .animation(Motion.standard, value: isSelected)
-    }
-
-    /// Above the dot, kept inside the map; below it for regions at the map's top edge.
-    private func tooltip(place: NodeLocator.Place, nodes: [MapNode], at point: CGPoint, in size: CGSize) -> some View {
-        let best = nodes.map(\.delay).reduce(nil, NodeMapView.better)
-        let margin: CGFloat = 130, offset: CGFloat = 32
-        return Text(String(localized: "\(place.flag) \(place.name)：\(String(nodes.count)) 个节点，最低延迟 \(Format.delay(best))"))
-            .font(.callout)
-            .lineLimit(1)
-            .fixedSize()
-            .padding(.horizontal, Spacing.md)
-            .padding(.vertical, Spacing.xs)
-            .background(.regularMaterial, in: Capsule())
-            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.1)))
-            .position(x: min(max(point.x, margin), max(margin, size.width - margin)),
-                      y: point.y > offset + Spacing.sm ? point.y - offset : point.y + offset)
-            .allowsHitTesting(false)
-    }
-
-    static func project(longitude: Double, latitude: Double, in size: CGSize) -> CGPoint {
-        let clamped = min(max(latitude, south), north)
-        return CGPoint(x: (longitude + 180) / 360 * size.width, y: (north - clamped) / (north - south) * size.height)
-    }
-
-    /// Crowded regions (western Europe, say) moved just far enough apart to read and click; the
-    /// shading still shows where they are.
-    private func dotPositions(_ codes: [String], in size: CGSize) -> [String: CGPoint] {
-        var points: [String: CGPoint] = [:]
-        for code in codes {
-            if let place = NodeLocator.place(code) { points[code] = Self.project(longitude: place.longitude, latitude: place.latitude, in: size) }
-        }
-        return MapDots.spread(points, spacing: 26, in: size)
+    private func show(_ target: MapViewport) {
+        withAnimation(reduceMotion ? nil : Motion.panel) { viewport = target }
     }
 
     private var counts: [String: Int] {
@@ -283,86 +222,167 @@ private struct WorldMap: View {
         return counts
     }
 
-    /// The listed region whose shape holds `location`.
-    private func country(at location: CGPoint, in size: CGSize) -> String? {
-        let longitude = location.x / size.width * 360 - 180
-        let latitude = Self.north - location.y / size.height * (Self.north - Self.south)
-        return Self.countries.first { shape in
-            guard let code = shape.code, regions[code] != nil else { return false }
-            return shape.contains(longitude: longitude, latitude: latitude)
+    /// The chosen region's name, nodes and best delay, and where it is on the map.
+    private var callout: MapSurface.Callout? {
+        guard let selected, let place = NodeLocator.place(selected), let nodes = regions[selected] else { return nil }
+        let best = nodes.map(\.delay).reduce(nil, NodeMapView.better)
+        return MapSurface.Callout(text: String(localized: "\(place.flag) \(place.name)：\(String(nodes.count)) 个节点，最低延迟 \(Format.delay(best))"),
+                                  anchor: Self.anchor(of: selected))
+    }
+
+    /// The listed region at a point of the view: a small region's mark when the point is near one,
+    /// else the country whose shape holds it.
+    private func region(at location: CGPoint, in size: CGSize) -> String? {
+        let marks = counts.keys.filter(Self.isMarked).compactMap { code in Self.anchor(of: code).map { (code, viewport.point($0, in: size)) } }
+        if let near = marks.min(by: { hypot($0.1.x - location.x, $0.1.y - location.y) < hypot($1.1.x - location.x, $1.1.y - location.y) }),
+           hypot(near.1.x - location.x, near.1.y - location.y) <= Self.markReach {
+            return near.0
+        }
+        let coordinate = MapProjection.coordinate(viewport.unit(location, in: size))
+        return Self.shapes.first { shape in
+            guard let code = shape.code, counts[code] != nil else { return false }
+            return shape.country.contains(longitude: coordinate.longitude, latitude: coordinate.latitude)
         }?.code
     }
 
-    /// A country with this many nodes: the same three steps as the legend.
-    static func shade(_ count: Int) -> Color {
-        Color.veerAccent.opacity(count >= 10 ? 0.72 : count >= 3 ? 0.46 : 0.24)
+    // MARK: Geometry, made once
+
+    struct Shape {
+        let code: String?
+        let country: MapCountry
+        /// The outline in the map's unit square.
+        let path: Path
+        let bounds: CGRect
     }
 
-    private static func path(_ shape: MapCountry, in size: CGSize) -> Path {
-        var path = Path()
-        for ring in shape.rings {
-            for (index, point) in ring.enumerated() {
-                let p = project(longitude: point[0], latitude: point[1], in: size)
-                index == 0 ? path.move(to: p) : path.addLine(to: p)
-            }
-            path.closeSubpath()
-        }
-        return path
-    }
-
-    /// Every country, on its own so that hovering and choosing do not redraw them.
-    private struct CountriesLayer: View {
-        var body: some View {
-            Canvas { context, size in
-                for shape in WorldMap.countries {
-                    let path = WorldMap.path(shape, in: size)
-                    context.fill(path, with: .color(Color.secondary.opacity(0.18)), style: FillStyle(eoFill: true))
-                    context.stroke(path, with: .color(Color.surfaceRaised), lineWidth: 0.5)
-                }
-            }
-            .accessibilityHidden(true)
-        }
-    }
-
-    /// The countries with nodes.
-    private struct CoverageLayer: View {
-        let counts: [String: Int]
-
-        var body: some View {
-            Canvas { context, size in
-                for shape in WorldMap.countries {
-                    guard let code = shape.code, let count = counts[code] else { continue }
-                    let path = WorldMap.path(shape, in: size)
-                    context.fill(path, with: .color(WorldMap.shade(count)), style: FillStyle(eoFill: true))
-                }
-            }
-            .accessibilityHidden(true)
-        }
-    }
-
-    /// The chosen country's outline, drawn live at every width so that it stays 1.5 pt: in the
-    /// scaled picture it thinned with the map. One country is cheap to draw.
-    private struct SelectedOutline: View {
-        let selected: String?
-
-        var body: some View {
-            Canvas { context, size in
-                for shape in WorldMap.countries where shape.code != nil && shape.code == selected {
-                    context.stroke(WorldMap.path(shape, in: size), with: .color(Color.veerAccent), lineWidth: 1.5)
-                }
-            }
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
-        }
-    }
-
-    /// Loaded once from the app bundle.
-    static let countries: [MapCountry] = {
+    /// Every country with its outline already projected: parsed and projected once, whatever the
+    /// nodes, the delays or the view do afterward.
+    static let shapes: [Shape] = {
         guard let url = Bundle.main.url(forResource: "countries-110m", withExtension: "json", subdirectory: "Map")
                 ?? Bundle.main.url(forResource: "countries-110m", withExtension: "json"),
-              let data = try? Data(contentsOf: url) else { return [] }
-        return (try? JSONDecoder().decode([MapCountry].self, from: data)) ?? []
+              let data = try? Data(contentsOf: url), let countries = try? JSONDecoder().decode([MapCountry].self, from: data) else { return [] }
+        return countries.map { country in
+            var path = Path()
+            for ring in country.rings {
+                for (index, point) in ring.enumerated() where point.count >= 2 {
+                    let unit = MapProjection.unit(longitude: point[0], latitude: point[1])
+                    if index == 0 { path.move(to: unit) } else { path.addLine(to: unit) }
+                }
+                path.closeSubpath()
+            }
+            return Shape(code: country.code, country: country, path: path, bounds: country.unitBounds)
+        }
     }()
+
+    private static let boundsByCode: [String: CGRect] = {
+        var bounds: [String: CGRect] = [:]
+        for shape in shapes { if let code = shape.code { bounds[code] = shape.bounds } }
+        return bounds
+    }()
+
+    /// A region with no shape on this map, or one too small to see or click at its size.
+    static func isMarked(_ code: String) -> Bool {
+        guard let bounds = boundsByCode[code] else { return true }
+        return bounds.width * bounds.height < 0.00004
+    }
+
+    /// Where a region is: where its nodes usually are, else the middle of its shape.
+    static func anchor(of code: String) -> CGPoint? {
+        if let place = NodeLocator.place(code) { return MapProjection.unit(longitude: place.longitude, latitude: place.latitude) }
+        return boundsByCode[code].map { CGPoint(x: $0.midX, y: $0.midY) }
+    }
+
+    /// The view that shows a region with the land around it.
+    static func viewport(for code: String) -> MapViewport? {
+        if let bounds = boundsByCode[code], !isMarked(code) { return .showing(bounds) }
+        return anchor(of: code).map { MapViewport(scale: 5, center: $0) }
+    }
+
+    /// A region with this many nodes: the steps of the legend. None is a neutral gray.
+    static func fill(_ count: Int) -> Color {
+        switch MapTier.tier(count) {
+        case 0: Color.secondary.opacity(0.18)
+        case 1: Color.veerAccent.opacity(0.26)
+        case 2: Color.veerAccent.opacity(0.48)
+        case 3: Color.veerAccent.opacity(0.70)
+        default: Color.veerAccent.opacity(0.92)
+        }
+    }
+}
+
+/// The map as drawn for one view of it. The view is the one thing animated, so going in on a region
+/// redraws the outlines, already projected, under a new transform at every frame, and the chosen
+/// region's name moves with them.
+private struct MapSurface: View, Animatable {
+    var viewport: MapViewport
+    let counts: [String: Int]
+    let selected: String?
+    let hovered: String?
+    let callout: Callout?
+
+    struct Callout: Equatable {
+        let text: String
+        /// Where the region is, in the map's unit square.
+        let anchor: CGPoint?
+    }
+
+    var animatableData: AnimatablePair<CGFloat, AnimatablePair<CGFloat, CGFloat>> {
+        get { AnimatablePair(viewport.scale, AnimatablePair(viewport.center.x, viewport.center.y)) }
+        set { viewport = MapViewport(scale: newValue.first, center: CGPoint(x: newValue.second.first, y: newValue.second.second)) }
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let size = proxy.size
+            Canvas { context, size in draw(&context, size: size) }
+                .accessibilityHidden(true)
+            if let callout, let anchor = callout.anchor {
+                label(callout.text, at: viewport.point(anchor, in: size), in: size)
+            }
+        }
+    }
+
+    private func draw(_ context: inout GraphicsContext, size: CGSize) {
+        let transform = viewport.transform(in: size)
+        var chosen: Path?, pointed: Path?
+        for shape in WorldMap.shapes {
+            let path = shape.path.applying(transform)
+            context.fill(path, with: .color(WorldMap.fill(shape.code.flatMap { counts[$0] } ?? 0)), style: FillStyle(eoFill: true))
+            context.stroke(path, with: .color(Color.surfaceRaised), lineWidth: 0.5)
+            if let code = shape.code, counts[code] != nil {
+                if code == selected { chosen = path } else if code == hovered { pointed = path }
+            }
+        }
+        // Regions with no shape to fill: a mark of the same green.
+        for code in counts.keys.sorted() where WorldMap.isMarked(code) {
+            guard let anchor = WorldMap.anchor(of: code) else { continue }
+            let center = viewport.point(anchor, in: size), radius: CGFloat = code == selected ? 6 : 4.5
+            let mark = Path(ellipseIn: CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2))
+            context.fill(mark, with: .color(Color.surfaceRaised))
+            context.fill(mark, with: .color(WorldMap.fill(counts[code] ?? 0)))
+            context.stroke(mark, with: .color(code == selected ? Color.veerAccent : Color.primary.opacity(code == hovered ? 0.6 : 0.3)),
+                           lineWidth: code == selected ? 2 : 1)
+        }
+        if let pointed { context.stroke(pointed, with: .color(Color.primary.opacity(0.45)), lineWidth: 1) }
+        if let chosen { context.stroke(chosen, with: .color(Color.veerAccent), lineWidth: 2) }
+    }
+
+    /// Above the region, kept inside the map; below it for regions at the map's top edge.
+    private func label(_ text: String, at point: CGPoint, in size: CGSize) -> some View {
+        let margin: CGFloat = 130, offset: CGFloat = 26
+        return Text(verbatim: text)
+            .font(.callout)
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, Spacing.md)
+            .padding(.vertical, Spacing.xs)
+            .background(.regularMaterial, in: Capsule())
+            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.1)))
+            .position(x: min(max(point.x, margin), max(margin, size.width - margin)),
+                      y: point.y > offset + Spacing.lg ? point.y - offset : point.y + offset)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
 }
 
 /// The regions by node count, as cards. Nodes the names say nothing about come last.
@@ -371,22 +391,12 @@ private struct RegionGrid: View {
     let selected: String?
     let choose: (String) -> Void
 
-    @Environment(\.pageTargetWidth) private var targetWidth
-
-    /// As many as fit the width the page has or is going to, so the cards do not move from three
-    /// columns to two and back while the Agent panel moves; then they only stretch.
-    private var columns: [GridItem] {
-        guard let targetWidth else { return [GridItem(.adaptive(minimum: NodeMapLayout.regionCardWidth), spacing: Spacing.sm)] }
-        let count = NodeMapLayout.regionColumns(pageWidth: targetWidth)
-        return Array(repeating: GridItem(.flexible(minimum: 0), spacing: Spacing.sm), count: count)
-    }
-
     private var sortedCodes: [String] {
         regions.keys.compactMap { $0 }.sorted { (regions[$0]?.count ?? 0, $1) > (regions[$1]?.count ?? 0, $0) }
     }
 
     var body: some View {
-        LazyVGrid(columns: columns, spacing: Spacing.sm) {
+        BlendedGrid(minimum: NodeMapLayout.regionCardWidth, spacing: Spacing.sm, rowSpacing: Spacing.sm) {
             ForEach(sortedCodes, id: \.self) { code in
                 if let place = NodeLocator.place(code), let nodes = regions[code] {
                     card(code: code, title: "\(place.flag) \(place.name)", nodes: nodes)
@@ -439,7 +449,7 @@ private struct RegionNodes: View {
             if code == NodeMapView.unknownRegion {
                 Text("在代理页的节点上右键，可以手动标记地区。").font(.caption).foregroundStyle(.secondary)
             }
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: Spacing.sm)], spacing: Spacing.sm) {
+            BlendedGrid(minimum: 240, spacing: Spacing.sm, rowSpacing: Spacing.sm) {
                 ForEach(nodes) { card($0) }
             }
         }
@@ -476,69 +486,13 @@ private struct RegionNodes: View {
     }
 }
 
-/// A map layer drawn once into a picture and shown scaled. Its outlines are a few thousand points,
-/// which drawing again at every width cost the Agent panel's motion every other frame; a picture
-/// only scales. It is drawn at the map's width once the panel stops, so at rest its lines are
-/// exact, and again when what it shows or the appearance changes. With Increase Contrast on, the
-/// layer itself: a picture cannot be given that setting.
-private struct MapDrawing<Layer: View>: View {
-    let key: String
-    /// The map's width now, and once the Agent panel has stopped (nil outside the main window).
-    let width: CGFloat
-    let targetWidth: CGFloat?
-    @ViewBuilder var layer: () -> Layer
-    @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.colorSchemeContrast) private var contrast
-    @Environment(\.displayScale) private var displayScale
-    @State private var drawn: Image?
-
-    private var pictureWidth: CGFloat { NodeMapLayout.pictureWidth(mapWidth: width, targetMapWidth: targetWidth) }
-    private var size: CGSize { CGSize(width: pictureWidth, height: pictureWidth * (WorldMap.north - WorldMap.south) / 360) }
-
-    private var currentKey: String { "\(key) \(colorScheme) \(contrast) \(displayScale) \(pictureWidth)" }
-
-    var body: some View {
-        Group {
-            // The last picture, scaled, until the new one is drawn: the layer itself in between
-            // would cost the frame the picture saves.
-            if contrast == .standard, let drawn {
-                drawn.resizable().interpolation(.high)
-            } else {
-                // Until the first picture is ready, the layer itself.
-                layer()
-            }
-        }
-        .accessibilityHidden(true)
-        .task(id: currentKey) { if contrast == .standard { draw() } }
-    }
-
-    private func draw() {
-        let renderer = ImageRenderer(content: layer()
-            .frame(width: size.width, height: size.height)
-            .environment(\.colorScheme, colorScheme))
-        renderer.scale = displayScale
-        if let image = renderer.cgImage { drawn = Image(decorative: image, scale: displayScale) }
-    }
-}
-
 /// The node map's width rules, chosen from the width the page has or is going to.
 nonisolated enum NodeMapLayout {
     static let regionCardWidth: CGFloat = 220
-
-    /// Region cards at least 220 wide, 8 apart, inside the page's 24 pt margins.
-    static func regionColumns(pageWidth: CGFloat) -> Int {
-        max(1, Int((pageWidth - 2 * Spacing.xl + Spacing.sm) / (regionCardWidth + Spacing.sm)))
-    }
 
     /// The map card's inside, where the map and its legend are, on a page this wide: less the
     /// page's 24 pt margins and the card's 16 pt padding on each side.
     static func cardInsideWidth(pageWidth: CGFloat) -> CGFloat {
         max(0, pageWidth - 2 * Spacing.xl - 2 * Spacing.lg)
-    }
-
-    /// The map's width once the Agent panel has stopped, so it is drawn once as the motion starts
-    /// and never at the widths on the way; its own width outside the main window.
-    static func pictureWidth(mapWidth: CGFloat, targetMapWidth: CGFloat?) -> CGFloat {
-        max(1, (targetMapWidth ?? mapWidth).rounded(.up))
     }
 }

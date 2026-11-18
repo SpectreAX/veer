@@ -10,6 +10,9 @@ struct AgentView: View {
     var body: some View {
         HStack(spacing: 0) {
             ThreadList()
+                // On the page's background: the list's own begins 14 pt below the window's top,
+                // a step behind the title's glass in dark mode.
+                .scrollContentBackground(.hidden)
                 .frame(width: Metrics.sidebarWidth)
             Divider()
             VStack(spacing: 0) {
@@ -87,10 +90,15 @@ struct AgentConversation: View {
         } else {
             VStack(spacing: 0) {
                 if agent.profileIsInactive, let name = agent.profile?.name {
+                    // An inline banner with its own shape and margins. A bare color behind it runs on
+                    // into the safe area above, under the toolbar's row or the panel's header.
                     StatusBadge(kind: .info, text: String(localized: "这个对话属于配置“\(name)”，它现在没有在运行。"))
+                        .fixedSize(horizontal: false, vertical: true)
                         .padding(Spacing.md)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.subtleFill)
+                        .background(Color.subtleFill, in: RoundedRectangle(cornerRadius: Radius.medium, style: .continuous))
+                        .padding(.horizontal, compact ? Spacing.md : Spacing.xl)
+                        .padding(.top, Spacing.sm)
                 }
                 if agent.current == nil {
                     AgentWelcome()

@@ -27,11 +27,12 @@ Brand expression must not damage native usability.
 - `NavigationSplitView` sidebar in two groups: Proxy and AI.
 - `⌘1`–`⌘5` switch the sidebar's pages. Tools has subpages with a back button and `⌘[`. Important
   commands are also in the menu bar.
-- The Agent panel is a plain column beside the page. Opening it widens the window by the panel's width,
-  so the page keeps its own, and closing it gives the width back.
+- The Agent panel is a floating glass surface of its own beside the page (continuous 16 pt corners, regular Liquid Glass on macOS 26 and later, the regular material with a hairline edge before it; no fill, edge or shadow of Veer's on the glass), below the toolbar's row and 8 pt clear of it, the window's edges and the page. It is laid out with the page by one SwiftUI layout. Opening
+  and closing animate both together on one spring; the window keeps its size.
 
 ## Toolbar
 
+- The menu bar shows Veer's own mark, the app icon's route and branch without its body, as a template image the system tints (`MenuBarMark`); it is dimmed while the core is not running.
 - Icon-only buttons have accessibility labels and tooltips.
 - Controls are grouped by what they do, each group in its own glass, and at most three groups: up to
   two for the page, with search on its own, then the Agent toggle and start/stop together.
@@ -57,7 +58,41 @@ System fonts and semantic text styles. Code and logs use `Typography.code` and `
 
 ## Materials
 
-- Glass belongs to controls and navigation. Content panels (`panel()`) stay solid.
+- Glass belongs to controls and navigation. Content panels (`panel()`) stay solid. The Agent panel is
+  the one large glass surface: a helper that floats beside the page, like the toolbar's groups. It
+  stays a floating panel on every system, whatever the system's own sidebars do. Nothing inside it
+  has glass of its own except the composer: messages, cards and suggestions keep their solid or
+  semantic fills.
+- The panel's glass is the one base under its header, conversation and composer: from macOS 26 the
+  conversation draws no color of its own there. The header (with a suggestion, when one shows) and the
+  composer are the panel's two bars, each on glass of its own.
+- macOS draws a separator line across a bar's full width, whatever the scroll edge style, unless glass
+  reaches close to the bar's edges: under a plain header, under a suggestion card on its own, at a bar
+  with something drawn past its bounds, and where the composer stops well short of the sides (12 pt
+  margins are close enough; 24 pt, or a 760 pt reading width in a wide window, are not). Measured, not
+  documented; `scrollEdgeEffectHidden` does not remove it. So the panel's bars are glass edge to edge,
+  the button back to the newest turn floats over the conversation rather than in the composer's bar,
+  and the Agent page, whose composer stops at the reading width, keeps a plain inset over a fade of the
+  page's own color, which is its background, so the fade has no edge.
+- The composer is its own regular glass shape, in the panel and on the Agent page, covering the field,
+  its controls and padding. In the panel from macOS 26 it sits in a bottom `safeAreaBar` of the
+  conversation, which scrolls on beneath it with the system's soft bottom edge, so text passing behind
+  it is blurred, never drawn sharp under the placeholder or the draft. Its rim and shadow are the
+  system's: in an active window a 1-pixel rim along the top edge and a shadow that falls only
+  downward (about 15 pt), none above. A standalone app with one glass shape and no Veer code draws
+  the same, and the API has no control over either. Veer adds no shadow of its own (decided
+  2026-11-17, after comparing regular, clear, and regular with an all-round app shadow).
+- In an active window regular glass shows sharp content behind it as readable ghost text, and the
+  API has no blur control. In the panel the conversation's lines and cards therefore soften as they
+  go under the composer, blurred and faded in proportion to how much of each is there
+  (`SoftenedUnderComposer`). This touches the content only, never the glass, its bar or the system's
+  edge, and leaves everything above the composer as it is. Nothing of Veer's is drawn on or behind the glass
+  (no fill, gradient or opacity), so it follows the window's state, the appearance, Reduce
+  Transparency, Increase Contrast and the system's Liquid Glass setting. Before macOS 26 it is the
+  regular material in a safe-area inset, over a fade of the page's color. Its look follows the
+  window's state, as all Liquid Glass does: a soft shadow and a firmer rim while Veer is the active
+  app, flatter with no shadow when it is not. The API has no control over this, and the panel keeps
+  the system's behaviour rather than imitating either state (decided 2026-11-17).
 - Page code uses `primaryAction()`, `secondaryAction()` and `floatingPanel()`, which fall back to
   standard styles on macOS 14 and 15. It does not call `glassEffect`.
 
@@ -88,6 +123,7 @@ as a violation unless its reason no longer holds. Anything not listed here is no
 |---|---|---|
 | The system toolbar stays empty and the controls float above it | With items in `NSToolbar`, opening the sidebar pushes them into the `»` overflow, and they jump instead of animating between pages | SPEC 5, `PageToolbar`, `ToolbarCapsule` |
 | The window has no toolbar at all in full screen | AppKit moves a toolbar to a window of its own in front of the content, which covers the floating controls, and entering full screen shows it again if it is hidden | SPEC 5, `EmptyWindowToolbar` |
+| The page title and profile menu sit on one glass capsule in the top row | Veer draws its title itself, over the window rather than in the system toolbar it leaves empty, so the system gives it no backing. Text scrolling under the row showed through the title, and the soft scroll edge (`scrollEdgeEffectStyle(.soft)`) removes only about half its contrast and has no strength to set. A full-width fade in the page background hid that text but also covered the colour of everything passing under the row, and a variable-blur shader cost about 125–170 MB more memory. The capsule is the same regular glass and 40 pt height as the toolbar's capsules, so the row reads as one set of controls. Bold text passing right behind it still shows faintly through the glass, and text in the row outside the capsules has only the soft edge | SPEC 5, `MainView.pageTitle` |
 | Proxies' add button shares a glass group with the view controls | A group of its own would make four, and the HIG asks for at most three | SPEC 5, `ProxiesView` |
 | Own glass switch instead of a segmented picker in the top row | Outside a real toolbar, which Veer leaves empty, the system's picker draws its own track instead of glass. The selection is a neutral shape, so it does not use the system accent | SPEC 5, `GlassSwitch` |
 | Back button floats in the top row instead of `NavigationStack` | A stack's back button belongs to the system toolbar, which Veer leaves empty | SPEC 5, `MainView` |
@@ -95,8 +131,7 @@ as a violation unless its reason no longer holds. Anything not listed here is no
 | Sidebar selection stays in the accent color when the focus moves | Pages put the cursor in their own field, and the system's dimming then flashes between two looks on every click. The product owner asked for one look | SPEC 5, `selectionHighlight` |
 | Own search field instead of `.searchable` | Several `.searchable` pages crash `NSToolbar` with a duplicate identifier on page switch (1.0.3 crash) | SPEC 5, `ToolbarSearchField` |
 | Sidebar hides and shows by moving the native split view's divider, not through `NavigationSplitView`'s own collapse | Its collapse reused a stale page image, and reversing it mid-way in an 860-wide window grew the window to 1040. SwiftUI has no control of the divider, so `SidebarAnimator` drives the split view item it already has; with Reduce Motion it switches at once | `SidebarAnimator`, `MainView` |
-| Agent panel uses a live native split divider driven from SwiftUI's HSplitView | SwiftUI's inspector could crash on rapid reversal; picture crossfades duplicated table text. PanelSplitView keeps the existing SwiftUI preference and focus tree, while an AppKit NSAnimation moves the real divider. Page and panel have disjoint bounds, and Reduce Motion changes the divider immediately | PanelSplitView, PanelDividerConnector, MainView |
-| Opening the Agent panel widens the window, as Telegram Desktop does for its third column | Squeezing the page reflowed heavy pages on every toggle, and an attached side window split focus, menus and shadow across two windows. The window widens to the right, or also moves left near the screen's edge, never past the screen's width, and closing restores the frame. Full screen, a zoomed window or one already as wide as the screen keep their size and the page gives up the width | PanelSplitView (`growsWindow`), `PanelWindowGrowth`, MainView |
+| Agent panel and page share one custom SwiftUI layout with an animatable reveal value, instead of a split view | SwiftUI's inspector could crash on rapid reversal; an AppKit-driven divider and a window that grows were each tried and felt wrong (per-frame window growth hitched on nearly every frame; an instant resize jumped). One animated value drives the page's width, as Codex for macOS does, and a spring reverses smoothly mid-motion. The panel is pushed in from past the window's trailing edge as one piece at its full width, its leading edge on the page's trailing edge at every frame (revealing a panel resting in place read as a wipe, not a panel arriving). It is laid out once where it rests and carried by a transform on the same animated value: placed by the layout at every frame, a long conversation's views were each given a new position, at about twice the dropped frames. The spring stays out of the page, which lays itself out from its real width at every frame: carried into it, shapes interpolated on their own and drifted from their text. The page and panel ignore the pointer during motion, so a click cannot pass through the page into a still-covered panel control. Nothing structural changes during the motion: the panel is built ahead of time and kept beneath the page (except on the Agent page), and switching the pointer off and choosing each grid's and row's arrangement happen in the turn before the motion starts, input and focus after it ends; done in its first frame they froze it for up to 200 ms and it resumed most of the way open. Responsive arrangements change continuously with the page's width (`ArrangementBlend`): Overview cards, group headers and small grids go from one arrangement to the other frame by frame, across first and then between rows. Held at the narrow end's arrangement and switched at rest, as first tried, they jumped before an open and after a close. Only the large lazy node grid still holds its column count through the motion (`SteadyGrid`). The panel draws above the page while it is open or moving (`zIndex`, switched once before and once after a motion): beneath the opaque page, its Liquid Glass shadow was cut off at the page edge and read as a vertical line left of the panel. A closed panel stays beneath, or its shadow would show at the window's trailing edge. Reduce Motion switches at once | PanelRevealStack, MainView |
 | Plain Agent column instead of `.inspector` | `NSSplitViewController` throws if the inspector changes mid-animation (crash on 2026-10-30) | `AgentPanelColumn` |
 | Veer green tint instead of the system accent color | Brand color, used only on small areas. Custom accent colors are out of scope for v1 | `Color.veerAccent` |
 | Fixed chart palette | Categorical colors need stable, color-blind-checked pairs that the system colors do not give. Every chart has a legend with exact counts | `ChartPalette` |

@@ -43,6 +43,8 @@ struct ToolbarCapsule: View {
     let content: PageToolbarContent?
 
     private static let pageSlots = 2
+    /// The height of each glass capsule in the row, which the title's capsule shares.
+    static let height: CGFloat = 40
 
     private var swap: AnyTransition { reduceMotion ? .opacity : AnyTransition(.blurReplace) }
 
@@ -69,7 +71,7 @@ struct ToolbarCapsule: View {
                     StartStopButton()
                 }
                 .padding(.horizontal, Spacing.xs)
-                .frame(height: 40)
+                .frame(height: Self.height)
                 .glassSurface(in: Capsule(), id: "window", namespace: glass)
             }
             .buttonStyle(ToolbarCapsuleButtonStyle())
@@ -89,7 +91,7 @@ struct ToolbarCapsule: View {
                 .id(page)
                 .transition(swap)
         }
-        .frame(height: 40)
+        .frame(height: Self.height)
         .clipShape(Capsule())
         .glassSurface(in: Capsule(), id: slot, namespace: glass)
         .transition(swap)

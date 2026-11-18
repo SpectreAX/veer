@@ -98,21 +98,7 @@ struct GroupSection: View {
     @Environment(ProxyStore.self) private var store
     @Environment(AgentStore.self) private var agent
     let group: ProxyStore.Group
-    @Environment(\.pageTargetWidth) private var targetWidth
-
-    /// As many columns as fit the width the page has or is going to, not the one it has on the way
-    /// there: an adaptive grid would drop a column at a time as the Agent panel opens.
-    private var columns: [GridItem] {
-        guard let targetWidth else { return [GridItem(.adaptive(minimum: Self.tileWidth), spacing: Spacing.sm)] }
-        return Array(repeating: GridItem(.flexible(minimum: 0), spacing: Spacing.sm), count: Self.columnCount(pageWidth: targetWidth))
-    }
-
     static let tileWidth: CGFloat = 180
-
-    /// What an adaptive grid would choose inside the page's margins.
-    static func columnCount(pageWidth: CGFloat) -> Int {
-        max(1, Int((pageWidth - 2 * Spacing.xl + Spacing.sm) / (tileWidth + Spacing.sm)))
-    }
 
     private var collapsed: Bool { store.collapsedGroups.contains(group.name) }
 
@@ -120,35 +106,21 @@ struct GroupSection: View {
         VStack(alignment: .leading, spacing: Spacing.md) {
             // The type and node on a line of their own when the row runs short, as squeezed into it the
             // group's name goes first. The node stays in reach: a collapsed group has no other way to show it.
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: Spacing.sm) {
-                    title
-                    typeTag
-                    quickSwitch(fixed: true)
-                    Spacer(minLength: 0)
+            // The same four views in either form: while the Agent panel moves they go from one to
+            // the other with the width, and the sections below follow.
+            BlendedHeader(spacing: Spacing.sm, rowSpacing: Spacing.xs) {
+                title
+                typeTag
+                // Always one view, whether or not there is a node to show.
+                ZStack { quickSwitch }
+                // Its symbol alone where the title would otherwise have no room.
+                ViewThatFits(in: .horizontal) {
                     actions(compact: false)
-                }
-                VStack(alignment: .leading, spacing: Spacing.xs) {
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: Spacing.sm) {
-                            title
-                            Spacer(minLength: 0)
-                            actions(compact: false)
-                        }
-                        HStack(spacing: Spacing.sm) {
-                            title
-                            Spacer(minLength: 0)
-                            actions(compact: true)
-                        }
-                    }
-                    HStack(spacing: Spacing.sm) {
-                        typeTag
-                        quickSwitch(fixed: false)
-                    }
+                    actions(compact: true)
                 }
             }
             if !collapsed {
-            LazyVGrid(columns: columns, alignment: .leading, spacing: Spacing.sm) {
+            SteadyGrid(minimum: GroupSection.tileWidth, spacing: Spacing.sm, alignment: .leading) {
                 ForEach(group.members) { member in
                     NodeTile(member: member, flag: flag(for: member), selected: member.name == group.now, selectable: group.isSelectable) {
                         store.select(member.name, in: group.name)
@@ -161,10 +133,6 @@ struct GroupSection: View {
                     }
                 }
             }
-            // A new column count takes effect at once: animated, each tile travels to its new place
-            // on its own and they cross over each other. The same grid, as a new one would have to
-            // make every tile in view again, which costs a tenth of a second before anything moves.
-            .animation(nil, value: columns.count)
             .transition(.opacity)
             }
         }
@@ -219,8 +187,8 @@ struct GroupSection: View {
     }
 
     /// The node in use, and for a select group a menu of every member with its delay: switching
-    /// without opening the group. `fixed` keeps its whole name, where the row has been measured to fit.
-    @ViewBuilder private func quickSwitch(fixed: Bool) -> some View {
+    /// without opening the group. It truncates in the width the header gives it.
+    @ViewBuilder private var quickSwitch: some View {
         if let now = group.now {
             if group.isSelectable {
                 Menu {
@@ -228,7 +196,7 @@ struct GroupSection: View {
                 } label: {
                     Text(verbatim: "→ \(now)").lineLimit(1)
                 }
-                .menuStyle(.borderlessButton).fixedSize(horizontal: fixed, vertical: true).neutralControl()
+                .menuStyle(.borderlessButton).fixedSize(horizontal: false, vertical: true).neutralControl()
                 .font(.callout)
                 .help("切换节点")
             } else {

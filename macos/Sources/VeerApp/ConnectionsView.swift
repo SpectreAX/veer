@@ -49,10 +49,12 @@ struct ConnectionsView: View {
             StateView(symbol: Page.connections.symbol, title: String(localized: "现在没有连接"),
                       message: String(localized: "开启系统代理，或让应用使用 127.0.0.1:\(String(store.proxyPort)) 作为代理后，连接会出现在这里。"))
         } else {
+            // Filtered once for the count, the table and the route below it.
+            let shown = shown
             VStack(spacing: 0) {
-                filterBar
+                filterBar(count: shown.count)
                 Divider()
-                table
+                table(shown)
                 // One selected connection: its route, rule to node, which the far columns also show.
                 if selection.count == 1, let row = shown.first(where: { selection.contains($0.id) }) {
                     Divider()
@@ -64,17 +66,16 @@ struct ConnectionsView: View {
         }
     }
 
-    /// With labels and the count while they fit; beside the Agent panel in a small window, the pickers alone.
-    private var filterBar: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: Spacing.md) {
-                filterPickers
-                Spacer()
-                Text("\(shown.count) 个连接").font(.callout).foregroundStyle(.secondary).monospacedDigit().lineLimit(1).fixedSize()
-            }
-            HStack(spacing: Spacing.sm) {
-                filterPickers.labelsHidden()
-                Spacer(minLength: 0)
+    /// The pickers keep their place at the leading edge whatever the width, each naming what it
+    /// filters in its own title ("全部进程"), so nothing in the bar changes form as the Agent panel
+    /// moves. The count follows the trailing edge, and gives way only when it would meet them.
+    private func filterBar(count: Int) -> some View {
+        HStack(spacing: Spacing.sm) {
+            filterPickers
+            Spacer(minLength: 0)
+            ViewThatFits(in: .horizontal) {
+                Text("\(count) 个连接").font(.callout).foregroundStyle(.secondary).monospacedDigit().lineLimit(1).fixedSize()
+                Color.clear.frame(width: 0, height: 0)
             }
         }
         .padding(.horizontal, Spacing.lg)
@@ -86,18 +87,22 @@ struct ConnectionsView: View {
             Text("全部进程").tag(String?.none)
             ForEach(Set(store.connections.compactMap(\.process)).sorted(), id: \.self) { Text($0).tag(Optional($0)) }
         }
+        .labelsHidden()
         .fixedSize()
         .neutralControl()
+        .help("按进程筛选")
         Picker("策略组", selection: $policy) {
             Text("全部策略组").tag(String?.none)
             ForEach(Set(store.connections.map(\.policy)).filter { !$0.isEmpty }.sorted(), id: \.self) { Text($0).tag(Optional($0)) }
         }
+        .labelsHidden()
         .fixedSize()
         .neutralControl()
+        .help("按策略组筛选")
     }
 
-    private var table: some View {
-        ConnectionsTable(rows: shown, hiddenColumns: [], selection: $selection,
+    private func table(_ rows: [ConnectionRow]) -> some View {
+        ConnectionsTable(rows: rows, selection: $selection,
                          ask: { row in ask(String(localized: "为什么 \(row.host) 走了“\(row.policy)”？")) },
                          addRule: { addingRule = $0 },
                          close: { ids in for id in ids { store.closeConnection(id) } })

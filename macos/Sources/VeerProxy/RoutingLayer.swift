@@ -76,7 +76,7 @@ public struct RoutingLayer: Codable, Sendable, Equatable {
 }
 
 /// The config the core runs and an export writes: the profile with the layer applied.
-public struct EffectiveConfig: Sendable, Equatable {
+public struct EffectiveConfig: Sendable, Equatable, Codable {
     public let text: String
     /// What happened to each enabled edit; nil when there were none.
     public let replay: EditReplay.Result?
@@ -160,6 +160,15 @@ public final class RoutingStore: @unchecked Sendable {
         lock.withLock {
             guard let data = try? Data(contentsOf: file(id)) else { return RoutingLayer() }
             return (try? Self.decoder.decode(RoutingLayer.self, from: data)) ?? RoutingLayer()
+        }
+    }
+
+    /// The layer with the bytes it was read from, which `EffectiveConfigCache` keys on; nil when
+    /// the profile has no layer.
+    public func loadWithData(_ id: UUID) -> (layer: RoutingLayer, data: Data)? {
+        lock.withLock {
+            guard let data = try? Data(contentsOf: file(id)), let layer = try? Self.decoder.decode(RoutingLayer.self, from: data) else { return nil }
+            return (layer, data)
         }
     }
 

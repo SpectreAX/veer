@@ -64,6 +64,10 @@ struct MainView: View {
     @Environment(\.controlActiveState) private var activeState
     @State private var isFullScreen = false
     @State private var roomyTitle = true
+    /// The window's width, followed only up to where it can narrow the Agent panel: beside the
+    /// widest sidebar (`SidebarAnimator`'s 260), the widest room that narrows it.
+    @State private var windowWidth: CGFloat = Self.widestNarrowingWindow
+    private static let widestNarrowingWindow = AgentPanelColumn.widestRoom + 260
     @Namespace private var splitCoordinateSpace
     @State private var sidebarAnimator: SidebarAnimator
 
@@ -72,7 +76,7 @@ struct MainView: View {
     }
 
     /// The window's top row, which the sidebar button, the title and the capsule float in.
-    static let topRowHeight: CGFloat = 52
+    nonisolated static let topRowHeight: CGFloat = 52
 
     var body: some View {
         @Bindable var store = store
@@ -101,15 +105,18 @@ struct MainView: View {
     /// detail column its final width at once and then slides it, which would throw anything inside
     /// it past the window's edge.
     private var split: some View {
-        @Bindable var store = store
-        // Opening the panel widens the window by its width, so the page keeps its own; in full screen,
-        // zoomed or against the screen's edges it takes the page's width instead.
-        return PanelSplitView(isPresented: panelShown, width: $store.agentPanelWidth, animationTrigger: store.agentPanel,
-                              growsWindow: true) {
+        // One layout for the page and the panel, animated together; the window keeps its size.
+        PanelRevealStack(isPresented: panelShown, panelWidth: AgentPanelColumn.width(store, room: panelRoom),
+                         animationTrigger: store.agentPanel,
+                         // Off on the Agent page, whose own composer would otherwise share its requests.
+                         keepsPanelMounted: store.page != .agent) {
             sidebarAndPage
         } panel: {
-            AgentPanelColumn(showsDivider: false)
-                .padding(.top, fullScreenTopInset)
+            AgentPanelColumn(room: panelRoom)
+                // Below the toolbar's row, which floats over the window's top, and clear of it: the
+                // row's controls end 6 pt above its foot, which with this makes the 8 pt between
+                // them and the container.
+                .padding(.top, Self.topRowHeight + Spacing.xxs)
                 .background(Color.surface)
                 .overlay(alignment: .top) { dragRow }
         }
@@ -121,6 +128,7 @@ struct MainView: View {
         // item's content also snaps to a new page rather than animating.
         .background(EmptyWindowToolbar(isFullScreen: $isFullScreen))
         .onGeometryChange(for: Bool.self) { $0.size.width >= Metrics.roomyTitleWidth } action: { roomyTitle = $0 }
+        .onGeometryChange(for: CGFloat.self) { min($0.size.width, Self.widestNarrowingWindow) } action: { windowWidth = $0 }
         .overlay(alignment: .topLeading) {
             sidebarButton
                 .padding(.top, 6)
@@ -148,6 +156,9 @@ struct MainView: View {
     }
 
     private var panelShown: Bool { store.agentPanel && store.page != .agent }
+
+    /// What the page and the Agent panel share, beside the sidebar.
+    private var panelRoom: CGFloat { windowWidth - (sidebarHidden ? 0 : sidebarAnimator.width) }
 
     /// Full screen has no toolbar to start the columns below the row (see `EmptyWindowToolbar`). For
     /// each column: a split view passes no safe area from outside it on to them.
@@ -218,13 +229,19 @@ struct MainView: View {
         sidebarAnimator.toggle(reduceMotion: reduceMotion)
     }
 
-    /// The page, which a click on goes through to the window, and the profile's menu.
+    /// The page, which a click on goes through to the window, and the profile's menu, on one glass
+    /// capsule as high as the toolbar's: content scrolled under the row passes behind the glass
+    /// rather than through the title. The glass is a background that takes no clicks: on the title
+    /// itself it took them, and the window no longer moved or zoomed from there.
     private var pageTitle: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(store.page.title).font(.headline).allowsHitTesting(false)
             if !profileName.isEmpty { ProfileMenu(name: profileName, maximumNameWidth: roomyTitle ? 160 : 90) }
         }
         .lineLimit(1)
+        .padding(.horizontal, Spacing.md)
+        .frame(height: ToolbarCapsule.height)
+        .background { Color.clear.glassSurface(in: Capsule()).allowsHitTesting(false) }
     }
 
     /// Keep the full name; the menu label bounds its visible width using native text truncation.
@@ -275,12 +292,14 @@ struct MainView: View {
                                                 max: sidebarAnimator.maximumWidth)
             } detail: {
                 SplitDetailViewport(splitWidth: split.size.width, coordinateSpace: splitCoordinateSpace) {
-                    pageContent
+                    pageContent.modifier(TopRowBar(height: Self.topRowHeight))
                 }
                 .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                // The toolbar has no band, so nothing may scroll under the title and window buttons.
-                .clipped()
-                .padding(.top, fullScreenTopInset)
+                // The toolbar has no band. Before macOS 26 nothing may scroll under the title and
+                // window buttons; from macOS 26 the system softens what does (`TopRowBar`), which
+                // also stands in for the full-screen inset.
+                .clipShape(PageClip())
+                .padding(.top, PageClip.softensAbove ? 0 : fullScreenTopInset)
                 .background(Color.surface)
                 .overlay(alignment: .top) { dragRow }
                 .overlay(alignment: .topLeading) { titleRow }
@@ -533,6 +552,29 @@ struct StartStopButton: View {
         case .starting: ""
         case .running: String(localized: "停止内核（⌘R）")
         case .stopped, .failed: store.activeProfile == nil ? String(localized: "先导入一个配置") : String(localized: "启动内核（⌘R）")
+        }
+    }
+}
+
+/// Tells macOS 26 that the window's top row is a bar over the page, so that scroll views meeting it
+/// get the system's soft edge: their content passes under the row, blurred and faded by the system.
+/// The row itself is drawn over the window by `MainView`; this only marks its place. The bar needs
+/// something drawn in it to count (a clear one gets no effect), hence the all but invisible fill.
+/// It stands in for the top safe area, which the page gives up, so the page starts where it did.
+/// Before macOS 26 there is no such effect: the page stays clipped below the row.
+struct TopRowBar: ViewModifier {
+    let height: CGFloat
+
+    func body(content: Content) -> some View {
+        if #available(macOS 26, *) {
+            content
+                .scrollEdgeEffectStyle(.soft, for: .top)
+                .safeAreaBar(edge: .top, spacing: 0) {
+                    Color.primary.opacity(0.001).frame(height: height).allowsHitTesting(false).accessibilityHidden(true)
+                }
+                .ignoresSafeArea(.container, edges: .top)
+        } else {
+            content
         }
     }
 }

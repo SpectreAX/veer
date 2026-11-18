@@ -6,6 +6,10 @@ struct ConversationView: View {
     @Environment(AgentStore.self) private var store
     @Environment(\.agentCompact) private var compact
     @State private var followsBottom = true
+    /// The composer's bar, for placing the button back to the newest turn above it.
+    @State private var barHeight: CGFloat = 0
+    /// The composer's top, for softening what goes under it (`SoftenedUnderComposer`).
+    @State private var composerTop: CGFloat?
 
     static let examples = [String(localized: "Netflix 走日本，ChatGPT 走美国"), String(localized: "YouTube 走香港"), String(localized: "example.com 直连"), String(localized: "屏蔽广告")]
 
@@ -44,6 +48,7 @@ struct ConversationView: View {
                 .padding(.bottom, Spacing.lg)
                 .frame(maxWidth: Metrics.readingWidth)
                 .frame(maxWidth: .infinity)
+                .environment(\.composerEdge, softensUnderComposer ? composerTop : nil)
             }
             // A scroll view per session, opening at the newest turn. Reusing one kept the previous
             // session's scroll position, which can lie past the end of a shorter session's content
@@ -64,38 +69,62 @@ struct ConversationView: View {
             }
             .onChange(of: store.selectedID) { followsBottom = true }
             .onAppear { proxy.scrollTo("bottom", anchor: .bottom) }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                composer
-                    .frame(maxWidth: Metrics.readingWidth)
-                    // Floats just above the composer without taking layout space: if it changed the
-                    // inset, its own appearance would move the view off the bottom and keep it shown.
-                    .overlay(alignment: .top) {
-                        if !followsBottom && !turns.isEmpty {
-                            Button {
-                                followsBottom = true
-                                withAnimation(Motion.standard) { proxy.scrollTo("bottom", anchor: .bottom) }
-                            } label: {
-                                Label(String(localized: "回到最新"), systemImage: "arrow.down")
-                            }
-                            .secondaryAction()
-                            .controlSize(.small)
-                            .help(String(localized: "滚动到最新一轮"))
-                            .fixedSize()
-                            .offset(y: -(Spacing.xxl + Spacing.xs))
-                            .transition(.opacity)
-                        }
-                    }
-                .padding(.horizontal, compact ? Spacing.md : Spacing.xl)
-                .padding(.bottom, Spacing.md)
-                .padding(.top, Spacing.sm)
-                .background {
-                    LinearGradient(stops: [.init(color: Color.surface.opacity(0), location: 0), .init(color: Color.surface, location: 0.35)],
-                                   startPoint: .top, endPoint: .bottom)
-                        .ignoresSafeArea()
-                }
-            }
+            .modifier(ComposerBar(asBar: compact) { composerBar })
+            .overlay(alignment: .bottom) { backToLatest(turns: turns, proxy: proxy) }
+            .coordinateSpace(.named(SoftenedUnderComposer.space))
         }
-        .background(Color.surface)
+        .background(background)
+    }
+
+    /// In the panel from macOS 26, nothing: the panel's glass is the one base under the header, the
+    /// conversation and the composer. A color of the conversation's own was a second base, whose
+    /// tone stopped where the bars began. Before macOS 26 the panel is a material, and the
+    /// conversation keeps the page's color, which its fade under the composer blends into.
+    /// Where the conversation scrolls on under the composer's glass: the panel's system bar, from
+    /// macOS 26. Elsewhere it ends above the composer, or fades out under a fade of its own.
+    private var softensUnderComposer: Bool {
+        if #available(macOS 26, *) { return compact }
+        return false
+    }
+
+    private var background: Color {
+        if #available(macOS 26, *), compact { return .clear }
+        return .surface
+    }
+
+    /// The composer, at the bottom of the conversation. In the panel its 12 pt margins keep the
+    /// glass close enough to the bar's sides that the system shows no separator (see `ComposerBar`).
+    private var composerBar: some View {
+        composer
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(SoftenedUnderComposer.space)).minY } action: { composerTop = $0 }
+            .frame(maxWidth: Metrics.readingWidth)
+            .padding(.horizontal, compact ? Spacing.md : Spacing.xl)
+            .padding(.bottom, Spacing.md)
+            .padding(.top, Spacing.sm)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { barHeight = $0 }
+    }
+
+    /// Back to the newest turn, just above the composer. Over the conversation rather than in the
+    /// composer's bar: anything drawn in the bar beyond its edge made the system show its separator
+    /// line across the panel there (as soon as the composer had grown past one line), and it would
+    /// change the bar's height as it came and went. Placed from the bar's measured height, so it
+    /// moves up as the composer grows.
+    @ViewBuilder private func backToLatest(turns: ArraySlice<Turn>, proxy: ScrollViewProxy) -> some View {
+        if !followsBottom && !turns.isEmpty {
+            Button {
+                followsBottom = true
+                withAnimation(Motion.standard) { proxy.scrollTo("bottom", anchor: .bottom) }
+            } label: {
+                Image(systemName: "arrow.down").fontWeight(.semibold)
+            }
+            .secondaryAction()
+            .buttonBorderShape(.circle)
+            .controlSize(.regular)
+            .help(String(localized: "滚动到最新一轮"))
+            .accessibilityLabel(String(localized: "回到最新"))
+            .padding(.bottom, barHeight + Spacing.xs)
+            .transition(.opacity)
+        }
     }
 
     /// An archived conversation can be read but not continued, so it says why in the composer's place.
@@ -142,7 +171,7 @@ private struct BottomFollowing: ViewModifier {
 
     func body(content: Content) -> some View {
         if #available(macOS 26, *) {
-            tracked(content.scrollEdgeEffectStyle(.soft, for: .bottom))
+            tracked(content.scrollEdgeEffectStyle(.soft, for: .bottom).scrollEdgeEffectStyle(.soft, for: .top))
         } else if #available(macOS 15, *) {
             tracked(content)
         } else {
@@ -171,6 +200,36 @@ private struct BottomFollowing: ViewModifier {
     }
 }
 
+/// Puts the composer at the bottom of the conversation.
+///
+/// In the panel from macOS 26 it is a bar the system knows about: the conversation scrolls on under
+/// it and fades softly into it, as under the header, and the composer's glass blurs what passes
+/// behind it. The system draws a separator line across the full width at a bar's edge unless the
+/// bar's glass reaches close to its sides; in the panel the composer always spans it less 12 pt.
+///
+/// On the Agent page the composer stops at the reading width, so in a wide window it leaves wide
+/// margins and the separator would show; there it sits in a plain inset over a fade of the page's
+/// own color, which is the conversation's background, so the fade has no edge. So it does before
+/// macOS 26, where there is no scroll edge effect.
+private struct ComposerBar<Bar: View>: ViewModifier {
+    let asBar: Bool
+    @ViewBuilder let bar: () -> Bar
+
+    func body(content: Content) -> some View {
+        if #available(macOS 26, *), asBar {
+            content.safeAreaBar(edge: .bottom, spacing: 0, content: bar)
+        } else {
+            content.safeAreaInset(edge: .bottom, spacing: 0) {
+                bar().background {
+                    LinearGradient(stops: [.init(color: Color.surface.opacity(0), location: 0), .init(color: Color.surface, location: 0.35)],
+                                   startPoint: .top, endPoint: .bottom)
+                        .ignoresSafeArea()
+                }
+            }
+        }
+    }
+}
+
 private struct BottomTracking: Equatable {
     var contentHeight: CGFloat
     var containerHeight: CGFloat
@@ -182,6 +241,13 @@ struct FlowLayout: Layout {
     var spacing: CGFloat
     /// Which side each row starts from.
     var alignment: HorizontalAlignment = .leading
+
+    /// No alignment guides of its own: the default placed every subview again to find them.
+    func explicitAlignment(of guide: HorizontalAlignment, in bounds: CGRect, proposal: ProposedViewSize,
+                           subviews: Subviews, cache: inout ()) -> CGFloat? { nil }
+
+    func explicitAlignment(of guide: VerticalAlignment, in bounds: CGRect, proposal: ProposedViewSize,
+                           subviews: Subviews, cache: inout ()) -> CGFloat? { nil }
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = proposal.width ?? .infinity

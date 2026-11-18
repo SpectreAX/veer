@@ -37,6 +37,9 @@ nonisolated public enum Motion {
     public static let quick = Animation.easeOut(duration: 0.15)
     public static let standardDuration = 0.22
     public static let standard = Animation.easeInOut(duration: standardDuration)
+    /// The Agent panel and the page beside it: one spring for both, near critically damped so it
+    /// settles without a visible bounce.
+    public static let panel = Animation.spring(response: 0.36, dampingFraction: 0.9)
 }
 
 private func rgb(_ red: CGFloat, _ green: CGFloat, _ blue: CGFloat) -> NSColor {

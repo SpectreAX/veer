@@ -169,6 +169,8 @@ final class ProxyStore {
     let paths: VeerPaths
     let profileStore: ProfileStore
     let routingStore: RoutingStore
+    /// Effective configs kept between launches.
+    var effectiveStore: EffectiveConfigCache { EffectiveConfigCache(paths: paths) }
     let stateStore: StateStore
     let systemProxy: SystemProxy
     let binary: URL?
@@ -180,6 +182,8 @@ final class ProxyStore {
     @ObservationIgnored var runningCoreRevision = 0
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var core: CoreRunning?
+    /// The latest start of the core, step by step (`StartupTimeline`); also in the diagnostics bundle.
+    @ObservationIgnored var startup: StartupTimeline?
     @ObservationIgnored private(set) var controller: MihomoController?
     /// The running core's controller port and secret, kept for reloads.
     @ObservationIgnored private var controllerAccess: (port: Int, secret: String)?
@@ -382,42 +386,11 @@ final class ProxyStore {
             return
         }
         phase = .starting
+        let signpost = beginStartup()
         Task {
+            defer { endStartup(signpost) }
             do {
-                try paths.prepare()
-                guard let port = Ports.free() else { throw EditorError(String(localized: "找不到可用的本机端口来控制内核。")) }
-                let secret = RuntimeConfig.makeSecret()
-                let text = try await startableText(of: profile.id)
-                // TUN needs the helper; without it the core runs as the user and the system
-                // proxy carries the traffic instead.
-                var tunFailure: String?
-                if settings.tun { tunFailure = await tunProblem() }
-                let launch = { (tun: Bool) in try await self.launchCore(tun: tun, text: text, port: port, secret: secret, binary: binary) }
-                let useTUN = settings.tun && tunFailure == nil
-                let core: CoreRunning, hot: HotRuleSets?
-                do {
-                    (core, hot) = try await launch(useTUN)
-                } catch where useTUN {
-                    tunFailure = message(for: error)
-                    (core, hot) = try await launch(false)
-                }
-                self.core = core
-                hotSets = hot
-                hotLines = [:]
-                tunActive = useTUN && tunFailure == nil
-                let controller = MihomoController(base: URL(string: "http://127.0.0.1:\(port)")!, secret: secret)
-                self.controller = controller
-                controllerAccess = (port, secret)
-                runningPort = settings.mixedPort
-                guard try await controllerAnswers(controller) else { return }
-                guard (try? await controller.version()) != nil else {
-                    core.stop()
-                    self.core = nil
-                    self.controller = nil
-                    phase = .failed(String(localized: "内核在 60 秒内没有就绪，可能正在下载 GeoIP 数据或网络不通。"), log: core.tail)
-                    return
-                }
-                await coreDidStart(tunFailure: tunFailure)
+                try await bringUpCore(profile: profile.id, binary: binary)
             } catch {
                 core?.stop()
                 tunActive = false
@@ -426,15 +399,55 @@ final class ProxyStore {
         }
     }
 
-    /// Waits up to a minute for the new core: the first start can download geodata before the
-    /// controller answers. False when the start was called off meanwhile.
-    private func controllerAnswers(_ controller: MihomoController) async throws -> Bool {
-        for _ in 0..<600 {
-            if phase != .starting { return false }
-            if (try? await controller.version()) != nil { break }
-            try await Task.sleep(for: .milliseconds(100))
+    /// From the profile's text to a core that answers and carries traffic.
+    private func bringUpCore(profile: UUID, binary: URL) async throws {
+        try paths.prepare()
+        guard let port = Ports.free() else { throw EditorError(String(localized: "找不到可用的本机端口来控制内核。")) }
+        let secret = RuntimeConfig.makeSecret()
+        let text = try await startableText(of: profile)
+        reached(.configReady)
+        let (core, tunFailure) = try await launchPreferringTUN(text: text, port: port, secret: secret, binary: binary)
+        let controller = MihomoController(base: URL(string: "http://127.0.0.1:\(port)")!, secret: secret)
+        self.controller = controller
+        controllerAccess = (port, secret)
+        runningPort = settings.mixedPort
+        switch try await coreBecomesReady(controller, controllerPort: port, proxyPort: settings.mixedPort) {
+        case .calledOff: return
+        case .ready: break
+        case .timedOut:
+            core.stop()
+            self.core = nil
+            self.controller = nil
+            phase = .failed(String(localized: "内核在 60 秒内没有就绪，可能正在下载 GeoIP 数据或网络不通。"), log: core.tail)
+            return
         }
-        return phase == .starting
+        await coreDidStart(tunFailure: tunFailure)
+        reached(.uiReady)
+        logStartup("Core started")
+    }
+
+    /// Starts the core with TUN when it is on and the helper is ready; without it the core runs
+    /// as the user and the system proxy carries the traffic instead. Returns why TUN did not run.
+    private func launchPreferringTUN(text: String, port: Int, secret: String, binary: URL) async throws -> (CoreRunning, String?) {
+        var tunFailure: String?
+        if settings.tun {
+            tunFailure = await tunProblem()
+            reached(.helperChecked)
+        }
+        let launch = { (tun: Bool) in try await self.launchCore(tun: tun, text: text, port: port, secret: secret, binary: binary) }
+        let useTUN = settings.tun && tunFailure == nil
+        let core: CoreRunning, hot: HotRuleSets?
+        do {
+            (core, hot) = try await launch(useTUN)
+        } catch where useTUN {
+            tunFailure = message(for: error)
+            (core, hot) = try await launch(false)
+        }
+        self.core = core
+        hotSets = hot
+        hotLines = [:]
+        tunActive = useTUN && tunFailure == nil
+        return (core, tunFailure)
     }
 
     /// Writes the runtime config, with its hot rule sets, and starts the core as root (TUN) or as
@@ -449,9 +462,11 @@ final class ProxyStore {
             try Data(yaml.utf8).write(to: path, options: .atomic)
         }.value
         let core: CoreRunning = tun ? HelperCore(geodata: home) : CoreProcess(binary: binary, home: home)
+        reached(.runtimeWritten)
         try await core.start(config: path) { status, log in
             Task { @MainActor in self.coreExited(status: status, log: log) }
         }
+        reached(.processStarted)
         return (core, hot)
     }
 
@@ -933,6 +948,11 @@ final class ProxyStore {
             guard !Task.isCancelled else { return }
             exit = found ?? ExitInfo.unknown
             exitCheck = nil
+            // The first answer through the proxy after a start: traffic is known to get out.
+            if found != nil, isRunning, startup?.time(of: .networkReachable) == nil {
+                reached(.networkReachable)
+                logStartup("First request through the proxy")
+            }
         }
     }
 
@@ -988,6 +1008,7 @@ final class ProxyStore {
         for row in rows where previousConnections[row.id] == nil && row.rule.hasPrefix("Match") && !row.isAddress {
             suggest(detector.matchedFinalRule(host: row.host, at: time))
         }
+        withdrawResolvedSuggestions(at: time)
         let closed = previousConnections.values.filter { current[$0.id] == nil }
             .sorted { ($0.start ?? .distantPast) > ($1.start ?? .distantPast) }
             .map { ClosedRequest(row: $0, closedAt: time) }
@@ -1021,11 +1042,29 @@ final class ProxyStore {
 
     // MARK: Suggestions
 
-    /// At most `suggestionLimit`, the newest first; an older one makes room.
+    /// At most `suggestionLimit`: the most serious first, and among equals the newest; the last makes
+    /// room. An outage replaces the suggestions about each of its hosts, and its own earlier form.
     private func suggest(_ suggestion: Suggestion?) {
-        guard let suggestion, !suggestions.contains(where: { $0.id == suggestion.id }) else { return }
-        suggestions.insert(suggestion, at: 0)
-        if suggestions.count > Self.suggestionLimit { suggestions.removeLast(suggestions.count - Self.suggestionLimit) }
+        guard let suggestion else { return }
+        var list = suggestions.filter { $0.id != suggestion.id }
+        if case .outage(_, let hosts) = suggestion.kind {
+            list.removeAll { if case .failing(let host, _) = $0.kind { hosts.contains(host) } else { false } }
+        } else if suggestions.contains(where: { $0.id == suggestion.id }) {
+            return
+        }
+        list.insert(suggestion, at: 0)
+        suggestions = Array(Self.ordered(list).prefix(Self.suggestionLimit))
+    }
+
+    /// Most serious first; a stable sort, so the newest stays ahead among equals.
+    nonisolated static func ordered(_ list: [Suggestion]) -> [Suggestion] {
+        list.enumerated().sorted { ($0.element.severity, -$0.offset) > ($1.element.severity, -$1.offset) }.map(\.element)
+    }
+
+    /// Withdraws suggestions whose cause has stopped.
+    private func withdrawResolvedSuggestions(at time: Date) {
+        let gone = detector.resolved(at: time)
+        if !gone.isEmpty { suggestions.removeAll { gone.contains($0.id) } }
     }
 
     static let suggestionLimit = 5
@@ -1085,7 +1124,9 @@ final class ProxyStore {
         logTask = Task {
             do {
                 for try await line in controller.logs(level: level) {
-                    if let host = SuggestionDetector.failedHost(inLog: line.payload) { suggest(detector.connectionFailed(host: host)) }
+                    if let host = SuggestionDetector.failedHost(inLog: line.payload) {
+                        suggest(detector.connectionFailed(host: host, exit: SuggestionDetector.failedExit(inLog: line.payload)))
+                    }
                     if let route = LogRoute.parse(line.payload) {
                         loggedRoutes.append((ConnectionRow(route: route, at: .now), .now))
                         if loggedRoutes.count > 2000 { loggedRoutes.removeFirst(loggedRoutes.count - 2000) }
@@ -1246,7 +1287,7 @@ final class ProxyStore {
     /// The profile with its layer applied; kept in `effective` for the active one.
     func effectiveText(of id: UUID) throws -> String {
         if let cached = effectiveCache[id] { return cached.text }
-        let result = try routingStore.load(id).apply(to: try profileStore.text(of: id))
+        let result = try effectiveStore.effective(of: id, profiles: profileStore, routing: routingStore)
         remember(result, for: id)
         return result.text
     }
@@ -1255,9 +1296,9 @@ final class ProxyStore {
     /// enough to stall the window.
     func effectiveTextInBackground(of id: UUID) async throws -> String {
         if let cached = effectiveCache[id] { return cached.text }
-        let routingStore = routingStore, profileStore = profileStore
+        let routingStore = routingStore, profileStore = profileStore, effectiveStore = effectiveStore
         let result = try await Task.detached(priority: .userInitiated) {
-            try routingStore.load(id).apply(to: try profileStore.text(of: id))
+            try effectiveStore.effective(of: id, profiles: profileStore, routing: routingStore)
         }.value
         remember(result, for: id)
         return result.text
@@ -1380,6 +1421,7 @@ final class ProxyStore {
         let edits = routingStore.load(id).edits.map(\.id)
         profileStore.delete(id)
         routingStore.delete(id)
+        effectiveStore.remove(id)
         forgetEffective(id)
         editsRemoved?(edits)
         profiles = profileStore.loadAll()
@@ -1520,10 +1562,10 @@ final class ProxyStore {
         let coreVersion = await CoreUpdater.version(of: reportedBinary ?? URL(fileURLWithPath: "/nonexistent"))
         let state = (try? Data(contentsOf: paths.state)).map { String(decoding: $0, as: UTF8.self) }
         let logs = logs.map { "\($0.time.formatted(.iso8601)) [\($0.level)] \($0.message)" }
-        let settings = settings, tail = core?.tail ?? [], version = AboutSettings.version
+        let settings = settings, tail = core?.tail ?? [], version = AboutSettings.version, startup = startup?.report
         return await Task.detached {
             Diagnostics.collect(appVersion: version, coreVersion: coreVersion, settings: settings, state: state,
-                                effectiveConfig: config, logs: logs, coreTail: tail)
+                                effectiveConfig: config, logs: logs, coreTail: tail, startup: startup)
         }.value
     }
 

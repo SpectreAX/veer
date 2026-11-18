@@ -6,13 +6,28 @@ import VeerProxy
 /// reflows with the window. Mode, switches and profile are in its toolbar.
 struct OverviewView: View {
     @Environment(ProxyStore.self) private var store
-    @Environment(\.pageTargetWidth) private var pageTargetWidth
+    @Environment(\.panelMotion) private var motion
+    @State private var pageWidth = LatestWidth()
+    /// The widths the cards' layout has at the two ends of the Agent panel's motion, while it moves.
+    /// Between them the cards go from one arrangement to the other with the width itself.
+    @State private var motionWidths: ClosedRange<CGFloat>?
+    /// The motion as the content sees it: no wider than `maxContentWidth`, it may change by less.
+    @State private var contentMotion: PanelMotion?
 
     /// The page's content is never wider than this; the cards' arrangement depends on it too.
     static let maxContentWidth: CGFloat = 1180
 
-    /// The cards' width once the Agent panel has finished opening or closing.
-    private var cardsTargetWidth: CGFloat? { pageTargetWidth.map { max(0, min($0, Self.maxContentWidth) - 2 * Spacing.xl) } }
+    nonisolated static func contentMotion(pageWidth: CGFloat, motion: PanelMotion) -> PanelMotion {
+        PanelMotion(id: motion.id, widthChange: min(maxContentWidth, pageWidth + motion.widthChange) - min(maxContentWidth, pageWidth))
+    }
+
+    /// The cards' layout widths at the two ends of a motion starting with the page `pageWidth` wide:
+    /// the content's width, no wider than `maxContentWidth`, less its margins.
+    nonisolated static func motionWidths(pageWidth: CGFloat, motion: PanelMotion) -> ClosedRange<CGFloat> {
+        let start = min(maxContentWidth, pageWidth) - 2 * Spacing.xl
+        let end = min(maxContentWidth, pageWidth + motion.widthChange) - 2 * Spacing.xl
+        return max(0, min(start, end))...max(0, start, end)
+    }
 
     var body: some View {
         content
@@ -39,31 +54,31 @@ struct OverviewView: View {
                         StatusBadge(kind: .warning, text: notice).fixedSize(horizontal: false, vertical: true)
                     }
                     SuggestionCards()
-                    OverviewCardsLayout(hasTraffic: true, targetWidth: cardsTargetWidth) {
+                    OverviewCardsLayout(hasTraffic: true, motionWidths: motionWidths) {
                         StatusCard()
                         TrafficCard(direction: .upload)
                         TrafficCard(direction: .download)
                     }
-                    OverviewCardsLayout(targetWidth: cardsTargetWidth) {
+                    OverviewCardsLayout(motionWidths: motionWidths) {
                         ServicesCard()
                         ConnectionsCard()
                     }
                     if store.isRunning { GroupsCard() }
                 }
+                .environment(\.panelMotion, contentMotion)
                 .padding(Spacing.xl)
                 .frame(maxWidth: Self.maxContentWidth)
                 .frame(maxWidth: .infinity)
             }
-            // Reserve space outside the scrolling cards. Showing the panel changes only the
-            // viewport's bottom edge instead of inserting a bar above every card.
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                if !store.agentPanel {
-                    AgentAskBar()
-                        .padding(Spacing.xl)
-                        .frame(maxWidth: Self.maxContentWidth)
-                        .frame(maxWidth: .infinity)
-                        .background(Color.surface)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pageWidth.value = $0 }
+            .onChange(of: motion, initial: true) { _, motion in
+                // A reversal part way is the same motion between the same two ends.
+                if let motion {
+                    if motionWidths == nil { motionWidths = Self.motionWidths(pageWidth: pageWidth.value, motion: motion) }
+                } else {
+                    motionWidths = nil
                 }
+                contentMotion = motion.map { Self.contentMotion(pageWidth: pageWidth.value, motion: $0) }
             }
             .task(id: store.isRunning) {
                 guard store.isRunning else { return }
@@ -93,37 +108,54 @@ nonisolated enum OverviewArrangement: Equatable, Sendable {
 
 /// Chooses and measures the card rows in the same layout pass as the real width proposal.
 /// Geometry callbacks plus @State kept the previous arrangement alive for one narrower frame.
-///
-/// While the Agent panel opens or closes, the rows are arranged for the width the page is going
-/// to, so they change once, as the motion starts, never part way or at the end. Narrowing, they
-/// then follow the page down to it. Widening, they are laid out at that width from the start and
-/// the page's edge uncovers them as the panel slides away: at the page's own narrower width, the
-/// wide arrangement would squeeze the text into narrow strips.
+/// While the Agent panel moves, the cards go from the arrangement of one end to the other's with the
+/// page's width, at every frame (`ArrangementBlend`): held in one arrangement and switched when the
+/// motion ended, they grew to the full width and then jumped into columns.
 nonisolated struct OverviewCardsLayout: Layout {
     var hasTraffic = false
-    /// The cards' width once the panel has stopped; nil away from the split.
-    var targetWidth: CGFloat?
+    /// This layout's widths at the two ends of the Agent panel's motion, while it moves.
+    var motionWidths: ClosedRange<CGFloat>?
 
-    /// The width the cards are laid out at: never less than where they are going.
-    func layoutWidth(_ width: CGFloat) -> CGFloat { max(width, targetWidth ?? 0) }
+    /// The frames last measured, and for which width: while the Agent panel moves this layout runs
+    /// at every frame, and measuring the cards once per width instead of twice halves its share.
+    struct Cache {
+        var width: CGFloat?
+        var motionWidths: ClosedRange<CGFloat>?
+        var frames: [CGRect] = []
+    }
 
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    func makeCache(subviews: Subviews) -> Cache { Cache() }
+
+    /// The cards or what is in them changed: measure again.
+    func updateCache(_ cache: inout Cache, subviews: Subviews) { cache = Cache() }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) -> CGSize {
         let width = proposal.width ?? subviews.map { $0.sizeThatFits(.unspecified).width }.reduce(0, +)
-        let frames = frames(width: layoutWidth(width), subviews: subviews)
-        // The proposed width, even when laid out wider: the page's edge covers the rest.
+        let frames = frames(width: width, subviews: subviews, cache: &cache)
         return CGSize(width: width, height: frames.map(\.maxY).max() ?? 0)
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        for (view, frame) in zip(subviews, frames(width: layoutWidth(bounds.width), subviews: subviews)) {
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) {
+        for (view, frame) in zip(subviews, frames(width: bounds.width, subviews: subviews, cache: &cache)) {
             view.place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
                        proposal: ProposedViewSize(frame.size))
         }
     }
 
-    private func frames(width: CGFloat, subviews: Subviews) -> [CGRect] {
-        let arrangement = OverviewArrangement(width: (targetWidth ?? width) + 2 * Spacing.xl)
-        let rows: [[Int]] = if hasTraffic {
+    /// No alignment guides of its own. Left to the default, SwiftUI placed every card again just to
+    /// find this layout's leading edge for the stack around it, at every frame of the panel's motion.
+    func explicitAlignment(of guide: HorizontalAlignment, in bounds: CGRect, proposal: ProposedViewSize,
+                           subviews: Subviews, cache: inout Cache) -> CGFloat? { nil }
+
+    func explicitAlignment(of guide: VerticalAlignment, in bounds: CGRect, proposal: ProposedViewSize,
+                           subviews: Subviews, cache: inout Cache) -> CGFloat? { nil }
+
+    /// The arrangement for a layout `width` wide: the page's content less its margins.
+    static func arrangement(width: CGFloat) -> OverviewArrangement { OverviewArrangement(width: width + 2 * Spacing.xl) }
+
+    /// Which cards share each row.
+    static func rows(_ arrangement: OverviewArrangement, hasTraffic: Bool) -> [[Int]] {
+        if hasTraffic {
             switch arrangement {
             case .columns: [[0, 1, 2]]
             case .stackedRows: [[0], [1, 2]]
@@ -132,20 +164,47 @@ nonisolated struct OverviewCardsLayout: Layout {
         } else {
             arrangement.stacksRows ? [[0], [1]] : [[0, 1]]
         }
-        var frames: [CGRect] = [], y: CGFloat = 0
-        for row in rows {
+    }
+
+    /// Each card across in `arrangement` at `width`, by card, its height left to measure.
+    static func columns(_ arrangement: OverviewArrangement, hasTraffic: Bool, width: CGFloat) -> [ArrangedItem] {
+        var items: [Int: ArrangedItem] = [:]
+        for (rowIndex, row) in rows(arrangement, hasTraffic: hasTraffic).enumerated() {
             let half = max(0, (width - Spacing.lg) / 2)
             let widths = row.count == 3 ? [half, max(0, (half - Spacing.lg) / 2), max(0, (half - Spacing.lg) / 2)]
                 : Array(repeating: max(0, (width - CGFloat(row.count - 1) * Spacing.lg) / CGFloat(row.count)), count: row.count)
-            let heights = zip(row, widths).map { subviews[$0.0].sizeThatFits(.init(width: $0.1, height: nil)).height }
-            let height = heights.max() ?? 0
             var x: CGFloat = 0
-            for cardWidth in widths {
-                frames.append(CGRect(x: x, y: y, width: cardWidth, height: height))
+            for (card, cardWidth) in zip(row, widths) {
+                items[card] = ArrangedItem(x: x, width: cardWidth, row: rowIndex, height: 0)
                 x += cardWidth + Spacing.lg
             }
-            y += height + Spacing.lg
         }
+        return items.keys.sorted().compactMap { items[$0] }
+    }
+
+    /// `columns` with each card as tall as the tallest in its row.
+    private func measured(_ arrangement: OverviewArrangement, width: CGFloat, subviews: Subviews) -> [ArrangedItem] {
+        var items = Self.columns(arrangement, hasTraffic: hasTraffic, width: width)
+        guard items.count <= subviews.count else { return [] }
+        let heights = items.indices.map { subviews[$0].sizeThatFits(.init(width: items[$0].width, height: nil)).height }
+        for index in items.indices {
+            items[index].height = items.indices.filter { items[$0].row == items[index].row }.map { heights[$0] }.max() ?? 0
+        }
+        return items
+    }
+
+    private func frames(width: CGFloat, subviews: Subviews, cache: inout Cache) -> [CGRect] {
+        if cache.width == width, cache.motionWidths == motionWidths { return cache.frames }
+        let frames: [CGRect]
+        if let motionWidths, Self.arrangement(width: motionWidths.lowerBound) != Self.arrangement(width: motionWidths.upperBound) {
+            frames = ArrangementBlend.frames(narrow: measured(Self.arrangement(width: motionWidths.lowerBound), width: width, subviews: subviews),
+                                             wide: measured(Self.arrangement(width: motionWidths.upperBound), width: width, subviews: subviews),
+                                             spacing: Spacing.lg, progress: ArrangementBlend.progress(width: width, range: motionWidths))
+        } else {
+            let items = measured(Self.arrangement(width: width), width: width, subviews: subviews)
+            frames = ArrangementBlend.frames(narrow: items, wide: items, spacing: Spacing.lg, progress: 1)
+        }
+        cache = Cache(width: width, motionWidths: motionWidths, frames: frames)
         return frames
     }
 }
@@ -167,15 +226,29 @@ private struct Card<Content: View, Accessory: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.md) {
-            HStack(spacing: Spacing.sm) {
-                Label(title, systemImage: symbol).font(.callout.weight(.semibold)).foregroundStyle(.secondary)
-                Spacer(minLength: 0)
-                accessory()
+            // The title stays on one line; without room beside it the accessory goes below. Just
+            // over the 720 pt arrangement, as the page passes through it with the Agent panel or a
+            // window resize, "Upload" otherwise broke into "Up-" and "load".
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: Spacing.sm) {
+                    titleLabel
+                    Spacer(minLength: 0)
+                    accessory().fixedSize()
+                }
+                VStack(alignment: .leading, spacing: Spacing.xs) {
+                    titleLabel
+                    accessory()
+                }
             }
             content()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .panel()
+    }
+
+    private var titleLabel: some View {
+        Label(title, systemImage: symbol).font(.callout.weight(.semibold)).foregroundStyle(.secondary)
+            .lineLimit(1).fixedSize()
     }
 }
 
@@ -518,7 +591,6 @@ private struct ConnectionsCard: View {
 /// Every select group with the node it uses, switchable in place.
 private struct GroupsCard: View {
     @Environment(ProxyStore.self) private var store
-    private let columns = [GridItem(.adaptive(minimum: 240), spacing: Spacing.md)]
 
     var body: some View {
         Card(String(localized: "overview.groups", defaultValue: "策略组"), symbol: "square.stack.3d.up") {
@@ -527,7 +599,7 @@ private struct GroupsCard: View {
                 .help("打开代理页")
                 .accessibilityLabel(String(localized: "打开代理页"))
         } content: {
-            LazyVGrid(columns: columns, alignment: .leading, spacing: Spacing.sm) {
+            BlendedGrid(minimum: 240, spacing: Spacing.md, rowSpacing: Spacing.sm) {
                 ForEach(store.groups.filter(\.isSelectable)) { group in
                     HStack(spacing: Spacing.sm) {
                         Text(group.name).lineLimit(1).truncationMode(.middle)

@@ -19,8 +19,9 @@ Do not force native controls into matching sizes.
 
 ## Motion
 
-`Motion.quick` (ease out, 0.15 s) and `Motion.standard` (ease in-out, 0.22 s). With Reduce Motion on,
-only fade.
+`Motion.quick` (ease out, 0.15 s) and `Motion.standard` (ease in-out, 0.22 s). `Motion.panel` is the
+Agent panel's spring (response 0.36, damping 0.9). The panel's work after the motion waits for the
+spring's own completion, not a fixed time. With Reduce Motion on, only fade.
 
 ## Color
 
