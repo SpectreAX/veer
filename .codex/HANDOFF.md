@@ -1,6 +1,10 @@
 # Veer macOS handoff
 
-## Top row: glass title container, variant C (2026-11-18, Claude; adopted in production, NOT committed)
+## macOS 26 APIs back inside VeerUI (2026-11-18, Claude)
+
+`VeerUI/ScrollEdge.swift` adds `ScrollEdge.available`, `softScrollEdge(_:)` and `scrollEdgeBar(edge:spacing:content:)`; `TopRowBar`, `AgentPanel`, `ConversationView` and `PageClip` use them, and VeerApp has no `#available(macOS 26` left. Lint rule `no_macos26_api_outside_veerui` (error) keeps it that way; checked with a throwaway violating file. verify.sh passed (517 tests); dist rebuilt; snapshots `dist/snapshots/2026-11-18-224612` differ from the previous set only the way two runs of one build do. macOS 14/15 fallback NOT VERIFIED in a VM.
+
+## Top row: glass title container, variant C (2026-11-18, Claude; adopted; merged in PR #26)
 
 Adopted on the user's "Yes, adopt C". `MainView.pageTitle` sits on one regular glass capsule (`ToolbarCapsule.height` 40 pt, `Spacing.md` sides); `TopRowFade` and its tests are deleted; native soft edge kept. The glass is a background that takes no clicks: a probe hit test showed glass on the content swallowed clicks on the title and padding, so the window would no longer drag or zoom from the title. As a background, those points hit `WindowDragArea` and the profile menu stays clickable; the title text uses the plain label colour instead of glass vibrancy. Found in the audit and fixed: the Agent `ThreadList`'s own background starts 14 pt below the window top (previously hidden by the fade), a step behind the capsule in dark mode; now `.scrollContentBackground(.hidden)`. Docs: DESIGN_SPEC deviation row, COMPONENTS, SPEC 5. This session: verify.sh passed three times (516 tests); dist rebuilt and signed (not launched on real data); snapshots `dist/snapshots/2026-11-18-220522`; visual audit and design review passed (no Critical/Major). NOT VERIFIED: real drag/double-click (hit test only), VoiceOver/keyboard, Reduce Transparency, Increase Contrast, Clear/Tinted glass, macOS 14/15 VM, capsule with no profile line.
 

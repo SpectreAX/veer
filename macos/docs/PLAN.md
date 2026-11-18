@@ -2,7 +2,13 @@
 
 本计划按 [REQUIREMENTS.md](REQUIREMENTS.md) 和 [SPEC.md](SPEC.md) 推进，取代 [PLAN_2026-10-29.md](PLAN_2026-10-29.md) 的第 2 到第 4 阶段。那份文档的第 1 阶段（可用的代理）已经完成并提交。
 
-## 顶栏标题玻璃容器（方案 C，2026-11-18，Claude，已采用，未提交）
+## macOS 26 接口收回 VeerUI（2026-11-18，Claude）
+
+- 设计审查指出 `TopRowBar`、`AgentPanel`、`ConversationView` 在 VeerApp 里直接调用 `safeAreaBar`、`scrollEdgeEffectStyle`（违反 CLAUDE.md 第 4 条）。新增 `VeerUI/ScrollEdge.swift`：`ScrollEdge.available`、`softScrollEdge(_:)`、`scrollEdgeBar(edge:spacing:content:)`（macOS 26 之前为普通 `safeAreaInset`）；删除未使用的 `softTopScrollEdge()`。VeerApp 里不再有 `#available(macOS 26`。
+- 新增 lint 规则 `no_macos26_api_outside_veerui`（error），用临时违规文件确认会报错后删除。新增 `ScrollEdgeTests`。
+- 本会话检查：verify.sh 通过（517 项）；dist 重建并签名；截图 `dist/snapshots/2026-11-18-224612` 与上一组逐像素比较，差异与同一构建两次截图之间的差异同类（光标闪烁、滚动条、玻璃折射、屏幕上其他应用的浮窗），抽查的面板场景肉眼相同。macOS 14/15 上的回退路径未在虚拟机上验证。
+
+## 顶栏标题玻璃容器（方案 C，2026-11-18，Claude，已采用，PR #26 已合并）
 
 - **采用（用户确认后）：** `MainView.pageTitle` 的标题和配置菜单放在一块常规玻璃胶囊上（`ToolbarCapsule.height` 40pt，左右 `Spacing.md`），删除 `TopRowFade` 及其测试，保留原生 soft 边缘。玻璃是不接收点击的背景（`.background { Color.clear.glassSurface(in: Capsule()).allowsHitTesting(false) }`）：放在内容上时探针命中测试显示标题和胶囊内边距的点击被 SwiftUI 吃掉、不再到达 `WindowDragArea`（窗口无法从标题拖动/双击缩放）；改为背景后标题与内边距命中 `Area`，配置菜单仍可点击。代价：标题文字用普通标签色，不再有玻璃的加强黑/白。
 - **审查中发现并修复：** Agent 页对话列表的自身底色从窗口顶部下方 14pt 开始，原来被渐隐盖住；去掉渐隐后深色下在标题胶囊后出现台阶。`ThreadList` 加 `.scrollContentBackground(.hidden)`，改用页面底色（浅色本来相同）。

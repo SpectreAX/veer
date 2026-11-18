@@ -60,7 +60,7 @@ enum SplitDetailLayout {
 /// under the window's top row, where the system softens it (see `TopRowBar`). Before macOS 26 nothing
 /// softens it, so the page is clipped below the row as well.
 struct PageClip: Shape {
-    nonisolated static let softensAbove: Bool = { if #available(macOS 26, *) { true } else { false } }()
+    nonisolated static var softensAbove: Bool { ScrollEdge.available }
 
     nonisolated func path(in rect: CGRect) -> Path {
         let above: CGFloat = Self.softensAbove ? MainView.topRowHeight : 0

@@ -73,6 +73,13 @@ custom_rules:
     excluded: 'Sources/VeerUI/'
     message: "Use primaryAction(), secondaryAction() or floatingPanel(): VeerUI holds the macOS 14 fallback (SPEC 10)."
     severity: error
+  no_macos26_api_outside_veerui:
+    name: "macOS 26 API outside VeerUI"
+    regex: '(\.(safeAreaBar|scrollEdgeEffectStyle|scrollEdgeEffectHidden|glassEffectID|glassEffectTransition|glassEffectUnion)\(|\bGlassEffectContainer\b|#available\(macOS 26)'
+    included: 'Sources/'
+    excluded: 'Sources/VeerUI/'
+    message: "macOS 26 APIs stay in VeerUI behind #available (CLAUDE.md rule 4). Use softScrollEdge, scrollEdgeBar, ScrollEdge.available or GlassGroup."
+    severity: error
   no_raw_color_outside_veerui:
     name: "Raw color outside VeerUI"
     regex: '\b(Color\((red|hue|white):|Color\(\.sRGB|NSColor\((srgbRed|red|calibratedRed):|Color\(hex)'

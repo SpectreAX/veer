@@ -566,10 +566,10 @@ struct TopRowBar: ViewModifier {
     let height: CGFloat
 
     func body(content: Content) -> some View {
-        if #available(macOS 26, *) {
+        if ScrollEdge.available {
             content
-                .scrollEdgeEffectStyle(.soft, for: .top)
-                .safeAreaBar(edge: .top, spacing: 0) {
+                .softScrollEdge(.top)
+                .scrollEdgeBar(edge: .top, spacing: 0) {
                     Color.primary.opacity(0.001).frame(height: height).allowsHitTesting(false).accessibilityHidden(true)
                 }
                 .ignoresSafeArea(.container, edges: .top)

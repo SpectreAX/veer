@@ -82,15 +82,9 @@ struct ConversationView: View {
     /// conversation keeps the page's color, which its fade under the composer blends into.
     /// Where the conversation scrolls on under the composer's glass: the panel's system bar, from
     /// macOS 26. Elsewhere it ends above the composer, or fades out under a fade of its own.
-    private var softensUnderComposer: Bool {
-        if #available(macOS 26, *) { return compact }
-        return false
-    }
+    private var softensUnderComposer: Bool { ScrollEdge.available && compact }
 
-    private var background: Color {
-        if #available(macOS 26, *), compact { return .clear }
-        return .surface
-    }
+    private var background: Color { ScrollEdge.available && compact ? .clear : .surface }
 
     /// The composer, at the bottom of the conversation. In the panel its 12 pt margins keep the
     /// glass close enough to the bar's sides that the system shows no separator (see `ComposerBar`).
@@ -170,10 +164,8 @@ private struct BottomFollowing: ViewModifier {
     let proxy: ScrollViewProxy
 
     func body(content: Content) -> some View {
-        if #available(macOS 26, *) {
-            tracked(content.scrollEdgeEffectStyle(.soft, for: .bottom).scrollEdgeEffectStyle(.soft, for: .top))
-        } else if #available(macOS 15, *) {
-            tracked(content)
+        if #available(macOS 15, *) {
+            tracked(content.softScrollEdge([.top, .bottom]))
         } else {
             content
         }
@@ -216,8 +208,8 @@ private struct ComposerBar<Bar: View>: ViewModifier {
     @ViewBuilder let bar: () -> Bar
 
     func body(content: Content) -> some View {
-        if #available(macOS 26, *), asBar {
-            content.safeAreaBar(edge: .bottom, spacing: 0, content: bar)
+        if ScrollEdge.available, asBar {
+            content.scrollEdgeBar(edge: .bottom, spacing: 0, content: bar)
         } else {
             content.safeAreaInset(edge: .bottom, spacing: 0) {
                 bar().background {

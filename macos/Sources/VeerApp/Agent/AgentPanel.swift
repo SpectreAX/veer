@@ -14,12 +14,12 @@ struct AgentPanel: View {
 
     var body: some View {
         Group {
-            if #available(macOS 26, *) {
+            if ScrollEdge.available {
                 // The header is a bar over the conversation, which scrolls under it with the system's
                 // soft edge in place of a line.
                 AgentConversation()
-                    .scrollEdgeEffectStyle(.soft, for: .top)
-                    .safeAreaBar(edge: .top, spacing: 0) {
+                    .softScrollEdge(.top)
+                    .scrollEdgeBar(edge: .top, spacing: 0) {
                         // The header, and a suggestion when there is one, on one glass shape, as the
                         // composer is at the bottom. Where a bar's edge is not glass, the system draws
                         // its separator line across the panel's full width, whatever the scroll edge
@@ -51,7 +51,7 @@ struct AgentPanel: View {
 
     @ViewBuilder private var suggestion: some View {
         if showsSuggestion {
-            if #available(macOS 26, *) {
+            if ScrollEdge.available {
                 // Inside the header's glass, clear of its rounded corners.
                 SuggestionCards(limit: 1).padding([.horizontal, .bottom], Spacing.sm)
             } else {
