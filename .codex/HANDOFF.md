@@ -1,5 +1,9 @@
 # Veer macOS handoff
 
+## Old feed points to 1.0.7 (2026-11-19, Claude)
+
+On the user's "Point old feed here": SpectreAX/veer-releases was unarchived, only the `appcast.xml` of its `v1.0.6` release was replaced with the 1.0.7 appcast (`gh release upload --clobber`), and the repo was archived again; no tags moved, `Veer-1.0.6.dmg` untouched. The replaced file equals `docs/releases/history/v1.0.6/appcast.xml`, so it can be restored. Anonymous check: after about two minutes of GitHub serving the cached old file, `veer-releases/releases/latest/download/appcast.xml` is byte-identical to the 1.0.7 appcast, and its DMG link downloads SHA-256 `919467d6…edf69`. NOT VERIFIED: a real 1.0.6 → 1.0.7 Sparkle update.
+
 ## 1.0.7 released (2026-11-19, Claude)
 
 On the user's "发布1.0.7": annotated tag `macos-v1.0.7` on `c519670` (same tree the DMG was built from) pushed, and [Veer 1.0.7](https://github.com/SpectreAX/veer/releases/tag/macos-v1.0.7) published with `Veer-1.0.7.dmg` and `appcast.xml` via the same `gh release create … --verify-tag --latest` that `release.sh --publish` runs; the script itself was not run because it rebuilds `dist/Veer.app`, which the user had open. Before: DMG checksum, codesign, size and Sparkle EdDSA (`sign_update --verify`) checked. After: anonymous appcast identical to local; DMG via its URL has SHA-256 `919467d6…edf69`, 25,189,916 bytes; release is Latest. NOT VERIFIED: the user's hand checklist, Sparkle upgrade from an older Veer. 1.0.6 and earlier still read the old veer-releases feed; the transition waits for the user's decision.

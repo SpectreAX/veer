@@ -2,6 +2,11 @@
 
 本计划按 [REQUIREMENTS.md](REQUIREMENTS.md) 和 [SPEC.md](SPEC.md) 推进，取代 [PLAN_2026-10-29.md](PLAN_2026-10-29.md) 的第 2 到第 4 阶段。那份文档的第 1 阶段（可用的代理）已经完成并提交。
 
+## 旧 feed 指向 1.0.7（2026-11-19，Claude）
+
+- 用户选择“Point old feed here”：veer-releases 临时解除归档，只替换 v1.0.6 Release 的 `appcast.xml` 为 1.0.7 的 appcast，随即恢复归档；标签和旧 DMG 不变。匿名核对旧 feed 已返回 1.0.7 appcast，下载地址指向 Veer 仓库的 1.0.7 DMG，SHA-256 一致。详见 RELEASE.md“1.0.7 的过渡”。
+- 未验证：1.0.6 客户端实际通过 Sparkle 升级到 1.0.7。
+
 ## 1.0.7 已发布（2026-11-19，Claude）
 
 - 用户确认“发布1.0.7”后：标签 `macos-v1.0.7`（附注标签，指向 `c519670`，与构建 DMG 时的源码树相同）已推送；`gh release create … --verify-tag --latest` 发布 [Veer 1.0.7](https://github.com/SpectreAX/veer/releases/tag/macos-v1.0.7)，附件 `Veer-1.0.7.dmg` 和 `appcast.xml`，说明为 `dist/notes-1.0.7.html`。

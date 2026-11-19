@@ -60,6 +60,12 @@ EdDSA 签名、长度、版本和原始发布日期均不变。GitHub 新 Releas
 4. 验证旧 feed 返回新版本、匿名下载与签名正确，立即恢复旧仓库归档。
 5. 由用户在旧 Veer 上检查、下载并安装，重启后确认版本和新 feed。没有实际运行就保持 NOT VERIFIED。
 
+### 1.0.7 的过渡（2026-11-19，已完成）
+
+- 用户选择让旧 feed 指向新版本。`SpectreAX/veer-releases` 临时解除归档，只把 `v1.0.6` Release 的 `appcast.xml` 换成 1.0.7 的 appcast（`gh release upload --clobber`，1,685 → 3,778 字节），随即恢复归档。没有移动标签、没有改 `Veer-1.0.6.dmg`（24,720,500 字节不变）、没有新建 Release。原 appcast 与 `releases/history/v1.0.6/appcast.xml` 逐字节相同（SHA-256 `0a860e25…2c5e76`），需要时可原样恢复。
+- 匿名核对：替换后约两分钟内 GitHub 仍返回旧文件（下载链接缓存），之后 `veer-releases/releases/latest/download/appcast.xml` 与 Veer 的 1.0.7 appcast 逐字节相同，其中下载地址 `SpectreAX/veer/releases/download/macos-v1.0.7/Veer-1.0.7.dmg`，下载后 SHA-256 `919467d6…edf69`、25,189,916 字节。
+- 未验证：在装有 1.0.6 的 Mac 上“检查更新…”实际找到、下载并安装 1.0.7，重启后改读新 feed。
+
 ## 注意
 - Sparkle 的私钥在登录钥匙串里（账户 `com.yamax.veer`）。换电脑或重装系统前先导出备份：`.build/artifacts/sparkle/Sparkle/bin/generate_keys --account com.yamax.veer -x <文件>`。丢了私钥，已安装的 Veer 就收不到更新了。
 - appcast 只放最新一版，旧版本直接升级到最新。
