@@ -36,6 +36,8 @@ extension AgentStore {
 /// checks the change before applying it.
 struct RoutePreviewView: View {
     let preview: RoutePreview
+    /// Worked out again after the selection changed; the rows shown are the previous ones.
+    var updating = false
     @State private var expanded = true
 
     var body: some View {
@@ -49,7 +51,10 @@ struct RoutePreviewView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.subtleFill, in: RoundedRectangle(cornerRadius: Radius.small))
         } label: {
-            Label(String(localized: "应用后的走向"), systemImage: "arrow.triangle.branch").font(.callout)
+            HStack(spacing: Spacing.sm) {
+                Label(String(localized: "应用后的走向"), systemImage: "arrow.triangle.branch").font(.callout)
+                if updating { ProgressView().controlSize(.mini).accessibilityLabel(String(localized: "正在更新")) }
+            }
         }
     }
 }
@@ -62,8 +67,15 @@ struct RoutePreviewRow: View {
         VStack(alignment: .leading, spacing: Spacing.xxs) {
             Text(row.domain).font(Typography.codeSmall).textSelection(.enabled)
             Text(route).font(.caption).fontWeight(row.changed ? .medium : .regular)
-            Text(rule).font(.caption).foregroundStyle(row.afterCertain ? .secondary : Color.statusWarning)
-                .lineLimit(2).truncationMode(.middle).textSelection(.enabled)
+            Group {
+                if row.afterCertain {
+                    Text(rule).font(.caption).foregroundStyle(.secondary)
+                } else {
+                    // A status colour comes with its symbol (TOKENS.md), not as coloured text alone.
+                    StatusBadge(kind: .warning, text: rule, compact: true)
+                }
+            }
+            .lineLimit(2).truncationMode(.middle).textSelection(.enabled)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityText)

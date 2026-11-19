@@ -238,6 +238,8 @@ struct ProposalView: View {
 
     /// Where the change's domains go before and after; worked out again whenever the candidate changes.
     @State private var preview: RoutePreview?
+    /// The preview has taken long enough to say so. Not set at once, so a quick one does not flash.
+    @State private var computing = false
 
     private var acceptedCount: Int { proposal.accepted.count }
     private var editable: Bool { proposal.status == .pending && !store.isArchived && proposal.baseDraft == store.current?.draftText }
@@ -259,10 +261,13 @@ struct ProposalView: View {
 
             if store.revalidating.contains(turn.id) {
                 HStack(spacing: Spacing.sm) { ProgressView().controlSize(.small); Text(String(localized: "正在按你的选择重新生成并校验…")).foregroundStyle(.secondary) }
-                    .font(.callout)
+                    .font(.callout).accessibilityElement(children: .combine)
             } else {
                 if editable, let preview, !preview.rows.isEmpty {
-                    RoutePreviewView(preview: preview).modifier(SoftenedUnderComposer())
+                    RoutePreviewView(preview: preview, updating: computing).modifier(SoftenedUnderComposer())
+                } else if editable, preview == nil, computing {
+                    HStack(spacing: Spacing.sm) { ProgressView().controlSize(.small); Text(String(localized: "正在判断应用后的走向…")).foregroundStyle(.secondary) }
+                        .font(.callout).accessibilityElement(children: .combine)
                 }
                 ValidationView(result: proposal.validation).modifier(SoftenedUnderComposer())
             }
@@ -270,7 +275,18 @@ struct ProposalView: View {
         }
         // Only while the change can still be applied: it is a preview.
         .task(id: editable ? proposal.candidate : nil) {
-            preview = editable ? await store.routePreview(turn: turn, proposal: proposal) : nil
+            guard editable else { preview = nil; computing = false; return }
+            let slow = Task { try await Task.sleep(for: .milliseconds(300)); computing = true }
+            // The work runs detached, so a cancelled task still waits for it; stop its timer at once,
+            // or it would turn the spinner back on after a newer result.
+            let result = await withTaskCancellationHandler {
+                await store.routePreview(turn: turn, proposal: proposal)
+            } onCancel: { slow.cancel() }
+            slow.cancel()
+            // A newer selection's task owns the card now; this result is for the old one.
+            guard !Task.isCancelled else { return }
+            computing = false
+            preview = result
         }
     }
 
@@ -752,8 +768,14 @@ struct CheckRecordsView: View {
                     VStack(alignment: .leading, spacing: Spacing.xxs) {
                         Text(record.domain).font(Typography.codeSmall).textSelection(.enabled)
                         if let index = record.ruleIndex, let rule = record.rule {
-                            Text(record.certain ? String(localized: "命中第 \(index + 1) 条 \(rule)") : String(localized: "可能命中第 \(index + 1) 条 \(rule)"))
-                                .font(.caption).foregroundStyle(record.certain ? .secondary : Color.statusWarning).textSelection(.enabled)
+                            Group {
+                                if record.certain {
+                                    Text(String(localized: "命中第 \(index + 1) 条 \(rule)")).font(.caption).foregroundStyle(.secondary)
+                                } else {
+                                    StatusBadge(kind: .warning, text: String(localized: "可能命中第 \(index + 1) 条 \(rule)"), compact: true)
+                                }
+                            }
+                            .textSelection(.enabled)
                         } else {
                             Text(String(localized: "本机无法确定命中哪一条")).font(.caption).foregroundStyle(.secondary)
                         }
@@ -814,7 +836,7 @@ struct LookupHintsView: View {
                     VStack(alignment: .leading, spacing: Spacing.xxs) {
                         Text(entry.address).font(Typography.codeSmall).textSelection(.enabled)
                         if entry.isFakeIP {
-                            Text(String(localized: "代理分配的 Fake-IP，不是网站的真实地址。")).font(.caption).foregroundStyle(Color.statusWarning)
+                            StatusBadge(kind: .warning, text: String(localized: "代理分配的 Fake-IP，不是网站的真实地址。"), compact: true)
                         } else if entry.isPrivate {
                             Text(String(localized: "局域网地址。")).font(.caption).foregroundStyle(.secondary)
                         } else {
