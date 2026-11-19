@@ -15,54 +15,9 @@ public struct MetaCubeXSet: Sendable, Hashable {
     }
 }
 
-/// Finds the first rule a domain or IP hits. Without a `Context` only domain and IP-CIDR rules
-/// are decided; with local geodata GEOSITE, GEOIP and MetaCubeX rule sets are decided too.
+/// Reading what someone typed as a destination, and naming services. Rules themselves are decided
+/// by `RouteTracer`.
 public enum RuleMatcher {
-    /// Local data for rules that otherwise need the proxy at runtime.
-    public struct Context: Sendable {
-        public var geosite: GeoSiteDatabase?
-        public var geoip: GeoIPDatabase?
-        /// The domain's addresses, resolved by the caller; the first one decides IP rules.
-        public var addresses: [String]
-        /// Rule-provider key → the MetaCubeX set it downloads.
-        public var ruleSets: [String: MetaCubeXSet]
-
-        public init(geosite: GeoSiteDatabase? = nil, geoip: GeoIPDatabase? = nil, addresses: [String] = [], providers: [ConfigDocument.Provider] = []) {
-            self.geosite = geosite
-            self.geoip = geoip
-            self.addresses = addresses
-            ruleSets = Dictionary(providers.compactMap { provider in provider.url.flatMap(MetaCubeXSet.init(url:)).map { (provider.key, $0) } },
-                                  uniquingKeysWith: { first, _ in first })
-        }
-    }
-
-    public struct Skipped: Sendable, Hashable {
-        public let index: Int
-        public let rule: String
-    }
-
-    public struct Result: Sendable, Hashable {
-        /// 0-based index into `rules`, nil when nothing local matched.
-        public let index: Int?
-        public let rule: String?
-        public let target: String?
-        /// Rules before the hit that need GEO/IP/provider data and may match first.
-        public let skipped: [Skipped]
-        /// The first skipped rule that probably matches: a rule set or GEOSITE named after the
-        /// service in the domain (RULE-SET,netflix for www.netflix.com).
-        public var likely: Skipped? = nil
-        public var likelyTarget: String? = nil
-        /// The hit was decided from local geodata (a GEOSITE, GEOIP or MetaCubeX rule set).
-        public var byGeodata = false
-        /// The address IP rules were checked against, when the input was a domain.
-        public var address: String? = nil
-        /// A rule was skipped only because the domain's address is not known yet.
-        public var needsAddress = false
-
-        /// The hit is certain only when nothing before it had to be skipped.
-        public var certain: Bool { index != nil && skipped.isEmpty }
-    }
-
     public static func normalize(_ input: String) -> String? {
         var host = input.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if let url = URL(string: host), let parsed = url.host, host.contains("://") { host = parsed }
@@ -72,89 +27,6 @@ public enum RuleMatcher {
         if host.hasSuffix(".") { host.removeLast() }
         guard host.matches(#"^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)*[a-z0-9-]+$"#), host.count <= 253 else { return nil }
         return host
-    }
-
-    public static func match(domain: String, rules: [String], context: Context? = nil) -> Result {
-        let ip = IPAddress(domain)
-        let resolved = ip == nil ? context?.addresses.first : nil
-        var skipped: [Skipped] = []
-        var likely: (Skipped, String)?
-        var byGeodata = false, usedAddress = false, needsAddress = false
-        func finish(_ index: Int?, _ rule: String?, _ target: String?) -> Result {
-            var result = Result(index: index, rule: rule, target: target, skipped: skipped)
-            result.likely = likely?.0
-            result.likelyTarget = likely?.1
-            result.byGeodata = index != nil && byGeodata
-            result.address = usedAddress ? resolved : nil
-            result.needsAddress = needsAddress
-            return result
-        }
-        /// The address an IP rule checks: the input itself, or the resolved one unless no-resolve.
-        func address(noResolve: Bool) -> String?? {
-            if ip != nil { return .some(domain) }
-            if noResolve { return .some(nil) }   // never resolved: the rule cannot match
-            guard let resolved else { return nil }
-            usedAddress = true
-            return .some(resolved)
-        }
-        func inGeoIP(_ name: String, noResolve: Bool) -> Bool? {
-            guard let database = context?.geoip else { return nil }
-            guard let found = address(noResolve: noResolve) else { needsAddress = true; return nil }
-            guard let found, let parsed = IPAddr(found) else { return false }
-            return database.names(for: parsed).contains(name == "lan" ? "private" : name)
-        }
-        for (index, rule) in rules.enumerated() {
-            let parts = rule.split(separator: ",", omittingEmptySubsequences: false).map { $0.trimmingCharacters(in: .whitespaces) }
-            guard let type = parts.first?.uppercased() else { continue }
-            if type == "MATCH" { return finish(index, rule, parts.count > 1 ? parts[1] : nil) }
-            guard parts.count >= 3 else { continue }
-            let value = parts[1].lowercased()
-            let noResolve = parts.dropFirst(3).contains { $0.lowercased() == "no-resolve" }
-            // Domain and GEOSITE rules never match a bare IP destination.
-            if ip != nil, ["DOMAIN", "DOMAIN-SUFFIX", "DOMAIN-KEYWORD", "DOMAIN-REGEX", "GEOSITE"].contains(type) { continue }
-            let hit: Bool
-            switch type {
-            case "DOMAIN": hit = domain == value
-            case "DOMAIN-SUFFIX": hit = domain == value || domain.hasSuffix("." + value)
-            case "DOMAIN-KEYWORD": hit = domain.contains(value)
-            case "IP-CIDR", "IP-CIDR6":
-                // With no-resolve, a domain is never resolved for this rule.
-                guard let found = address(noResolve: noResolve) else {
-                    needsAddress = true
-                    skipped.append(Skipped(index: index, rule: rule))
-                    continue
-                }
-                hit = found.flatMap(IPAddress.init).map { IPAddress.network(value)?.contains($0) ?? false } ?? false
-            case "GEOSITE" where context?.geosite != nil:
-                // GEOSITE also matches through keyword and regex entries.
-                hit = !(context!.geosite!.hits(for: domain, available: [value]).isEmpty)
-                byGeodata = hit
-            case "GEOIP" where ip == nil && noResolve:
-                continue   // A domain is never resolved for this rule, with or without geodata.
-            case "GEOIP" where context?.geoip != nil:
-                guard let found = inGeoIP(value, noResolve: noResolve) else { skipped.append(Skipped(index: index, rule: rule)); continue }
-                hit = found
-                byGeodata = hit
-            case "RULE-SET" where context?.ruleSets[parts[1]]?.kind == "geosite" && context?.geosite != nil:
-                // Rule-set files keep only full and suffix entries.
-                hit = ip == nil && context!.geosite!.hits(for: domain, available: [context!.ruleSets[parts[1]]!.name]).contains { !$0.geositeRuleOnly }
-                byGeodata = hit
-            case "RULE-SET" where context?.ruleSets[parts[1]]?.kind == "geoip" && context?.geoip != nil:
-                guard let found = inGeoIP(context!.ruleSets[parts[1]]!.name, noResolve: noResolve) else {
-                    skipped.append(Skipped(index: index, rule: rule))
-                    continue
-                }
-                hit = found
-                byGeodata = hit
-            default:
-                let skip = Skipped(index: index, rule: rule)
-                skipped.append(skip)
-                if likely == nil, ip == nil, ["RULE-SET", "GEOSITE"].contains(type), namesService(value, in: domain) { likely = (skip, parts[2]) }
-                continue
-            }
-            if hit { return finish(index, rule, parts[2]) }
-        }
-        return finish(nil, nil, nil)
     }
 
     /// "netflix" for www.netflix.com or netflix.net; ignores numbering ("netflix-2") and case.

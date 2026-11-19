@@ -323,10 +323,11 @@ struct DiffAndMatchTests {
 
     @Test func matchesDomainsAndReportsSkippedRules() {
         let rules = ["RULE-SET,netflix,JP", "DOMAIN-SUFFIX,example.com,DIRECT", "DOMAIN-KEYWORD,google,US", "GEOIP,CN,DIRECT", "MATCH,Auto"]
-        let hit = RuleMatcher.match(domain: "www.example.com", rules: rules)
-        #expect(hit.index == 1 && hit.target == "DIRECT" && hit.skipped.count == 1)
-        let fallback = RuleMatcher.match(domain: "www.netflix.com", rules: rules)
-        #expect(fallback.index == 4 && fallback.target == "Auto" && fallback.skipped.map(\.index) == [0, 3])
+        func trace(_ host: String) -> RouteTrace { RouteTracer.trace(RouteQuery(host, port: 443, network: .tcp)!, rules: rules, data: RouteData()) }
+        let hit = trace("www.example.com")
+        #expect(hit.hit?.index == 1 && hit.hit?.target == "DIRECT" && hit.unknowns.count == 1)
+        let fallback = trace("www.netflix.com")
+        #expect(fallback.hit?.index == 4 && fallback.hit?.target == "Auto" && fallback.unknowns.map(\.index) == [0, 3])
         #expect(RuleMatcher.normalize("https://WWW.Example.com/path") == "www.example.com")
         #expect(RuleMatcher.normalize("not a domain") == nil)
     }

@@ -36,7 +36,9 @@ public enum DedicatedGroupRoute {
 
     /// The select group whose own rule catches `domain`, if the domain has one.
     static func ownGroup(of domain: String, in draft: ConfigDocument) -> String? {
-        guard let rule = RuleMatcher.match(domain: domain, rules: draft.rules).rule, let parts = RuleParts.parse(rule),
+        // Checked as an HTTPS connection, like the Agent's domain checks; no geodata is needed for a domain's own rule.
+        guard let query = RouteQuery(domain, port: 443, network: .tcp),
+              let rule = RouteTracer.trace(query, rules: draft.rules, data: RouteData()).hit?.rule, let parts = RuleParts.parse(rule),
               ["DOMAIN", "DOMAIN-SUFFIX", "DOMAIN-KEYWORD"].contains(parts.type),
               let group = draft.target(named: parts.target), group.kind == .group, group.type == "select",
               GroupPurpose.isDedicated(group.name) else { return nil }

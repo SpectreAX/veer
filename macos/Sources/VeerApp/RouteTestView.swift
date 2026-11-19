@@ -338,16 +338,7 @@ enum RouteTestText {
         }
     }
 
-    static func reason(_ reason: RouteUnknown) -> String {
-        switch reason {
-        case .address: String(localized: "需要域名的 IP 地址")
-        case .geosite: String(localized: "本机没有可用的 GeoSite 数据")
-        case .geoip: String(localized: "本机没有可用的 GeoIP 数据")
-        case .ruleSet(let name): String(localized: "规则集“\(name)”的内容无法读取")
-        case .connection(let type): String(localized: "取决于发起连接的应用或来源（\(type)）")
-        case .unsupported(let type): String(localized: "Veer 不判断 \(type) 规则")
-        }
-    }
+    static func reason(_ reason: RouteUnknown) -> String { reason.explanation }
 
     static func summary(_ result: RouteTestResult, exit: [String]?) -> String {
         let trace = result.trace
@@ -360,12 +351,8 @@ enum RouteTestText {
         }
         if let address = trace.address { lines.append("IP: \(address)") }
         for step in trace.unknowns {
-            if let why = step.outcome.unknownReason { lines.append("? \(step.index + 1). \(step.rule) — \(reason(why))") }
+            if let why = step.outcome.unknown { lines.append("? \(step.index + 1). \(step.rule) — \(reason(why))") }
         }
         return lines.joined(separator: "\n")
     }
-}
-
-private extension RouteOutcome {
-    var unknownReason: RouteUnknown? { if case .unknown(let reason) = self { reason } else { nil } }
 }

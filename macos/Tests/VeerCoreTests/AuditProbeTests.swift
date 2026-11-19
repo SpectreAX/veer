@@ -192,8 +192,8 @@ struct AuditProbeTests {
     @Test func ruleMatcherCases() throws {
         let rules = try ConfigDocument.parse(SampleConfig.text).rules
         for domain in ["www.netflix.com", "openai.com", "api.openai.com", "github.com", "192.168.1.5", "https://www.google.com/search?q=1", "例子.中国", "", "localhost"] {
-            let result = RuleMatcher.match(domain: domain, rules: ["RULE-SET,netflix,日本出口"] + rules)
-            print("PROBE matcher | \(domain) | \(result)")
+            let result = RouteQuery(domain, port: 443, network: .tcp).map { RouteTracer.trace($0, rules: ["RULE-SET,netflix,日本出口"] + rules, data: RouteData()) }
+            print("PROBE matcher | \(domain) | \(result.map { "hit=\($0.hit?.index ?? -1) certain=\($0.certain)" } ?? "not a destination")")
         }
     }
 }

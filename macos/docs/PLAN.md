@@ -2,6 +2,14 @@
 
 本计划按 [REQUIREMENTS.md](REQUIREMENTS.md) 和 [SPEC.md](SPEC.md) 推进，取代 [PLAN_2026-10-29.md](PLAN_2026-10-29.md) 的第 2 到第 4 阶段。那份文档的第 1 阶段（可用的代理）已经完成并提交。
 
+## Agent 本机检查改用分流测试的判断（2026-11-19，Claude）
+
+- Agent 的本机检查（AI 请求检查域名，以及“域名改直连”识别专用策略组）原来用旧的 `RuleMatcher.match`，与分流测试（`RouteTracer`）可能给出不同结论。现在两者共用 `RouteTracer`；应用里检查的数据来自 `RouteTestSource`（内核目录的规则集文件、内联规则集、MetaCubeX 规则集和地理数据），与分流测试相同。没有传入数据源时（单元测试）用 Veer 自己的地理数据和 MetaCubeX 规则集。
+- 每个域名按 TCP 443 判断，所以 `DST-PORT`、`NETWORK`、`AND`/`OR`/`NOT` 现在能判断；发给 AI 的结果开头写明这一点。不确定时的说明改为写出第一条无法判断的规则和原因（例如“取决于发起连接的应用或来源（PROCESS-NAME）”），仍附“很可能先命中第 N 条”。
+- 旧的 `RuleMatcher.match`、`Context`、`Result` 删除；`normalize`、`namesService`、`RuleParts`、`MetaCubeXSet` 保留。无法判断的原因文字移到 `RouteUnknown.explanation`，分流测试页共用。旧匹配器的测试逐条改到 `RouteTracer` 上，断言不变（`byGeodata` 没有对应，也没有代码用它，去掉）；新增 `checksUseTheRouteTestersEngineAndSource`、`withoutTheAppsSourceVeersGeodataAndMetaCubeXSetsAreUsed`。
+- verify.sh 通过（UI 46 / Proxy 141 / Core 311 / App 35，共 533 项）。
+- 未验证：应用里 `AgentStore` 传入的数据源（闭包本身没有单元测试，`RouteTestSource.load` 有）；用真实 AI 和真实配置走一次检查；检查结果里较长的新说明文字的显示（没有截图场景覆盖本机检查列表）。
+
 ## 旧 feed 指向 1.0.7（2026-11-19，Claude）
 
 - 用户选择“Point old feed here”：veer-releases 临时解除归档，只替换 v1.0.6 Release 的 `appcast.xml` 为 1.0.7 的 appcast，随即恢复归档；标签和旧 DMG 不变。匿名核对旧 feed 已返回 1.0.7 appcast，下载地址指向 Veer 仓库的 1.0.7 DMG，SHA-256 一致。详见 RELEASE.md“1.0.7 的过渡”。
