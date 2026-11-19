@@ -17,7 +17,22 @@ struct MenuBarLabel: View {
             }
         }
         .accessibilityLabel(store.isRunning ? String(localized: "Veer 运行中") : String(localized: "Veer 已停止"))
-        .task { AppDelegate.openMain = { openWindow(id: "main") } }
+        .task {
+            AppDelegate.openMain = { openWindow(id: "main") }
+            store.openMainWindow = {
+                openWindow(id: "main")
+                DockPresence.windowOpened()
+            }
+            // Brings an open window forward rather than opening a second one: it is a `Window` scene.
+            store.openAgentWindow = {
+                openWindow(id: AgentWindow.id)
+                DockPresence.windowOpened()
+            }
+            // Where the Agent was when Veer last quit; not in snapshots, which draw stores of their own.
+            if store.agentPresentation == .detached, !AppDelegate.isSnapshotRun(ProcessInfo.processInfo.environment) {
+                store.openAgentWindow()
+            }
+        }
     }
 }
 

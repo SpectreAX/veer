@@ -38,6 +38,7 @@ extension View {
 /// the same motion either way.
 struct ToolbarCapsule: View {
     @Environment(ProxyStore.self) private var store
+    @Environment(AgentStore.self) private var agent
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var glass
     let content: PageToolbarContent?
@@ -97,10 +98,20 @@ struct ToolbarCapsule: View {
         .transition(swap)
     }
 
+    /// Shows and hides the panel; an Agent in its window comes forward instead, and with neither the
+    /// last one comes back (`AgentPresentation.toggled`). On while the Agent is open in either.
+    /// Named for what it shows, so VoiceOver does not call the window a panel, with its state as a toggle's.
     private var panelToggle: some View {
-        Button { store.agentPanel.toggle() } label: { Label(String(localized: "Agent 面板"), systemImage: "sparkles") }
-            .buttonStyle(ToolbarCapsuleButtonStyle(isOn: store.agentPanel))
-            .help(store.agentPanel ? String(localized: "隐藏 Agent 面板（⌥⌘I）") : String(localized: "显示 Agent 面板（⌥⌘I）"))
+        ToolbarToggle(title: store.lastAgentPresentation == .detached ? String(localized: "Agent 窗口") : String(localized: "Agent 面板"),
+                      symbol: "sparkles", isOn: store.agentPresentation != .hidden, help: panelToggleHelp) { agent.toggleFromToolbar() }
+    }
+
+    private var panelToggleHelp: String {
+        switch store.agentPresentation.toggled(last: store.lastAgentPresentation) {
+        case .detached: String(localized: "显示 Agent 窗口")
+        case .hidden: String(localized: "隐藏 Agent 面板（⌥⌘I）")
+        case .docked: String(localized: "显示 Agent 面板（⌥⌘I）")
+        }
     }
 }
 

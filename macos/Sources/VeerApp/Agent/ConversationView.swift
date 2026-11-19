@@ -10,6 +10,13 @@ struct ConversationView: View {
     @State private var barHeight: CGFloat = 0
     /// The composer's top, for softening what goes under it (`SoftenedUnderComposer`).
     @State private var composerTop: CGFloat?
+    /// Turns wholly above the visible area, for where it is scrolled to (`ScrollSpot`).
+    @State private var turnsAbove: Set<UUID> = []
+    /// Until a spot handed over from the panel or the window is restored, nothing is recorded.
+    @State private var restoring = true
+    /// The turn to bring to the top, until it is there: a new window lays out over several passes,
+    /// and the bottom anchor puts the view back at the end in each.
+    @State private var pendingTop: UUID?
 
     static let examples = [String(localized: "Netflix 走日本，ChatGPT 走美国"), String(localized: "YouTube 走香港"), String(localized: "example.com 直连"), String(localized: "屏蔽广告")]
 
@@ -40,6 +47,11 @@ struct ConversationView: View {
                     }
                     ForEach(turns) { turn in
                         TurnView(turn: turn).id(turn.id)
+                            // Changes only as a turn crosses the top edge, not with every point scrolled.
+                            .onGeometryChange(for: Bool.self) { $0.frame(in: .scrollView).maxY <= 0 } action: { above in
+                                if above { turnsAbove.insert(turn.id) } else { turnsAbove.remove(turn.id) }
+                                if let pendingTop { settle(on: pendingTop, turns: turns, proxy: proxy) } else { record(turns) }
+                            }
                     }
                     Color.clear.frame(height: 1).id("bottom")
                 }
@@ -68,12 +80,54 @@ struct ConversationView: View {
                 withAnimation(Motion.standard) { proxy.scrollTo("bottom", anchor: .bottom) }
             }
             .onChange(of: store.selectedID) { followsBottom = true }
-            .onAppear { proxy.scrollTo("bottom", anchor: .bottom) }
+            .onChange(of: followsBottom) { record(turns) }
+            .onAppear { restore(turns: turns, proxy: proxy) }
             .modifier(ComposerBar(asBar: compact) { composerBar })
             .overlay(alignment: .bottom) { backToLatest(turns: turns, proxy: proxy) }
             .coordinateSpace(.named(SoftenedUnderComposer.space))
         }
         .background(background)
+    }
+
+    /// Where the panel or the window left this conversation, when the Agent moved between them just
+    /// now; else the newest turn, as always. After the layout's first pass, in which the bottom anchor
+    /// and following it put the view at the end.
+    private func restore(turns: ArraySlice<Turn>, proxy: ScrollViewProxy) {
+        guard let spot = store.takeScrollHandoff(for: store.selectedID), !spot.followsBottom,
+              let top = spot.topTurnID, turns.contains(where: { $0.id == top }) else {
+            proxy.scrollTo("bottom", anchor: .bottom)
+            restoring = false
+            return
+        }
+        followsBottom = false
+        pendingTop = top
+        DispatchQueue.main.async { settle(on: top, turns: turns, proxy: proxy) }
+        // Given up on after a moment: a spot that cannot be reached leaves the view where it is.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            guard pendingTop != nil else { return }
+            pendingTop = nil
+            restoring = false
+            record(turns)
+        }
+    }
+
+    /// Done once exactly the turns before `top` are above the visible area; else scrolled there again.
+    private func settle(on top: UUID, turns: ArraySlice<Turn>, proxy: ScrollViewProxy) {
+        guard let index = turns.firstIndex(where: { $0.id == top }) else { return }
+        followsBottom = false
+        if Set(turns[..<index].map(\.id)) == turnsAbove {
+            pendingTop = nil
+            restoring = false
+            record(turns)
+        } else {
+            proxy.scrollTo(top, anchor: .top)
+        }
+    }
+
+    private func record(_ turns: ArraySlice<Turn>) {
+        guard !restoring, let session = store.selectedID else { return }
+        let top = turns.first { !turnsAbove.contains($0.id) }?.id
+        store.scrollSpot = ScrollSpot(session: session, followsBottom: followsBottom, topTurnID: top)
     }
 
     /// In the panel from macOS 26, nothing: the panel's glass is the one base under the header, the
@@ -91,7 +145,9 @@ struct ConversationView: View {
     private var composerBar: some View {
         composer
             .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(SoftenedUnderComposer.space)).minY } action: { composerTop = $0 }
-            .frame(maxWidth: Metrics.readingWidth)
+            // As a bar, as wide as the bar: stopped at the reading width in a wide Agent window, it left
+            // the bar's sides bare and the system drew its separator across the window.
+            .frame(maxWidth: softensUnderComposer ? .infinity : Metrics.readingWidth)
             .padding(.horizontal, compact ? Spacing.md : Spacing.xl)
             .padding(.bottom, Spacing.md)
             .padding(.top, Spacing.sm)

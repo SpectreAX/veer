@@ -43,6 +43,11 @@ final class AgentStore {
     var editingGroup: GroupEditTarget?
     var pendingDeletion: Session?
     var toast: Toast?
+    /// Where the conversation on screen is scrolled to, kept by `ConversationView` as it scrolls, and
+    /// the copy a move between the panel and the window hands to the view that comes next. Not
+    /// observed: nothing is drawn from them.
+    @ObservationIgnored var scrollSpot: ScrollSpot?
+    @ObservationIgnored var scrollHandoff: ScrollSpot?
     /// Edit → Undo and Redo. `MainView` gives it the window's undo manager.
     @ObservationIgnored let changes = ReversibleChanges()
     /// Turns whose candidate is being rebuilt after an accept/reject toggle; writing waits.
@@ -232,10 +237,10 @@ final class AgentStore {
         draftInstruction(text)
     }
 
-    /// Shows the Agent without leaving the page: the panel beside it, or the Agent page when that
-    /// is the page. `fresh` starts a new conversation; `text` goes into the composer.
+    /// Shows the Agent without leaving the page: its window, the panel beside the page, or the Agent
+    /// page when that is the page. `fresh` starts a new conversation; `text` goes into the composer.
     func open(asking text: String? = nil, fresh: Bool = false) {
-        if proxy.page != .agent { proxy.agentPanel = true }
+        showAgent()
         if fresh { newThread() }
         if let text { ask(text) } else { composerFocusToken += 1 }
     }

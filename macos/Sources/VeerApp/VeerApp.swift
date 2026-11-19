@@ -27,6 +27,17 @@ struct VeerApp: App {
             MenuBarLabel(store: store)
         }
 
+        // The Agent in a window of its own (`AgentPresentation.detached`): the same stores, so one
+        // conversation and one stream. Nothing is built for it while it is closed.
+        Window(Text("Agent"), id: AgentWindow.id) {
+            AgentWindow()
+                .environment(store)
+                .environment(agent)
+                .tint(.veerAccent)
+        }
+        .defaultSize(AgentWindowPlacement.defaultSize)
+        .windowResizability(.contentMinSize)
+
         Settings {
             SettingsView().environment(store).environment(agent).tint(.veerAccent)
         }
@@ -114,6 +125,7 @@ struct VeerCommands: Commands {
     let agent: AgentStore
     @FocusedValue(\.sidebar) private var sidebar
     @AppStorage("proxiesShowMap") private var proxiesShowMap = false
+    @AppStorage("agentWindowOnTop") private var agentWindowOnTop = false
 
     var body: some Commands {
         // The same native animation as the window button, including interrupted transitions.
@@ -162,8 +174,14 @@ struct VeerCommands: Commands {
                 .keyboardShortcut("[")
                 .disabled(store.page.parent == nil)
             Divider()
-            Toggle("Agent 面板", isOn: Binding(get: { store.agentPanel }, set: { store.agentPanel = $0 }))
+            // The panel: turning it on while the Agent has a window docks it back.
+            Toggle("Agent 面板", isOn: Binding(get: { store.agentPanel }, set: { if $0 { agent.dock() } else { store.agentPanel = false } }))
                 .keyboardShortcut("i", modifiers: [.command, .option])
+            if store.agentPresentation == .detached {
+                Button("停靠至主窗口") { agent.dock() }
+            } else {
+                Button("在独立窗口中打开 Agent") { agent.detach() }
+            }
             Divider()
             // The top row's `GlassSwitch`, for anyone who cannot or does not Tab to it. Choosing one
             // goes to the page, so it never changes a view that isn't showing.
@@ -172,6 +190,12 @@ struct VeerCommands: Commands {
             Toggle("地图", isOn: Binding(get: { proxiesShowMap }, set: { _ in proxiesShowMap = true; store.page = .proxies }))
                 .disabled(!store.isRunning || store.groups.isEmpty)
             Divider()
+        }
+        CommandGroup(after: .windowArrangement) {
+            Divider()
+            // Only this window, and only while it is open: `NSWindow.level` (`AgentWindowBridge`).
+            Toggle("Agent 窗口保持在最前面", isOn: $agentWindowOnTop)
+                .disabled(store.agentPresentation != .detached)
         }
         CommandMenu("代理") {
             Button(store.isRunning ? String(localized: "停止") : String(localized: "启动")) { store.isRunning ? store.stop() : store.start() }
