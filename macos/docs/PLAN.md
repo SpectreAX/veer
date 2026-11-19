@@ -2,6 +2,13 @@
 
 本计划按 [REQUIREMENTS.md](REQUIREMENTS.md) 和 [SPEC.md](SPEC.md) 推进，取代 [PLAN_2026-10-29.md](PLAN_2026-10-29.md) 的第 2 到第 4 阶段。那份文档的第 1 阶段（可用的代理）已经完成并提交。
 
+## 1.0.7 发布准备（2026-11-19，Claude，未发布）
+
+- 版本 1.0.7 / build 8（`Resources/Info.plist`）。verify.sh（`VEER_MIHOMO_BIN=vendor/mihomo`）通过 531 项。`scripts/release.sh --notes dist/notes-1.0.7.html`（未带 `--publish`）生成 `dist/Veer-1.0.7.dmg`（25,189,916 字节，Apple Development 签名，未公证）和 `dist/appcast.xml`（build 8、1.0.7、最低 14.0、下载地址 `macos-v1.0.7`）。包内 SUFeedURL 是新 feed，Mihomo v1.19.29，许可证与 THIRD_PARTY_NOTICES 一致。
+- 更新说明 `dist/notes-1.0.7.html`，实机检查清单 `dist/checklist-1.0.7.md`（含已安装客户端的更新源过渡）。
+- 构建时用户的 `dist/Veer.app` 正在运行（没有内核），被构建替换；之后它已退出。系统代理属于用户的另一个代理应用（127.0.0.1:7890 可连接），与 Veer 无关，没有改动。
+- 待做：用户按清单实机检查；之后打 `macos-v1.0.7` 标签并在用户确认后 `--publish`；再按 RELEASE.md 处理旧 feed 过渡。
+
 ## 分流测试（2026-11-18，Claude）
 
 - 评估 honk（daeuniverse/honk）后，借鉴它的路由模拟：工具 → 分流测试（SPEC 5.10）。honk 是 Linux eBPF、GPL-3.0、早期 alpha，不能当内核，也不能用它的代码，只借鉴想法。

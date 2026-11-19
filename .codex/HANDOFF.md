@@ -1,5 +1,9 @@
 # Veer macOS handoff
 
+## 1.0.7 release prep (2026-11-19, Claude; not published)
+
+Version 1.0.7 / build 8. verify.sh passed (531 tests, bundled Mihomo). `scripts/release.sh --notes dist/notes-1.0.7.html` without `--publish` made `dist/Veer-1.0.7.dmg` (Apple Development signed, not notarized) and `dist/appcast.xml` (build 8, min macOS 14.0, URL under `macos-v1.0.7`); the bundle has the new SUFeedURL, Mihomo v1.19.29 and matching licenses. Notes `dist/notes-1.0.7.html`, hand checklist `dist/checklist-1.0.7.md`. The user's running dist Veer (no core) was replaced by the build; the system proxy belongs to another app the user relies on (127.0.0.1:7890) and was not touched. Next: the user's hand checks, then the tag and `--publish` only on their go-ahead, then the old-feed transition in RELEASE.md.
+
 ## Route Test (2026-11-18, Claude)
 
 Tools → Route Test (SPEC 5.10), an idea taken from honk's routing trace (honk itself is Linux-only eBPF, GPL-3.0, alpha: no code used). `VeerCore/RouteTrace.swift` decides each rule three ways (matched / not matched / undecided with a reason), with Kleene AND/OR/NOT, ports, network and rule sets; `VeerProxy/RouteTestSource.swift` builds the config as the core runs it and reads the core folder's GeoSite.dat, geoip.metadb and rule-set files (inside that folder only; MRS unreadable). IP rules resolve the domain once over Alibaba DoH, as the Agent's domain checks do (privacy pane updated). "Test Route" added to the Connections/Requests context menu and detail actions. verify.sh passed (531 tests); dist rebuilt; snapshots `dist/snapshots/2026-11-18-235250` (new 09z-route-test, 24o-narrow-route) looked at; design review: no Critical/Major, 4 Minor fixed. NOT VERIFIED: keyboard/VoiceOver, Return in the panel composer on this page, 1440 width, macOS 14, Mihomo's `rules/<md5(url)>` naming on real files.
