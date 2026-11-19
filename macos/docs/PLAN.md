@@ -2,6 +2,15 @@
 
 本计划按 [REQUIREMENTS.md](REQUIREMENTS.md) 和 [SPEC.md](SPEC.md) 推进，取代 [PLAN_2026-10-29.md](PLAN_2026-10-29.md) 的第 2 到第 4 阶段。那份文档的第 1 阶段（可用的代理）已经完成并提交。
 
+## “应用后的走向”收尾（2026-11-19，Claude）
+
+- “可能命中”（走向预览和本机检查列表）和 Fake-IP 提示改用 `StatusBadge(kind: .warning, compact: true)`：警告图标加 secondary 文字，按 TOKENS.md“状态色总配图标和文字”。
+- 预览超过 300 ms 才算完时，修改卡片显示“正在判断应用后的走向…”；勾选变化后重算时，标题旁显示小转圈，旧的行先留着。被取消的计算不再覆盖较新的结果；`withTaskCancellationHandler` 避免旧计时器在新结果之后重新打开转圈（设计审查 Minor，已修）。两处“正在…”行合并为一个 VoiceOver 元素。
+- 计时（release 构建，一次性测试，没有提交）：3000 条规则、10 万条 domain 规则集、4 万条 classical、2 万条 CIDR、真实 GeoSite.dat：读取 0.10 s、候选配置 0.06 s、6 个域名前后各一次判断 0.48 s，共约 0.65 s，在后台任务里。耗时主要在规则集逐条匹配；常见配置小得多，暂不加索引。
+- 最小窗口里预览把第一项改动推到面板标题下：是对话滚动到最新内容，向上滚动可见、“应用”位置不变，不按高度折叠。
+- verify.sh 通过（537 项）。截图（macOS 27.3，`dist/snapshots/2026-11-19-213917`）：09ab、09ac、09ad、24p，中英文、深浅色，看过 09ad（中浅、英浅）、09ab（中深）、09ac（英浅）、24p（英深）。之后的两处修复不改外观，没有重拍。设计审查：Critical 0、Major 0，Minor 2 已修。
+- 未验证：加载状态和 Fake-IP 提示的样子（没有截图场景）、VoiceOver 和键盘、真实配置的耗时、macOS 14 虚拟机。
+
 ## Agent 修改卡片的“应用后的走向”（2026-11-19，Claude）
 
 - 等待确认的修改卡片新增“应用后的走向”：至多 6 个域名，现在 → 应用后的出口，以及应用后命中的规则。`RoutePreview`（VeerCore）用 `RouteTracer` 分别跑 `baseDraft` 和 `candidate`；数据用 `RouteTestSource`：地理数据读一次（`load`），候选配置只读规则和规则集（新增 `withoutGeodata`）。域名来自指令查询和 AI 检查的域名、按域名路由的改动、新增 MetaCubeX GeoSite 规则集的最短条目（新增 `GeoSiteDatabase.sampleDomains`）。不查询 DNS。两侧的确定性分开（`beforeCertain` / `afterCertain`）：截图发现只用一个标记时，新规则排在最前、本身确定的结果也显示成“可能命中”，已改。
