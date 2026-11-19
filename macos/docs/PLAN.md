@@ -2,7 +2,14 @@
 
 本计划按 [REQUIREMENTS.md](REQUIREMENTS.md) 和 [SPEC.md](SPEC.md) 推进，取代 [PLAN_2026-10-29.md](PLAN_2026-10-29.md) 的第 2 到第 4 阶段。那份文档的第 1 阶段（可用的代理）已经完成并提交。
 
-## 1.0.7 发布准备（2026-11-19，Claude，未发布）
+## 1.0.7 已发布（2026-11-19，Claude）
+
+- 用户确认“发布1.0.7”后：标签 `macos-v1.0.7`（附注标签，指向 `c519670`，与构建 DMG 时的源码树相同）已推送；`gh release create … --verify-tag --latest` 发布 [Veer 1.0.7](https://github.com/SpectreAX/veer/releases/tag/macos-v1.0.7)，附件 `Veer-1.0.7.dmg` 和 `appcast.xml`，说明为 `dist/notes-1.0.7.html`。
+- 没有用 `release.sh --publish`：它会重建 `dist/Veer.app`，而用户正在运行它；改为上传已构建并核对过的文件（与脚本最后一步相同的命令）。发布前核对：DMG 校验和、代码签名、大小与 appcast 一致，Sparkle EdDSA 签名用 `sign_update --verify` 通过（错误签名会失败）。
+- 发布后匿名下载：`releases/latest/download/appcast.xml` 与本地文件完全相同（1.0.7 / build 8 / 最低 14.0），按其中地址下载的 DMG SHA-256 `919467d6…edf69`、25,189,916 字节，与本地一致；Release 为 Latest，非草稿或预发布。
+- 未验证：用户的实机检查清单是否完成（未告知）；从旧版本通过 Sparkle 升级。1.0.6 及更早版本仍检查旧 feed（veer-releases），看不到 1.0.7，过渡方式待用户决定（见 RELEASE.md）。
+
+## 1.0.7 发布准备（2026-11-19，Claude）
 
 - 版本 1.0.7 / build 8（`Resources/Info.plist`）。verify.sh（`VEER_MIHOMO_BIN=vendor/mihomo`）通过 531 项。`scripts/release.sh --notes dist/notes-1.0.7.html`（未带 `--publish`）生成 `dist/Veer-1.0.7.dmg`（25,189,916 字节，Apple Development 签名，未公证）和 `dist/appcast.xml`（build 8、1.0.7、最低 14.0、下载地址 `macos-v1.0.7`）。包内 SUFeedURL 是新 feed，Mihomo v1.19.29，许可证与 THIRD_PARTY_NOTICES 一致。
 - 更新说明 `dist/notes-1.0.7.html`，实机检查清单 `dist/checklist-1.0.7.md`（含已安装客户端的更新源过渡）。
