@@ -26,11 +26,21 @@ public struct RouteTestSource: Sendable {
 
     /// `config`: the YAML the core runs, or would run. `home`: the core's folder.
     public static func load(config: String, home: URL, fallback: GeoDataStore? = nil) async -> RouteTestSource {
+        let source = withoutGeodata(config: config, home: home)
+        var data = source.data, inputs = source.inputs
+        (data.geosite, inputs.geosite) = await geosite(home: home, fallback: fallback)
+        let geodataMode = (try? Yams.compose(yaml: config))?.mapping?[Node("geodata-mode")]?.bool ?? false
+        (data.countries, inputs.geoip) = await countries(home: home, geodataMode: geodataMode, fallback: fallback)
+        return RouteTestSource(rules: source.rules, data: data, inputs: inputs)
+    }
+
+    /// The rules and rule sets alone, for a second config checked against geodata already loaded
+    /// (the route preview reads a profile before and after a change).
+    public static func withoutGeodata(config: String, home: URL) -> RouteTestSource {
         let rules = (try? ConfigDocument.parse(config).rules) ?? []
-        let mapping = (try? Yams.compose(yaml: config))?.mapping
         var inputs = Inputs()
         var ruleSets: [String: RuleSetContents] = [:]
-        if case .mapping(let providers)? = mapping?[Node("rule-providers")] {
+        if case .mapping(let providers)? = (try? Yams.compose(yaml: config))?.mapping?[Node("rule-providers")] {
             for (key, value) in providers {
                 guard let name = key.string else { continue }
                 if let contents = contents(of: value.mapping, home: home) {
@@ -41,11 +51,7 @@ public struct RouteTestSource: Sendable {
                 }
             }
         }
-        var data = RouteData(ruleSets: ruleSets)
-        (data.geosite, inputs.geosite) = await geosite(home: home, fallback: fallback)
-        let geodataMode = mapping?[Node("geodata-mode")]?.bool ?? false
-        (data.countries, inputs.geoip) = await countries(home: home, geodataMode: geodataMode, fallback: fallback)
-        return RouteTestSource(rules: rules, data: data, inputs: inputs)
+        return RouteTestSource(rules: rules, data: RouteData(ruleSets: ruleSets), inputs: inputs)
     }
 
     // MARK: Rule sets

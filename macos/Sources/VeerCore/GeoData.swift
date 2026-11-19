@@ -191,6 +191,16 @@ public struct GeoSiteDatabase: Sendable {
         self.regexes = regexes
     }
 
+    /// The shortest full and suffix entries of a list, for showing what it covers: `netflix` gives
+    /// fast.com, netflix.ca and so on. Keyword and regex entries are not domains.
+    public func sampleDomains(in name: String, limit: Int) -> [String] {
+        guard let category = categories.firstIndex(of: name.lowercased()).map(Int32.init) else { return [] }
+        var found: Set<String> = []
+        for (value, refs) in full where refs.contains(where: { $0.category == category }) { found.insert(value) }
+        for (value, refs) in suffix where refs.contains(where: { $0.category == category }) { found.insert(value) }
+        return Array(found.sorted { ($0.count, $0) < ($1.count, $1) }.prefix(limit))
+    }
+
     /// Every entry that matches the domain (lowercased, without a trailing dot).
     public func matches(for domain: String) -> [GeoSiteMatch] {
         let host = GeoLookup.normalizedHost(domain)
