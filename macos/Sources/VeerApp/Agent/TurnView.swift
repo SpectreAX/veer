@@ -236,6 +236,9 @@ struct ProposalView: View {
     let turn: Turn
     let proposal: Turn.Proposal
 
+    /// Where the change's domains go before and after; worked out again whenever the candidate changes.
+    @State private var preview: RoutePreview?
+
     private var acceptedCount: Int { proposal.accepted.count }
     private var editable: Bool { proposal.status == .pending && !store.isArchived && proposal.baseDraft == store.current?.draftText }
 
@@ -258,9 +261,16 @@ struct ProposalView: View {
                 HStack(spacing: Spacing.sm) { ProgressView().controlSize(.small); Text(String(localized: "正在按你的选择重新生成并校验…")).foregroundStyle(.secondary) }
                     .font(.callout)
             } else {
+                if editable, let preview, !preview.rows.isEmpty {
+                    RoutePreviewView(preview: preview).modifier(SoftenedUnderComposer())
+                }
                 ValidationView(result: proposal.validation).modifier(SoftenedUnderComposer())
             }
             actions
+        }
+        // Only while the change can still be applied: it is a preview.
+        .task(id: editable ? proposal.candidate : nil) {
+            preview = editable ? await store.routePreview(turn: turn, proposal: proposal) : nil
         }
     }
 
@@ -400,13 +410,7 @@ struct ChangeRow: View {
         }
     }
 
-    private var targetText: String {
-        guard let name = item.targetName else { return "" }
-        if name == "DIRECT" { return String(localized: "直连") }
-        if name == "REJECT" { return String(localized: "拦截") }
-        let region = store.regions[name] ?? .unknown
-        return region == .unknown ? name : "\(name)（\(region.displayName)）"
-    }
+    private var targetText: String { item.targetName.map(store.exitTitle) ?? "" }
 
     private var detail: String {
         if item.kind == .addMatch {

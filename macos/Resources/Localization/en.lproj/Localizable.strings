@@ -402,7 +402,7 @@
 "模型正在思考…" = "The model is thinking…";
 "模型思考" = "Model's thinking";
 "模型思考（由 %@ 提供）" = "Model's thinking (from %@)";
-"本机检查 %lld 个域名" = "Checked %lld domains on this Mac";
+"本机检查 %lld 个域名" = "Domains checked on this Mac: %lld";
 "命中第 %lld 条 %@" = "Matches rule %1$lld: %2$@";
 "可能命中第 %lld 条 %@" = "May match rule %1$lld: %2$@";
 "本机无法确定命中哪一条" = "Can't tell on this Mac which rule matches";
@@ -1432,3 +1432,12 @@
 "本机没有可用的 GeoSite 数据" = "there’s no GeoSite data on this Mac";
 "本机没有可用的 GeoIP 数据" = "there’s no GeoIP data on this Mac";
 "检查了 %lld 条规则，都没有命中" = "Checked %lld rules; none matched";
+
+/* Route preview on the Agent's proposal card */
+"应用后的走向" = "Where traffic goes after this";
+"在本机按 TCP 443 的 HTTPS 连接判断，不查询 DNS。" = "Worked out on this Mac for an HTTPS connection (TCP 443), without looking up DNS.";
+"%@，不变" = "%@, unchanged";
+"%@（可能）" = "%@ (maybe)";
+"%@（%@）" = "%1$@ (%2$@)";
+"%@：从%@改为%@。%@" = "%1$@: from %2$@ to %3$@. %4$@";
+"%@：仍走%@。%@" = "%1$@: still %2$@. %3$@";

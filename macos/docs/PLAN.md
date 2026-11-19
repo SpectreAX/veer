@@ -2,6 +2,15 @@
 
 本计划按 [REQUIREMENTS.md](REQUIREMENTS.md) 和 [SPEC.md](SPEC.md) 推进，取代 [PLAN_2026-10-29.md](PLAN_2026-10-29.md) 的第 2 到第 4 阶段。那份文档的第 1 阶段（可用的代理）已经完成并提交。
 
+## Agent 修改卡片的“应用后的走向”（2026-11-19，Claude）
+
+- 等待确认的修改卡片新增“应用后的走向”：至多 6 个域名，现在 → 应用后的出口，以及应用后命中的规则。`RoutePreview`（VeerCore）用 `RouteTracer` 分别跑 `baseDraft` 和 `candidate`；数据用 `RouteTestSource`：地理数据读一次（`load`），候选配置只读规则和规则集（新增 `withoutGeodata`）。域名来自指令查询和 AI 检查的域名、按域名路由的改动、新增 MetaCubeX GeoSite 规则集的最短条目（新增 `GeoSiteDatabase.sampleDomains`）。不查询 DNS。两侧的确定性分开（`beforeCertain` / `afterCertain`）：截图发现只用一个标记时，新规则排在最前、本身确定的结果也显示成“可能命中”，已改。
+- 出口名称显示抽成 `AgentStore.exitTitle`，修改行和预览共用；英文里地区的括号改为半角（“日本 大阪 02 (Japan)”），“Checked 1 domains”改为“Domains checked on this Mac: 1”。
+- 测试：`RoutePreviewTests`（路由改动、规则集取样、上限和去重、两侧确定性）。verify.sh 通过（537 项）。
+- 截图（macOS 27.3，`dist/snapshots/2026-11-19-200729` 和 `-201240`）：09c、09ad（新，含不变和不确定的行）、24-panel-overview、24p-panel-preview-smallest（新，860×560、面板 320）、09d（已应用时隐藏），中英文、深浅色逐张看过。
+- 设计审查：Critical 0、Major 0。保留的 Minor：最小窗口里展开的预览把第一项改动推到面板标题下（可滚动，“应用”位置不变）；计算期间不显示加载状态，算完后内容上移；“可能命中”用警告色文字不带图标（与本机检查列表一致，TOKENS.md 写的是状态色配图标）；320 pt 面板里规则会在节点名中间换行。
+- 未验证：键盘（Full Keyboard Access）和 VoiceOver 朗读、增强对比度、面板玻璃上的对比度、真实配置和大规则集下的计算耗时、macOS 14 虚拟机。
+
 ## Agent 本机检查的收尾（2026-11-19，Claude）
 
 - 发给 AI 的“本机还没有下载地理数据”提醒改为看检查实际用到的数据：内核目录里有 GeoSite 数据也算，不再只看 Veer 自己的下载。`DomainChecker.check` 返回 `Result`（记录和 `geodata`）。新增测试 `geodataFromTheSourceCounts`。

@@ -266,6 +266,14 @@ enum SnapshotRunner {
                 agent.settings.provider = .ollama
                 sampleThread(agent, status: .pending)
             }),
+            // The route preview with a domain the change does not move, behind a rule that depends on the app.
+            Scene(name: "09ad-agent-preview-unsure", store: { running(page: .agent, config: routeSampleConfig) }, view: AnyView(MainView()),
+                  agent: previewThread),
+            Scene(name: "24p-panel-preview-smallest", size: CGSize(width: 860, height: 560), store: {
+                let store = running(panel: true, config: routeSampleConfig)
+                store.agentPanelWidth = 320
+                return store
+            }, view: AnyView(MainView()), agent: previewThread),
             Scene(name: "09d-agent-applied", store: { running(page: .agent) }, view: AnyView(MainView()), agent: { agent in
                 agent.settings.provider = .ollama
                 sampleThread(agent, status: .written)
@@ -560,6 +568,15 @@ enum SnapshotRunner {
         agent.sessions[0].profileID = UUID()
         agent.newThread()
         agent.selectedID = archived
+    }
+
+    /// The Netflix proposal, with a domain the AI checked that the change leaves where it was.
+    private static func previewThread(_ agent: AgentStore) {
+        agent.settings.provider = .ollama
+        sampleThread(agent, status: .pending)
+        guard !agent.sessions.isEmpty, !agent.sessions[0].turns.isEmpty else { return }
+        agent.sessions[0].turns[0].checks = [CheckRecord(domain: "www.google.com", ruleIndex: nil, rule: nil, target: nil, certain: false,
+                                                         note: nil, sets: [], address: nil)]
     }
 
     static func sampleThread(_ agent: AgentStore, status: Turn.ProposalStatus) {
