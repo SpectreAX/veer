@@ -62,14 +62,17 @@ extension AuditFixTests {
     // D2
     @Test func ruleSetsNamedAfterTheServiceAreLikelyHits() throws {
         let rules = ["RULE-SET,netflix,日本出口"] + (try ConfigDocument.parse(SampleConfig.text).rules)
-        let result = RuleMatcher.match(domain: "www.netflix.com", rules: rules)
-        #expect(result.likely?.index == 0 && result.likelyTarget == "日本出口")
-        #expect(!result.certain && result.target == "自动选择")
+        func trace(_ host: String, _ rules: [String]) -> RouteTrace {
+            RouteTracer.trace(RouteQuery(host, port: 443, network: .tcp)!, rules: rules, data: RouteData())
+        }
+        let result = trace("www.netflix.com", rules)
+        #expect(result.likely?.index == 0 && result.likely?.target == "日本出口")
+        #expect(!result.certain && result.hit?.target == "自动选择")
         // A rule set for another service is not a likely hit.
-        #expect(RuleMatcher.match(domain: "www.youtube.com", rules: rules).likely == nil)
-        #expect(RuleMatcher.match(domain: "netflix.example.com", rules: ["GEOSITE,netflix,A", "MATCH,B"]).likely?.index == 0)
-        // Certain only when nothing before the hit was skipped.
-        #expect(RuleMatcher.match(domain: "openai.com", rules: ["DOMAIN-SUFFIX,openai.com,DIRECT", "MATCH,X"]).certain)
+        #expect(trace("www.youtube.com", rules).likely == nil)
+        #expect(trace("netflix.example.com", ["GEOSITE,netflix,A", "MATCH,B"]).likely?.index == 0)
+        // Certain only when nothing before the hit was undecided.
+        #expect(trace("openai.com", ["DOMAIN-SUFFIX,openai.com,DIRECT", "MATCH,X"]).certain)
     }
 
     // D3
@@ -77,16 +80,19 @@ extension AuditFixTests {
         let rules = try ConfigDocument.parse(SampleConfig.text).rules
         #expect(RuleMatcher.normalize(" 192.168.1.5 ") == "192.168.1.5")
         #expect(RuleMatcher.normalize("[2001:db8::1]") == "2001:db8::1")
-        let lan = RuleMatcher.match(domain: "192.168.1.5", rules: rules)
-        #expect(lan.rule == "IP-CIDR,192.168.0.0/16,DIRECT,no-resolve" && lan.target == "DIRECT")
-        // Domain rules cannot match an IP; GEOIP still needs kernel data.
-        #expect(lan.skipped.map(\.rule) == ["GEOIP,CN,DIRECT,no-resolve"])
-        #expect(RuleMatcher.match(domain: "10.1.2.3", rules: ["IP-CIDR,10.0.0.0/8,DIRECT", "MATCH,X"]).target == "DIRECT")
-        #expect(RuleMatcher.match(domain: "11.1.2.3", rules: ["IP-CIDR,10.0.0.0/8,DIRECT", "MATCH,X"]).target == "X")
-        #expect(RuleMatcher.match(domain: "2001:db8::5", rules: ["IP-CIDR6,2001:db8::/32,DIRECT", "MATCH,X"]).target == "DIRECT")
+        func trace(_ host: String, _ rules: [String]) -> RouteTrace {
+            RouteTracer.trace(RouteQuery(host, port: 443, network: .tcp)!, rules: rules, data: RouteData())
+        }
+        let lan = trace("192.168.1.5", rules)
+        #expect(lan.hit?.rule == "IP-CIDR,192.168.0.0/16,DIRECT,no-resolve" && lan.hit?.target == "DIRECT")
+        // Domain rules cannot match an IP; GEOIP still needs geodata.
+        #expect(lan.unknowns.map(\.rule) == ["GEOIP,CN,DIRECT,no-resolve"])
+        #expect(trace("10.1.2.3", ["IP-CIDR,10.0.0.0/8,DIRECT", "MATCH,X"]).hit?.target == "DIRECT")
+        #expect(trace("11.1.2.3", ["IP-CIDR,10.0.0.0/8,DIRECT", "MATCH,X"]).hit?.target == "X")
+        #expect(trace("2001:db8::5", ["IP-CIDR6,2001:db8::/32,DIRECT", "MATCH,X"]).hit?.target == "DIRECT")
         // A domain is never resolved for no-resolve IP rules, so they are not "unknown".
-        let domain = RuleMatcher.match(domain: "example.org", rules: ["IP-CIDR,10.0.0.0/8,DIRECT,no-resolve", "IP-CIDR,11.0.0.0/8,DIRECT", "MATCH,X"])
-        #expect(domain.skipped.map(\.rule) == ["IP-CIDR,11.0.0.0/8,DIRECT"])
+        let domain = trace("example.org", ["IP-CIDR,10.0.0.0/8,DIRECT,no-resolve", "IP-CIDR,11.0.0.0/8,DIRECT", "MATCH,X"])
+        #expect(domain.unknowns.map(\.rule) == ["IP-CIDR,11.0.0.0/8,DIRECT"])
     }
 }
 

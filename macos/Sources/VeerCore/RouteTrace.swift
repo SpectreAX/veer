@@ -37,6 +37,18 @@ public enum RouteUnknown: Sendable, Hashable {
     case connection(String)
     /// A rule type Veer does not evaluate.
     case unsupported(String)
+
+    /// Why, in a few words, for the route tester and the Agent's checks.
+    public var explanation: String {
+        switch self {
+        case .address: String(localized: "需要域名的 IP 地址")
+        case .geosite: String(localized: "本机没有可用的 GeoSite 数据")
+        case .geoip: String(localized: "本机没有可用的 GeoIP 数据")
+        case .ruleSet(let name): String(localized: "规则集“\(name)”的内容无法读取")
+        case .connection(let type): String(localized: "取决于发起连接的应用或来源（\(type)）")
+        case .unsupported(let type): String(localized: "Veer 不判断 \(type) 规则")
+        }
+    }
 }
 
 public enum RouteOutcome: Sendable, Hashable {
@@ -44,7 +56,7 @@ public enum RouteOutcome: Sendable, Hashable {
     case notMatched
     case unknown(RouteUnknown)
 
-    var unknown: RouteUnknown? { if case .unknown(let reason) = self { reason } else { nil } }
+    public var unknown: RouteUnknown? { if case .unknown(let reason) = self { reason } else { nil } }
 }
 
 /// One rule, or one condition of a logical rule, and what it gave.
@@ -109,6 +121,15 @@ public struct RouteTrace: Sendable, Equatable {
     public var certain: Bool { hit != nil && unknowns.isEmpty }
     /// A rule waited on the domain's address: resolving it and tracing again can decide more.
     public var needsAddress: Bool { !query.isAddress && address == nil && steps.contains(where: \.waitsForAddress) }
+    /// The first undecided rule that probably matches: a rule set or GEOSITE named after the
+    /// service in the domain (`RULE-SET,netflix` for www.netflix.com).
+    public var likely: RouteStep? {
+        guard !query.isAddress else { return nil }
+        return unknowns.first { step in
+            guard let parts = RuleParts.parse(step.rule), ["RULE-SET", "GEOSITE"].contains(parts.type), let name = parts.payload else { return false }
+            return RuleMatcher.namesService(name, in: query.host)
+        }
+    }
 
     public static func == (lhs: RouteTrace, rhs: RouteTrace) -> Bool {
         lhs.query == rhs.query && lhs.steps == rhs.steps && lhs.address == rhs.address

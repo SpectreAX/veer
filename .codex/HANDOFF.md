@@ -1,5 +1,9 @@
 # Veer macOS handoff
 
+## Agent domain checks use Route Test's engine (2026-11-19, Claude)
+
+The Agent's domain checks (the model's `check` requests, and finding a domain's dedicated select group) used the old `RuleMatcher.match`, which could disagree with Route Test. Both now use `RouteTracer`; in the app the checker reads its data through `RouteTestSource` (rule-set files in the core's folder, inline and MetaCubeX sets, geodata), the same as Route Test. Without a source (unit tests) it uses Veer's geodata and MetaCubeX sets. Domains are checked as TCP 443, so DST-PORT, NETWORK and logical rules are decided; the message to the model says so. Uncertain results name the first undecided rule and why, plus the likely hit. `RuleMatcher.match/Context/Result` removed; old matcher tests ported one-for-one (`byGeodata` dropped, unused). verify.sh PASS 533 (UI46/Proxy141/Core311/App35). NOT VERIFIED: the AgentStore source closure in the running app, a real AI check on a real profile, how the longer notes look (no snapshot scene shows the check list).
+
 ## Old feed points to 1.0.7 (2026-11-19, Claude)
 
 On the user's "Point old feed here": SpectreAX/veer-releases was unarchived, only the `appcast.xml` of its `v1.0.6` release was replaced with the 1.0.7 appcast (`gh release upload --clobber`), and the repo was archived again; no tags moved, `Veer-1.0.6.dmg` untouched. The replaced file equals `docs/releases/history/v1.0.6/appcast.xml`, so it can be restored. Anonymous check: after about two minutes of GitHub serving the cached old file, `veer-releases/releases/latest/download/appcast.xml` is byte-identical to the 1.0.7 appcast, and its DMG link downloads SHA-256 `919467d6…edf69`. NOT VERIFIED: a real 1.0.6 → 1.0.7 Sparkle update.

@@ -102,7 +102,10 @@ final class AgentStore {
         sessionStore = SessionStore(directory: proxy.paths.threads)
         self.keyStore = keyStore ?? proxy.profileStore.secrets
         let geo = GeoDataStore.shared
-        self.engine = engine ?? EditorEngine(searcher: WebSearchService(geo: geo), lookup: InstructionLookup(geo: geo), checker: DomainChecker(geo: geo))
+        // The Agent's domain checks read the same rule-set files and geodata as Route Test, so the two agree.
+        let home = proxy.paths.core
+        let checker = DomainChecker(geo: geo, source: { draft in await RouteTestSource.load(config: draft.text, home: home, fallback: geo).data })
+        self.engine = engine ?? EditorEngine(searcher: WebSearchService(geo: geo), lookup: InstructionLookup(geo: geo), checker: checker)
         self.defaults = defaults
         self.modelClient = modelClient
         var settings = AISettings()
