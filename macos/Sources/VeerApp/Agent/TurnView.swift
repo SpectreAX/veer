@@ -753,7 +753,8 @@ struct CheckRecordsView: View {
                         } else {
                             Text(String(localized: "本机无法确定命中哪一条")).font(.caption).foregroundStyle(.secondary)
                         }
-                        if let note = record.note { Text(note).font(.caption).foregroundStyle(.tertiary) }
+                        // Secondary, not tertiary: it says why the result is uncertain, and tertiary was faint on the fill.
+                        if let note = record.note { Text(note).font(.caption).foregroundStyle(.secondary) }
                         if !record.sets.isEmpty {
                             FlowLayout(spacing: Spacing.xs) {
                                 ForEach(record.sets.uniqued(), id: \.self) { Tag(text: GeoSiteHit.isBroad($0) ? String(localized: "\($0)（宽泛）") : $0) }
@@ -762,7 +763,7 @@ struct CheckRecordsView: View {
                         }
                     }
                 }
-                Text(String(localized: "Veer 用当前的规则在本机逐条匹配，结果已发给 AI。")).font(.caption).foregroundStyle(.tertiary)
+                Text(String(localized: "Veer 用当前的规则在本机逐条匹配，结果已发给 AI。")).font(.caption).foregroundStyle(.secondary)
             }
             .padding(Spacing.sm)
             .frame(maxWidth: .infinity, alignment: .leading)

@@ -367,6 +367,12 @@ enum SnapshotRunner {
                 store.connections = sampleConnections()
                 return store
             }, view: AnyView(MainView())),
+            // The domains the model had Veer check, expanded as while the turn runs, at the content
+            // width of the default panel and of the narrowest one.
+            Scene(name: "09ab-agent-checks", size: CGSize(width: 340, height: 420), store: { running(page: .agent) },
+                  view: AnyView(CheckRecordsView(records: sampleChecks(), running: true).padding(Spacing.sm))),
+            Scene(name: "09ac-agent-checks-narrow", size: CGSize(width: 280, height: 520), store: { running(page: .agent) },
+                  view: AnyView(CheckRecordsView(records: sampleChecks(), running: true).padding(Spacing.sm))),
             Scene(name: "09k-add-rule", size: CGSize(width: 480, height: 420), store: { running(page: .connections) },
                   view: AnyView(AddRuleSheet(row: sampleConnections()[0]))),
             Scene(name: "09g-route-map", size: CGSize(width: 880, height: 240), store: { running(page: .connections) },
@@ -574,6 +580,17 @@ enum SnapshotRunner {
         session.turns = [turn]
         agent.sessions = [session]
         agent.selectedID = session.id
+    }
+
+    /// Checks against the route sample's rules, with no geodata: a certain hit, and one behind rules
+    /// that depend on the app and on GeoSite data.
+    static func sampleChecks() -> [CheckRecord] {
+        guard let rules = try? ConfigDocument.parse(routeSampleConfig).rules else { return [] }
+        let domains: [(String, [String])] = [("chat.openai.com", ["openai"]), ("upos-sz-mirrorcos.bilivideo.com", ["bilibili", "cn"])]
+        return domains.compactMap { domain, sets in
+            guard let query = RouteQuery(domain, port: 443, network: .tcp) else { return nil }
+            return DomainChecker.record(domain, trace: RouteTracer.trace(query, rules: rules, data: RouteData()), sets: sets)
+        }
     }
 
     /// The node sheet for the sample's first profile.

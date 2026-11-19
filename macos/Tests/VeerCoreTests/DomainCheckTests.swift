@@ -17,7 +17,9 @@ struct DomainCheckTests {
     @Test func checksDomainsAgainstTheDraft() async throws {
         let doc = try ConfigDocument.parse(SampleConfig.text)
         let checker = DomainChecker(geo: try Self.geodata(), resolver: nil, index: nil)
-        let records = await checker.check(["www.bilibili.com", "upos-sz-mirrorcos.bilivideo.com"], draft: doc)
+        let result = await checker.check(["www.bilibili.com", "upos-sz-mirrorcos.bilivideo.com"], draft: doc)
+        let records = result.records
+        #expect(result.geodata)
         #expect(records[0].ruleIndex == 4 && records[0].target == "DIRECT" && records[0].certain && records[0].sets.contains("bilibili"))
         #expect(records[1].ruleIndex == 7 && records[1].rule == "MATCH,自动选择" && records[1].certain && records[1].sets == ["bilibili"])
 
@@ -48,14 +50,29 @@ struct DomainCheckTests {
         """
         let doc = try ConfigDocument.parse(yaml)
         let checker = DomainChecker(geo: nil, resolver: nil, index: nil, source: { _ in RouteData(ruleSets: ["company": .domains(["+.corp.example"])]) })
-        let records = await checker.check(["git.corp.example", "www.netflix.com"], draft: doc)
+        let result = await checker.check(["git.corp.example", "www.netflix.com"], draft: doc)
+        let records = result.records
+        // No GeoSite data from the source or Veer: the message to the model warns about it.
+        #expect(!result.geodata)
         // Checked as HTTPS: TCP to 443, so the QUIC and 8443 rules are decided and pass.
         #expect(records[0].ruleIndex == 2 && records[0].target == "DIRECT" && records[0].certain && records[0].note == nil)
         // The app-dependent rule and the unread rule set are undecided; the set named after the service likely matches first.
         #expect(records[1].ruleIndex == 5 && !records[1].certain)
-        #expect(records[1].note == "第 4 条等 2 条规则本机无法判断，第 4 条取决于发起连接的应用或来源（PROCESS-NAME），很可能先命中第 5 条")
+        #expect(records[1].note == "第 4、5 条规则本机无法判断。第 4 条：取决于发起连接的应用或来源（PROCESS-NAME），很可能先命中第 5 条")
         let one = RouteTracer.trace(RouteQuery("a.com", port: 443, network: .tcp)!, rules: ["GEOSITE,openai,X", "MATCH,Y"], data: RouteData())
         #expect(DomainChecker.note(for: one) == "第 1 条规则本机无法判断：本机没有可用的 GeoSite 数据")
+        // More than three: the first three numbers, then the count.
+        let many = RouteTracer.trace(RouteQuery("a.com", port: 443, network: .tcp)!,
+                                     rules: ["GEOSITE,a,X", "GEOSITE,b,X", "GEOSITE,c,X", "GEOSITE,d,X", "MATCH,Y"], data: RouteData())
+        #expect(DomainChecker.note(for: many) == "第 1、2、3 条等 4 条规则本机无法判断。第 1 条：本机没有可用的 GeoSite 数据")
+    }
+
+    /// GeoSite data in the core's folder counts even when Veer has not downloaded its own.
+    @Test func geodataFromTheSourceCounts() async throws {
+        let geosite = try GeoSiteDatabase(data: GeoFixture.geosite([("cn", [(2, "bilibili.com", [])])]))
+        let checker = DomainChecker(geo: nil, resolver: nil, index: nil, source: { _ in RouteData(geosite: geosite) })
+        let result = await checker.check(["www.bilibili.com"], draft: try ConfigDocument.parse(SampleConfig.text))
+        #expect(result.geodata && result.records[0].ruleIndex == 4 && result.records[0].certain)
     }
 
     @Test func withoutTheAppsSourceVeersGeodataAndMetaCubeXSetsAreUsed() async throws {

@@ -645,7 +645,8 @@
 "下载 %@ 失败（HTTP %lld）。" = "Couldn't download %1$@ (HTTP %2$lld).";
 "%@ 校验失败，没有替换本机已有的文件。请稍后重试。" = "%@ failed its check, so the file on this Mac wasn't replaced. Try again later.";
 "第 %lld 条规则本机无法判断：%@" = "Rule %1$lld can’t be decided on this Mac: %2$@";
-"第 %lld 条等 %lld 条规则本机无法判断，第 %lld 条%@" = "%2$lld rules from rule %1$lld can’t be decided on this Mac; rule %3$lld: %4$@";
+"第 %@ 条规则本机无法判断。第 %lld 条：%@" = "Rules %1$@ can’t be decided on this Mac. Rule %2$lld: %3$@";
+"第 %@ 条等 %lld 条规则本机无法判断。第 %lld 条：%@" = "%2$lld rules can’t be decided on this Mac, including rules %1$@. Rule %3$lld: %4$@";
 "，很可能先命中第 %lld 条" = "; rule %lld most likely matches first";
 
 /* VeerCore: AI answers */
