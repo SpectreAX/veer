@@ -2,6 +2,16 @@
 
 本计划按 [REQUIREMENTS.md](REQUIREMENTS.md) 和 [SPEC.md](SPEC.md) 推进，取代 [PLAN_2026-10-29.md](PLAN_2026-10-29.md) 的第 2 到第 4 阶段。那份文档的第 1 阶段（可用的代理）已经完成并提交。
 
+## Agent 本机检查的收尾（2026-11-19，Claude）
+
+- 发给 AI 的“本机还没有下载地理数据”提醒改为看检查实际用到的数据：内核目录里有 GeoSite 数据也算，不再只看 Veer 自己的下载。`DomainChecker.check` 返回 `Result`（记录和 `geodata`）。新增测试 `geodataFromTheSourceCounts`。
+- 不确定时的说明改为写出规则编号：“第 3、4 条规则本机无法判断。第 3 条：原因”，超过 3 条时写“第 1、2、3 条等 N 条”。说明和底部那行“结果已发给 AI”从 tertiary 改为 secondary：浅色下 tertiary 在底色上对比度只有约 1.65:1，secondary 约 3:1。
+- 新截图场景 `09ab-agent-checks`（340 pt，默认面板的内容宽度）和 `09ac-agent-checks-narrow`（280 pt，最窄面板），用路由样例配置和真实的 `RouteTracer` / `DomainChecker.record` 生成记录。中英文、深浅色 8 张截图逐张看过（`dist/snapshots/2026-11-19-193438`，macOS 27.3），换行正常、无截断。
+- 设计审查：Critical 0、Major 0；Minor 1（底部一行太淡）已修；其余 Minor：secondary 在浅色下约 3.05:1 属系统常规，三条时英文写成“Rules 3, 4, 6”没有“and”，截图背景不是面板的玻璃。
+- 关闭 issue #15：其中描述的页面截图淡出机制已不存在（由 `PanelRevealStack` 取代，1.0.7 面板移入窗口）。
+- verify.sh 通过（534 项）。为截图按发布方式重建了 dist/Veer.app：重建前按规则正常退出了正在运行的 dist Veer，没有重新打开。退出后读到系统代理为关闭、127.0.0.1:7890 无响应；退出前没有读取，无法判断是否由退出 Veer 引起。没有改动任何代理设置。
+- 未验证：键盘和 VoiceOver、增强对比度下的说明文字、面板玻璃背景上的实际对比度、用真实 AI 走一次检查。
+
 ## Agent 本机检查改用分流测试的判断（2026-11-19，Claude）
 
 - Agent 的本机检查（AI 请求检查域名，以及“域名改直连”识别专用策略组）原来用旧的 `RuleMatcher.match`，与分流测试（`RouteTracer`）可能给出不同结论。现在两者共用 `RouteTracer`；应用里检查的数据来自 `RouteTestSource`（内核目录的规则集文件、内联规则集、MetaCubeX 规则集和地理数据），与分流测试相同。没有传入数据源时（单元测试）用 Veer 自己的地理数据和 MetaCubeX 规则集。

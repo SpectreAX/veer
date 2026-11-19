@@ -219,10 +219,12 @@ public struct EditorEngine: Sendable {
         guard !domains.isEmpty else { throw EditorError(String(localized: "check.domains 里没有有效的域名（例如 i0.hdslb.com），请只列公开域名。")) }
         rounds += 1
         await progress(.checking(domains))
-        let records = await checker.check(domains, draft: request.draft)
+        let result = await checker.check(domains, draft: request.draft)
         try Task.checkCancellation()
-        let geodata = await checker.geo?.status().has(.geosite) ?? false
-        var message = DomainChecker.message(for: records, anonymizedRules: anonymized.rules, geodata: geodata, lastRound: rounds >= DomainChecker.maxRounds)
+        let records = result.records
+        // Whether the checks had geodata, wherever it came from: the core's folder counts too.
+        var message = DomainChecker.message(for: records, anonymizedRules: anonymized.rules, geodata: result.geodata,
+                                            lastRound: rounds >= DomainChecker.maxRounds)
         if let live = await request.liveConnections?(domains) {
             message += "\n\n" + anonymized.context.anonymize(live)
         }

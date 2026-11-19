@@ -63,7 +63,13 @@ public struct DomainChecker: Sendable {
         return domains
     }
 
-    public func check(_ domains: [String], draft: ConfigDocument) async -> [CheckRecord] {
+    public struct Result: Sendable {
+        public let records: [CheckRecord]
+        /// GeoSite data was available for the checks: from the core's folder or Veer's own download.
+        public let geodata: Bool
+    }
+
+    public func check(_ domains: [String], draft: ConfigDocument) async -> Result {
         var data: RouteData
         if let source { data = await source(draft) } else { data = await Self.data(for: draft, geo: geo) }
         if data.geosite == nil { data.geosite = try? await geo?.geosite() }
@@ -85,11 +91,16 @@ public struct DomainChecker: Sendable {
             let sets = data.geosite.map { database in
                 database.hits(for: query.host, available: available).filter { !$0.geositeRuleOnly }.map(\.name)
             } ?? []
-            let hit = trace.hit
-            records.append(CheckRecord(domain: domain, ruleIndex: hit?.index, rule: hit?.rule, target: hit?.target, certain: trace.certain,
-                                       note: Self.note(for: trace), sets: Array(sets.prefix(8)), address: trace.address))
+            records.append(Self.record(domain, trace: trace, sets: sets))
         }
-        return records
+        return Result(records: records, geodata: data.geosite != nil)
+    }
+
+    /// What the check found for one domain, as the model and the conversation show it.
+    public static func record(_ domain: String, trace: RouteTrace, sets: [String]) -> CheckRecord {
+        let hit = trace.hit
+        return CheckRecord(domain: domain, ruleIndex: hit?.index, rule: hit?.rule, target: hit?.target, certain: trace.certain,
+                           note: note(for: trace), sets: Array(sets.prefix(8)), address: trace.address)
     }
 
     /// Without the app's source: Veer's own geodata, and the MetaCubeX sets the draft's providers download.
@@ -116,9 +127,14 @@ public struct DomainChecker: Sendable {
     static func note(for trace: RouteTrace) -> String? {
         let unknowns = trace.unknowns
         guard !trace.certain, let first = unknowns.first, let reason = first.outcome.unknown else { return nil }
-        var note = unknowns.count == 1
-            ? String(localized: "第 \(first.index + 1) 条规则本机无法判断：\(reason.explanation)")
-            : String(localized: "第 \(first.index + 1) 条等 \(unknowns.count) 条规则本机无法判断，第 \(first.index + 1) 条\(reason.explanation)")
+        let number = first.index + 1, why = reason.explanation
+        // Up to three rule numbers, then the count.
+        let numbers = unknowns.prefix(3).map { String($0.index + 1) }.joined(separator: String(localized: "、"))
+        var note = switch unknowns.count {
+        case 1: String(localized: "第 \(number) 条规则本机无法判断：\(why)")
+        case 2...3: String(localized: "第 \(numbers) 条规则本机无法判断。第 \(number) 条：\(why)")
+        default: String(localized: "第 \(numbers) 条等 \(unknowns.count) 条规则本机无法判断。第 \(number) 条：\(why)")
+        }
         if let likely = trace.likely { note += String(localized: "，很可能先命中第 \(likely.index + 1) 条") }
         return note
     }
