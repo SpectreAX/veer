@@ -1,6 +1,10 @@
 # Veer macOS handoff
 
-## 1.0.7 release prep (2026-11-19, Claude; not published)
+## 1.0.7 released (2026-11-19, Claude)
+
+On the user's "发布1.0.7": annotated tag `macos-v1.0.7` on `c519670` (same tree the DMG was built from) pushed, and [Veer 1.0.7](https://github.com/SpectreAX/veer/releases/tag/macos-v1.0.7) published with `Veer-1.0.7.dmg` and `appcast.xml` via the same `gh release create … --verify-tag --latest` that `release.sh --publish` runs; the script itself was not run because it rebuilds `dist/Veer.app`, which the user had open. Before: DMG checksum, codesign, size and Sparkle EdDSA (`sign_update --verify`) checked. After: anonymous appcast identical to local; DMG via its URL has SHA-256 `919467d6…edf69`, 25,189,916 bytes; release is Latest. NOT VERIFIED: the user's hand checklist, Sparkle upgrade from an older Veer. 1.0.6 and earlier still read the old veer-releases feed; the transition waits for the user's decision.
+
+## 1.0.7 release prep (2026-11-19, Claude)
 
 Version 1.0.7 / build 8. verify.sh passed (531 tests, bundled Mihomo). `scripts/release.sh --notes dist/notes-1.0.7.html` without `--publish` made `dist/Veer-1.0.7.dmg` (Apple Development signed, not notarized) and `dist/appcast.xml` (build 8, min macOS 14.0, URL under `macos-v1.0.7`); the bundle has the new SUFeedURL, Mihomo v1.19.29 and matching licenses. Notes `dist/notes-1.0.7.html`, hand checklist `dist/checklist-1.0.7.md`. The user's running dist Veer (no core) was replaced by the build; the system proxy belongs to another app the user relies on (127.0.0.1:7890) and was not touched. Next: the user's hand checks, then the tag and `--publish` only on their go-ahead, then the old-feed transition in RELEASE.md.
 
