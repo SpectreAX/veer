@@ -16,11 +16,19 @@ struct AgentView: View {
                 .frame(width: Metrics.sidebarWidth)
             Divider()
             VStack(spacing: 0) {
-                if !proxy.suggestions.isEmpty {
-                    SuggestionCards(limit: 1).padding(Spacing.lg)
-                    Divider()
+                if inWindow {
+                    // One conversation on screen at a time: its window has it, with the one composer.
+                    // The list here still chooses what the window shows.
+                    StateView(symbol: "macwindow.on.rectangle", title: String(localized: "对话在独立窗口中"),
+                              message: String(localized: "在列表中选择对话，它会显示在 Agent 窗口里。"),
+                              actionTitle: String(localized: "显示 Agent 窗口")) { proxy.openAgentWindow() }
+                } else {
+                    if !proxy.suggestions.isEmpty {
+                        SuggestionCards(limit: 1).padding(Spacing.lg)
+                        Divider()
+                    }
+                    AgentConversation()
                 }
-                AgentConversation()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -36,6 +44,12 @@ struct AgentView: View {
                 .help(String(localized: "删除对话…"))
                 .disabled(agent.current == nil)
         }
+    }
+
+    /// The window shows the conversation, unless the AI service is still to be chosen: that form
+    /// needs the page's width, and the window sends people here for it.
+    private var inWindow: Bool {
+        proxy.agentPresentation == .detached && (agent.aiConfigured || agent.current != nil)
     }
 }
 
@@ -83,7 +97,7 @@ struct AgentConversation: View {
                 // The setup form needs the page's width.
                 StateView(symbol: "sparkles", title: String(localized: "先选择一个 AI 服务"),
                           message: String(localized: "Veer 使用你自己的 API Key，或者本机的 Ollama。"),
-                          actionTitle: String(localized: "设置 AI 服务…")) { proxy.page = .agent }
+                          actionTitle: String(localized: "设置 AI 服务…")) { proxy.showPage(.agent) }
             } else {
                 AISetupView()
             }
@@ -117,20 +131,33 @@ struct AgentConversation: View {
 }
 
 extension View {
-    /// The Agent's sheets and confirmations, once per window: the page and the panel both raise them.
-    func agentPresentations(_ agent: AgentStore) -> some View {
-        modifier(AgentPresentations(agent: agent))
+    /// The Agent's sheets and confirmations, once per window and each in one window only: the page and
+    /// the panel both raise them. Turns raise the conversation's, the Agent page's list the deletion.
+    func agentPresentations(_ agent: AgentStore, scope: AgentPresentationScope = .all) -> some View {
+        modifier(AgentPresentations(agent: agent, scope: scope))
     }
+}
+
+/// Which of the Agent's sheets a window raises. While the Agent has a window of its own, its turns
+/// are there, and the main window keeps only the deletion its list asks for.
+struct AgentPresentationScope: OptionSet {
+    let rawValue: Int
+    static let conversation = AgentPresentationScope(rawValue: 1)
+    static let deletion = AgentPresentationScope(rawValue: 2)
+    static let all: AgentPresentationScope = [.conversation, .deletion]
 }
 
 private struct AgentPresentations: ViewModifier {
     @Bindable var agent: AgentStore
+    let scope: AgentPresentationScope
 
     func body(content: Content) -> some View {
+        let conversation = scope.contains(.conversation)
         content
-            .sheet(item: $agent.editingGroup) { GroupEditorSheet(target: $0) }
-            .sheet(item: Binding(get: { agent.payloadTurn }, set: { _ in agent.payloadTurnID = nil })) { PayloadSheet(turn: $0) }
-            .alert(String(localized: "删除对话？"), isPresented: Binding(get: { agent.pendingDeletion != nil }, set: { if !$0 { agent.pendingDeletion = nil } })) {
+            .sheet(item: conversation ? $agent.editingGroup : .constant(nil)) { GroupEditorSheet(target: $0) }
+            .sheet(item: Binding(get: { conversation ? agent.payloadTurn : nil }, set: { _ in agent.payloadTurnID = nil })) { PayloadSheet(turn: $0) }
+            .alert(String(localized: "删除对话？"),
+                   isPresented: Binding(get: { scope.contains(.deletion) && agent.pendingDeletion != nil }, set: { if !$0 { agent.pendingDeletion = nil } })) {
                 Button(String(localized: "删除"), role: .destructive) { if let session = agent.pendingDeletion { agent.delete(session) } }
                 Button(String(localized: "取消"), role: .cancel) {}
             } message: {

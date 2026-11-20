@@ -32,10 +32,18 @@ enum SnapshotRunner {
                     // As the app's window: a fixed one counts as zoomed, and the Agent panel does not widen it.
                     if scene.resizable { window.styleMask.insert(.resizable) }
                     window.appearance = NSAppearance(named: name)
-                    // As `.windowStyle(.hiddenTitleBar)` leaves the app's window.
-                    window.titleVisibility = .hidden
-                    window.titlebarAppearsTransparent = true
-                    window.contentViewController = NSHostingController(rootView: view)
+                    let hosting = NSHostingController(rootView: view)
+                    if scene.standardWindow {
+                        window.styleMask.insert(.miniaturizable)
+                        window.styleMask.insert(.resizable)
+                        // The view's title and toolbar on the window, as a `Window` scene puts them.
+                        hosting.sceneBridgingOptions = [.title, .toolbars]
+                    } else {
+                        // As `.windowStyle(.hiddenTitleBar)` leaves the app's window.
+                        window.titleVisibility = .hidden
+                        window.titlebarAppearsTransparent = true
+                    }
+                    window.contentViewController = hosting
                     window.setContentSize(scene.size)
                     window.makeKeyAndOrderFront(nil)
                     NSApp.activate()
@@ -113,6 +121,9 @@ enum SnapshotRunner {
         var fullScreen = false
         /// Resizable with a minimum size, as the app's own window is.
         var resizable = false
+        /// A standard window with its title and toolbar, as the Agent's window is, rather than the
+        /// main window's hidden title bar.
+        var standardWindow = false
     }
 
     // swiftlint:disable:next function_body_length
@@ -283,6 +294,34 @@ enum SnapshotRunner {
                 sampleThread(agent, status: .pending)
             }),
             Scene(name: "24b-panel-setup", store: { running(panel: true) }, view: AnyView(MainView())),
+            // The Agent in its own window: the same conversation as `24-panel-overview`.
+            Scene(name: "24w-agent-window", size: AgentWindowPlacement.defaultSize, store: { detached() },
+                  view: AnyView(AgentWindow(managesWindow: false)), agent: { agent in
+                      agent.settings.provider = .ollama
+                      sampleThread(agent, status: .pending)
+                  }, standardWindow: true),
+            Scene(name: "24w-agent-window-smallest", size: AgentWindowPlacement.minimumSize, store: { detached() },
+                  view: AnyView(AgentWindow(managesWindow: false)), agent: attachmentThread, standardWindow: true),
+            Scene(name: "24w-agent-window-wide", size: CGSize(width: 960, height: 760), store: {
+                let store = detached()
+                store.suggestions = [Suggestion(kind: .failing(host: "chatgpt.com", count: 3))]
+                store.page = .proxies
+                return store
+            }, view: AnyView(AgentWindow(managesWindow: false)), agent: { agent in
+                agent.settings.provider = .ollama
+                sampleThread(agent, status: .written)
+            }, standardWindow: true),
+            Scene(name: "24w-agent-window-setup", size: AgentWindowPlacement.defaultSize, store: { detached() },
+                  view: AnyView(AgentWindow(managesWindow: false)), standardWindow: true),
+            // The main window meanwhile: the page has its whole width, and the Agent page points to the window.
+            Scene(name: "24w-main-detached", store: { detached() }, view: AnyView(MainView()), agent: { agent in
+                agent.settings.provider = .ollama
+                sampleThread(agent, status: .pending)
+            }),
+            Scene(name: "24w-agent-page-detached", store: { detached(page: .agent) }, view: AnyView(MainView()), agent: { agent in
+                agent.settings.provider = .ollama
+                sampleThread(agent, status: .pending)
+            }),
             // Opened after the window is up, as a click does: the window widens and the page keeps its width.
             Scene(name: "24k-panel-opened", store: {
                 let store = running()
@@ -672,6 +711,12 @@ enum SnapshotRunner {
             "time=\"2026-10-29T10:00:00+08:00\" level=info msg=\"Start initial configuration in progress\"",
             "level=error msg=\"Start Mixed(http+socks) server error: listen tcp 127.0.0.1:7890: bind: address already in use\"",
         ])
+        return store
+    }
+
+    static func detached(page: Page = .overview) -> ProxyStore {
+        let store = running(page: page)
+        store.agentPresentation = .detached
         return store
     }
 

@@ -82,6 +82,8 @@ struct AgentPanel: View {
             .disabled(agent.sessions.isEmpty)
             .help(String(localized: "切换对话"))
             .accessibilityLabel(String(localized: "切换对话"))
+            // Which conversation is open, which the label alone would not say.
+            .accessibilityValue(agent.current?.title ?? "")
             Spacer(minLength: Spacing.sm)
             Group {
                 Button { agent.undo() } label: { Label(String(localized: "撤销修改"), systemImage: "arrow.uturn.backward") }
@@ -92,6 +94,9 @@ struct AgentPanel: View {
                     .disabled(proxy.activeProfile == nil)
                 Button { proxy.page = .agent } label: { Label(String(localized: "在 Agent 页打开"), systemImage: "arrow.up.left.and.arrow.down.right") }
                     .help(String(localized: "在 Agent 页打开，查看全部对话"))
+                // The same conversation in a window of its own; the panel closes as it always does.
+                Button { agent.detach() } label: { Label(String(localized: "在独立窗口中打开"), systemImage: "macwindow.on.rectangle") }
+                    .help(String(localized: "在独立窗口中打开"))
                 // Over a window near the screen's edge the toolbar's own switch can be covered.
                 Button { proxy.agentPanel = false } label: { Label(String(localized: "隐藏 Agent 面板"), systemImage: "sidebar.trailing") }
                     .help(String(localized: "隐藏 Agent 面板（⌥⌘I）"))

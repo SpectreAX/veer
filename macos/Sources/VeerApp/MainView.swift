@@ -111,8 +111,9 @@ struct MainView: View {
         // One layout for the page and the panel, animated together; the window keeps its size.
         PanelRevealStack(isPresented: panelShown, panelWidth: AgentPanelColumn.width(store, room: panelRoom),
                          animationTrigger: store.agentPanel,
-                         // Off on the Agent page, whose own composer would otherwise share its requests.
-                         keepsPanelMounted: store.page != .agent) {
+                         // Off on the Agent page, whose own composer would otherwise share its requests, and
+                         // while the Agent has a window: one conversation on screen, and none drawn unseen.
+                         keepsPanelMounted: store.page != .agent && store.agentPresentation != .detached) {
             sidebarAndPage
         } panel: {
             AgentPanelColumn(room: panelRoom)
@@ -140,7 +141,7 @@ struct MainView: View {
         }
         // The Agent shows these itself. Elsewhere Edit → Undo would otherwise change routing with no sign.
         .overlay(alignment: .bottom) {
-            if store.page != .agent, !store.agentPanel, let toast = agent.toast {
+            if store.page != .agent, store.agentPresentation == .hidden, let toast = agent.toast {
                 ToastView(toast: toast) { agent.undo() }
                     .padding(.bottom, Spacing.xl)
                     .transition(reduceMotion ? AnyTransition.opacity : .move(edge: .bottom).combined(with: .opacity))
@@ -308,7 +309,7 @@ struct MainView: View {
                 .overlay(alignment: .topLeading) { titleRow }
                 .navigationSplitViewColumnWidth(min: 0, ideal: Metrics.readingWidth, max: .infinity)
             }
-            .agentPresentations(agent)
+            .agentPresentations(agent, scope: store.agentPresentation == .detached ? .deletion : .all)
             // For the window's name elsewhere, such as the Window menu; `pageTitle` shows it here.
             .navigationTitle(store.page.title)
         }

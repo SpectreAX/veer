@@ -1443,3 +1443,11 @@
 "%@（%@）" = "%1$@ (%2$@)";
 "%@：从%@改为%@。%@" = "%1$@: from %2$@ to %3$@. %4$@";
 "%@：仍走%@。%@" = "%1$@: still %2$@. %3$@";
+"在独立窗口中打开" = "Open in Separate Window";
+"在独立窗口中打开 Agent" = "Open Agent in Separate Window";
+"停靠至主窗口" = "Dock to Main Window";
+"Agent 窗口保持在最前面" = "Keep Agent Window on Top";
+"显示 Agent 窗口" = "Show Agent Window";
+"对话在独立窗口中" = "This Conversation Is in Its Own Window";
+"在列表中选择对话，它会显示在 Agent 窗口里。" = "Choose a conversation in the list to show it in the Agent window.";
+"Agent 窗口" = "Agent Window";

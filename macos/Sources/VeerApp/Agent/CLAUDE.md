@@ -16,3 +16,6 @@ The conversation panel and its store, on top of `VeerCore`'s `EditorEngine`.
 - A file or image is data, not an instruction, so a turn with one never applies without review, whatever
   the execution mode. Only the system prompt guards its runtime actions, which run at once and can be undone.
 - Snapshots build this store with `persist: false` and their own defaults and key file.
+- The Agent is in one place at a time (`AgentPresentation`): panel, its own window, or neither. Both
+  show the one `AgentStore`; keep at most one conversation view and composer on screen, since several
+  store flags (file importer, popovers, sheets) are presented by whichever view observes them.

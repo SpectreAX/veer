@@ -60,8 +60,30 @@ final class ProxyStore {
     var page: Page = .overview
     /// A destination for the route tester to check when it opens, from another page; it takes it once.
     var routeTestRequest: RouteTestRequest?
+    /// Where the Agent shows beside the pages: nowhere, docked as the panel (`AgentPanel`), or in a
+    /// window of its own (`AgentWindow`). The window and the panel show one conversation from one
+    /// `AgentStore`, so a move between them carries everything across. Saved, with the last place shown.
+    var agentPresentation: AgentPresentation {
+        didSet {
+            guard agentPresentation != oldValue else { return }
+            defaults.set(agentPresentation.rawValue, forKey: "agentPresentation")
+            // For a version from before the window, which reads only this.
+            defaults.set(agentPresentation == .docked, forKey: "agentPanel")
+            if agentPresentation != .hidden { lastAgentPresentation = agentPresentation }
+        }
+    }
+    /// What the toolbar's Agent button brings back: the panel or the window.
+    var lastAgentPresentation: AgentPresentation { didSet { defaults.set(lastAgentPresentation.rawValue, forKey: "lastAgentPresentation") } }
     /// The Agent beside every page but its own (`AgentPanel`). Open until the user closes it.
-    var agentPanel: Bool { didSet { defaults.set(agentPanel, forKey: "agentPanel") } }
+    var agentPanel: Bool {
+        get { agentPresentation == .docked }
+        // Closing the panel leaves a window alone: only the window's own actions close it.
+        set { if newValue { agentPresentation = .docked } else if agentPresentation == .docked { agentPresentation = .hidden } }
+    }
+    /// Opens the Agent's window, or brings it forward, and the main window. Set by a view that can
+    /// reach `openWindow` (`MenuBarLabel`); a store cannot.
+    @ObservationIgnored var openAgentWindow: () -> Void = {}
+    @ObservationIgnored var openMainWindow: () -> Void = {}
     /// Its width, which the user drags.
     var agentPanelWidth: Double { didSet { defaults.set(agentPanelWidth, forKey: "agentPanelWidth") } }
     var phase: Phase = .stopped {
@@ -144,7 +166,8 @@ final class ProxyStore {
     /// Where traffic leaves the proxy: shown on the overview while the core runs.
     var exit: ExitInfo?
     var showExitIP: Bool { didSet { defaults.set(showExitIP, forKey: "showExitIP"); if !showExitIP { exit = nil } } }
-    @ObservationIgnored private var exitCheck: Task<Void, Never>?
+    /// The exit check under way (`ProxyStoreExitIP.swift`).
+    @ObservationIgnored var exitCheck: Task<Void, Never>?
     /// Start the core, the system proxy and the mode as they were when Veer last quit.
     var restoreLastState: Bool { didSet { defaults.set(restoreLastState, forKey: "restoreLastState") } }
     var showRateInMenuBar: Bool { didSet { defaults.set(showRateInMenuBar, forKey: "showRateInMenuBar") } }
@@ -253,7 +276,9 @@ final class ProxyStore {
         showExitIP = defaults.object(forKey: "showExitIP") as? Bool ?? true
         reconnectAfterChanges = defaults.object(forKey: "reconnectAfterChanges") as? Bool ?? true
         collapsedGroups = Set(defaults.stringArray(forKey: "collapsedGroups") ?? [])
-        agentPanel = defaults.object(forKey: "agentPanel") as? Bool ?? true
+        let presentation = AgentPresentation.saved(defaults.string(forKey: "agentPresentation"), panel: defaults.object(forKey: "agentPanel") as? Bool)
+        agentPresentation = presentation
+        lastAgentPresentation = AgentPresentation.savedLast(defaults.string(forKey: "lastAgentPresentation"), current: presentation)
         agentPanelWidth = defaults.object(forKey: "agentPanelWidth") as? Double ?? AgentPanelColumn.idealWidth
         state = stateStore.load()
         profiles = profileStore.loadAll()
@@ -931,42 +956,6 @@ final class ProxyStore {
             await refresh()
             checkTestedNodes()
         }
-    }
-
-    // MARK: Exit IP
-
-    /// Asks public IP services, through Veer's own port, where traffic leaves, until one answers or
-    /// `ExitProbe` runs out of time. Runs again after a node or mode switch.
-    func checkExit(after delay: Duration = .zero) {
-        exitCheck?.cancel()
-        guard showExitIP, isRunning else { exit = nil; exitCheck = nil; return }
-        // A failure is not the answer to a new question; what is known stays until it is replaced.
-        if exit == .unknown { exit = nil }
-        let port = proxyPort
-        exitCheck = Task {
-            if delay > .zero { try? await Task.sleep(for: delay) }
-            guard !Task.isCancelled else { return }
-            let found = await ExitProbe.run { await ExitInfo.lookUp(throughPort: port) }
-            guard !Task.isCancelled else { return }
-            exit = found ?? ExitInfo.unknown
-            exitCheck = nil
-            // The first answer through the proxy after a start: traffic is known to get out.
-            if found != nil, isRunning, startup?.time(of: .networkReachable) == nil {
-                reached(.networkReachable)
-                logStartup("First request through the proxy")
-            }
-        }
-    }
-
-    /// The person asked: back to detecting, so the page shows that something is happening.
-    func recheckExit() {
-        exit = nil
-        checkExit()
-    }
-
-    /// Opening the dashboard must not start the time over on a check already under way.
-    func checkExitIfNeeded() {
-        if exit == nil, exitCheck == nil { checkExit() }
     }
 
     // MARK: Connections and logs

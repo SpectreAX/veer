@@ -21,6 +21,13 @@ Brand expression must not damage native usability.
 - The empty space in the top row moves the window; a double click follows the system setting.
 - Full screen is the system's. The top row stays, and the sidebar button moves into the place of the
   window buttons, which the system shows with the menu bar when the pointer reaches the top.
+- The Agent can also be in a window of its own (experimental, `AgentWindow`): a standard `Window`
+  scene, not a panel, with its own corners, shadow, traffic lights, resizing, minimize, full screen and
+  Stage Manager. Default 520 × 720, minimum 380 × 420 below the toolbar. It first opens on the main
+  window's screen, beside the main window or over its trailing edge, wholly on screen; its frame is
+  saved and put back on a screen when a display goes. Always on Top is in the Window menu, off by
+  default, and raises only this window (`NSWindow.level`). It stays out of state restoration and the
+  main window's tabs. One process and one Dock icon.
 
 ## Navigation
 
@@ -29,6 +36,13 @@ Brand expression must not damage native usability.
   commands are also in the menu bar.
 - The Agent panel is a floating glass surface of its own beside the page (continuous 16 pt corners, regular Liquid Glass on macOS 26 and later, the regular material with a hairline edge before it; no fill, edge or shadow of Veer's on the glass), below the toolbar's row and 8 pt clear of it, the window's edges and the page. It is laid out with the page by one SwiftUI layout. Opening
   and closing animate both together on one spring; the window keeps its size.
+- The Agent is hidden, docked (the panel) or detached (its window), one at a time
+  (`AgentPresentation`). The panel header's "Open in Separate Window" closes the panel with its usual
+  motion and shows the same conversation in the window; "Dock to Main Window" in the window's toolbar
+  closes the window and opens the panel the same way. Nothing is re-sent: both show one `AgentStore`.
+  Closing the window hides the Agent; the toolbar's Agent button brings an open window forward, or the
+  last place back. While detached, the Agent page shows a pointer to the window in place of the
+  conversation, so only one conversation and one composer are ever on screen.
 
 ## Toolbar
 
@@ -136,6 +150,10 @@ as a violation unless its reason no longer holds. Anything not listed here is no
 | Veer green tint instead of the system accent color | Brand color, used only on small areas. Custom accent colors are out of scope for v1 | `Color.veerAccent` |
 | Fixed chart palette | Categorical colors need stable, color-blind-checked pairs that the system colors do not give. Every chart has a legend with exact counts | `ChartPalette` |
 | `.strings` instead of String Catalog | Chosen before Xcode was installed; the existing localization and checks still use it, and a migration is not scheduled | SPEC 9 |
+| The Agent window's title is a menu in its toolbar, with the window title hidden | `toolbarTitleMenu` shows no menu on a Mac window that is not a document's. The menu lists recent conversations, as the panel's header does; the window keeps its title for the Window menu and VoiceOver | `AgentWindow` |
+| The Agent window's top edge is the system toolbar's own (a band and a separator), not the main window's soft edge | Hiding the toolbar's background to match lost the edge effect, and a bar of Veer's under it pushed the toolbar's items into the overflow menu. Seen only in inactive windows so far | `AgentWindow` |
+| In the Agent window the composer spans the window's width while turns stay at the reading width | A composer bar narrower than its window leaves the bar's sides bare, and the system draws its separator across the window | `ConversationView` |
+| Edit → Undo in the Agent window does not reach routing changes | They are on the main window's undo manager, and a SwiftUI window's own cannot be swapped for it. The window's toolbar Undo, the turn's Undo and `/undo` take them back; the main window's ⌘Z still does | `AgentWindow`, `ReversibleChanges` |
 | Carbon `RegisterEventHotKey` for global shortcuts | The only system API for them without a third-party library. Unbound by default | SPEC 8, `HotKeys` |
 
 ## Acceptance

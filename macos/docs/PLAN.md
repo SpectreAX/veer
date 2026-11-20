@@ -2,6 +2,19 @@
 
 本计划按 [REQUIREMENTS.md](REQUIREMENTS.md) 和 [SPEC.md](SPEC.md) 推进，取代 [PLAN_2026-10-29.md](PLAN_2026-10-29.md) 的第 2 到第 4 阶段。那份文档的第 1 阶段（可用的代理）已经完成并提交。
 
+## Agent 独立窗口（实验，2026-11-19，Claude，已提交到分支 feat/macos-agent-window，未推送、未合并）
+
+- **状态：** 隐藏 / 停靠 / 独立窗口三种位置（`AgentPresentation`，`ProxyStore.agentPresentation` 和 `lastAgentPresentation`，记在本机；旧版本的 `agentPanel` 照常读写）。切换在 `AgentStore` 上（`detach`、`dock`、`toggleFromToolbar`、`showAgent`、`windowClosed`、`windowAppeared`），面板和窗口共用一个 `AgentStore`，不新增 store。草稿、附件、模型、思考、联网搜索本来就在 store 里；唯一需要移进 store 的视图状态是滚动位置：`ConversationView` 记录最上面的那一轮和是否跟随最新（`scrollSpot`，不被观察），切换时交接一次（`scrollHandoff`，5 秒内有效），新视图滚到那一轮，等布局稳定后才确认（`pendingTop`）。
+- **窗口：** `Window(id: "agent")` + `AgentWindow`（工具栏：对话菜单、撤销、新对话、停靠至主窗口）+ `AgentWindowBridge`（AppKit：首次位置、记住和夹回屏幕内的位置 `agentWindowFrame`、保持在最前 `NSWindow.level`、不恢复、不合并标签页、全屏）。位置算法 `AgentWindowPlacement` 有单元测试。窗口关闭后内容不再构建（`isOpen`）。打开窗口用 `MenuBarLabel` 设置的 `store.openAgentWindow` / `openMainWindow`。
+- **主窗口：** 窗口模式下面板不再留在正文下方（`keepsPanelMounted` 为假，收起动画结束后移除），对话里的表单在窗口里弹出（`AgentPresentationScope`），Agent 页右栏显示“对话在独立窗口中”。面板顶部加“在独立窗口中打开”，“显示”菜单加“在独立窗口中打开 Agent / 停靠至主窗口”，“窗口”菜单加“Agent 窗口保持在最前面”。工具栏 ✦ 按钮改用 `ToolbarToggle`（设计审查 Major，已修），VoiceOver 名称随位置为“Agent 面板”或“Agent 窗口”。
+- `ProxyStore.swift` 超过 1600 行的 lint 上限，把“出口 IP”一节原样移到 `ProxyStoreExitIP.swift`（`exitCheck` 从 private 改为 internal），没有放宽规则。
+- **测试：** `AgentWindowTests` 13 项：保存与迁移、工具栏按钮、生命周期、滚动交接、位置算法，以及用假的流式 AI 服务（请求挂起不返回）在回复进行中来回切换 5 次：始终只有 1 次请求、1 轮对话，草稿、附件、模型、思考、联网搜索、执行模式不变，回复结束后仍只有 1 轮。verify.sh 通过（549 项：35 + 141 + 315 + 58）。
+- **真实窗口场景（隔离副本，`.build/probe/agentwin`，bundle id `com.yamax.veer.agentwin`，样例数据、无内核、不激活、窗口在后面且大部分在屏幕外）：** 记录在 `run4/log.txt`，帧在 `run4/*.png`（两窗口拼在一起，约 12 帧/秒）。确认：只有一个窗口；关闭后为隐藏且面板不打开；✦ 按钮恢复窗口；主窗口关闭时停靠会重新打开主窗口；面板滚到第 2 轮后窗口打开在第 2 轮，停靠回来仍在第 2 轮；第一次打开 520 × 720 且完全在主窗口所在屏幕内；移到所有屏幕之外后发送屏幕变化通知会夹回屏幕；最小内容区 380 × 420；保持在最前时 level 3、关闭后 0；`isRestorable` 假、不合并标签页、`fullScreenPrimary`；关闭的窗口里没有滚动视图。
+- **资源（同一副本，模拟流式回复，进程自测 CPU 占单核比例和内存峰值，粗略）：** 流式时停靠 1.0% / 144 MB，窗口 0.7% / 142 MB；空闲时窗口 2.7%（一次）/ 144 MB，停靠 0.8% / 150 MB，隐藏 0.5% / 150 MB。差别在噪声范围内。GPU 没有测（NOT VERIFIED）。
+- **截图（macOS 27.3，`.build/probe/agentwin/snaps`、`snaps2`，中英文、深浅色，窗口不活动）：** 24-panel-overview（面板顶部 5 个按钮）、24w-agent-window（520 × 720）、-smallest（380 × 420，三个附件）、-wide（960 × 760，带建议卡）、-setup、24w-main-detached、24w-agent-page-detached。看过后改了：顶部空的 `safeAreaBar`（换成与 Agent 页相同的建议卡上方排列）、`toolbarTitleMenu` 不显示（换成工具栏里的菜单并隐藏窗口标题）、宽窗口里输入框栏上方的系统分隔线（输入框随窗口全宽）、关闭后视图仍在（`isOpen`）、滚动交接在新窗口里失效（`pendingTop`）、全屏行为被 SwiftUI 重置（异步再设一次）。
+- **设计审查：** Critical 0；Major 1（✦ 按钮的 VoiceOver 状态和名称）已修；可能的 Major：窗口里的 ⌘Z 不撤销分流修改，没法在运行中验证，记为文档中的偏离；Minor：标题菜单的 VoiceOver 值已补，其余（窗口里撤销/新对话/停靠同组靠左、320 pt 面板里 5 个按钮、窗口顶部是系统工具栏的分隔线）记在 DESIGN_SPEC。
+- **未验证：** 活动窗口的样子（所有截图都是不活动窗口）、真实拖动和调整大小、全屏和台前调度、多显示器（只用通知模拟）、减弱透明度和增强对比度、减弱动态效果、键盘和 VoiceOver、焦点是否落在窗口的输入框、窗口里 ⌘Z、GPU、macOS 14 虚拟机、日文（Veer 只有中英文，没有加）。没有更新 `dist/Veer.app`，也没有用它截图。
+
 ## “应用后的走向”收尾（2026-11-19，Claude）
 
 - “可能命中”（走向预览和本机检查列表）和 Fake-IP 提示改用 `StatusBadge(kind: .warning, compact: true)`：警告图标加 secondary 文字，按 TOKENS.md“状态色总配图标和文字”。
