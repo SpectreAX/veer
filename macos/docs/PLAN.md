@@ -15,6 +15,13 @@
 - **设计审查：** Critical 0；Major 1（✦ 按钮的 VoiceOver 状态和名称）已修；可能的 Major：窗口里的 ⌘Z 不撤销分流修改，没法在运行中验证，记为文档中的偏离；Minor：标题菜单的 VoiceOver 值已补，其余（窗口里撤销/新对话/停靠同组靠左、320 pt 面板里 5 个按钮、窗口顶部是系统工具栏的分隔线）记在 DESIGN_SPEC。
 - **未验证：** 活动窗口的样子（所有截图都是不活动窗口）、真实拖动和调整大小、全屏和台前调度、多显示器（只用通知模拟）、减弱透明度和增强对比度、减弱动态效果、键盘和 VoiceOver、焦点是否落在窗口的输入框、窗口里 ⌘Z、GPU、macOS 14 虚拟机、日文（Veer 只有中英文，没有加）。没有更新 `dist/Veer.app`，也没有用它截图。
 
+## 1.0.8 已发布（2026-11-20，Claude）
+
+- 用户确认“Checks done, publish”后：附注标签 `macos-v1.0.8`（指向 `abd611f`，构建 DMG 的提交）已推送；`gh release create … --verify-tag --latest` 发布 [Veer 1.0.8](https://github.com/SpectreAX/veer/releases/tag/macos-v1.0.8)，附件 `Veer-1.0.8.dmg` 和 `appcast.xml`，说明为 `dist/notes-1.0.8.html`。与 `release.sh --publish` 最后一步的命令相同；没有重跑脚本，因为它会重建已检查过的 `dist/Veer.app`。
+- 发布后匿名下载：`releases/latest/download/appcast.xml` 与本地文件完全相同（1.0.8 / build 9 / 最低 14.0），按其中地址下载的 DMG SHA-256 `4f27d1cc…31d5cf`、25,301,747 字节，与本地一致；Release 为 Latest，非草稿或预发布。
+- 旧 feed（veer-releases）没有改，仍指向 1.0.7：1.0.6 客户端先升到 1.0.7，再从新 feed 升到 1.0.8。
+- 未验证：从 1.0.7 通过 Sparkle 实际升级到 1.0.8。
+
 ## 1.0.8 发布准备（2026-11-20，Claude）
 
 - 版本 1.0.8 / build 9（`Resources/Info.plist`，提交 `abd611f`，DMG 由这个提交的源码构建）。内容：PR #32–#36（Agent 检查改用分流测试的判断、“应用后的走向”及收尾、独立 Agent 窗口）。
