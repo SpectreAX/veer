@@ -39,6 +39,9 @@
 - 无遥测；备份不含 API Key，订阅链接可选。Mihomo 保持独立进程，许可与第三方声明保留。
 - 自用测试沿用免费 Apple Development 签名；公证需要 Developer ID 和付费账号。
   不为测试新买账号、生成或导出签名密钥。每次正式发布都要单独得到用户指示。
+- 用户要求以后交付的本地 macOS 新构建默认更新 `macos/dist/Veer.app`。先在隔离目录构建并验证签名，
+  确认现有 App 已退出，备份旧包后再替换，最后在原路径复核签名。若 Veer 正在接管网络，等用户择机退出。
+  临时截图和探针继续用隔离副本。对外发布仍需单独授权。
 
 ## 环境与常用命令
 
@@ -68,8 +71,8 @@ SwiftPM 依赖锁定在 `Package.resolved`；Sparkle 工具在 `.build/artifacts
 bash .codex/scripts/snapshots.sh
 ```
 
-该命令在临时目录复制当前 macOS 源码，构建并临时签名自己的应用，只通过现有截图模式
-启动，输出构建日志和截图目录。不会替换运行中的 `macos/dist/Veer.app`。可设置原有的
+该命令在临时目录复制当前 macOS 源码，用独立的 `com.yamax.veer.snapshots` 标识构建并临时签名，
+将窗口和界面偏好写入自己的偏好域。它通过截图模式启动，输出构建日志和截图目录。可设置
 `VEER_SNAPSHOT_LANGUAGES=en`、`VEER_SNAPSHOT_APPEARANCE=light` 缩小矩阵。
 验证整套环境时用默认中英文、深浅色矩阵。临时副本保留至检查完成，之后只清理自己创建的目录。
 
