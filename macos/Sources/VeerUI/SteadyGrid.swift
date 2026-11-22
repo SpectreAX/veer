@@ -72,7 +72,11 @@ public struct SteadyGrid<Content: View>: View {
             .animation(nil, value: held)
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width.value = $0 }
             .onChange(of: motion, initial: true) { _, motion in
-                held = motion.map { Self.heldColumns(width: width.value, motion: $0, minimum: minimum, spacing: spacing) }
+                // A reversal part way is a new motion between the same two ends: the count chosen at
+                // the start holds. Worked out again from the middle, it took the far end one panel
+                // further and changed the count twice.
+                guard let motion else { return held = nil }
+                if held == nil { held = Self.heldColumns(width: width.value, motion: motion, minimum: minimum, spacing: spacing) }
             }
     }
 }
@@ -110,9 +114,9 @@ public struct SteadyChoice<Wide: View, Narrow: View>: View {
         .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width.value = $0 }
         .onChange(of: motion, initial: true) { _, motion in
-            held = motion.flatMap { motion in
-                requiredWidth.map { Self.heldFits(width: width.value, motion: motion, requiredWidth: $0) }
-            }
+            // As `SteadyGrid`: the choice made at the start of a motion holds through a reversal.
+            guard let motion else { return held = nil }
+            if held == nil { held = requiredWidth.map { Self.heldFits(width: width.value, motion: motion, requiredWidth: $0) } }
         }
     }
 }

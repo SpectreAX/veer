@@ -82,6 +82,30 @@ import Testing
         _ = window
     }
 
+    /// A reversal part way is a new motion (a new id) between the same two ends: the choice made at
+    /// the start holds. Worked out again from the middle, it took the far end one panel further and
+    /// changed twice (design review, 2026-11-20).
+    @Test func aChoiceHoldsThroughAReversal() async throws {
+        let shown = Shown()
+        let hosting = NSHostingView(rootView: ChoiceHost(shown: shown))
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 700, height: 100), styleMask: [], backing: .buffered, defer: false)
+        window.contentView = hosting
+        hosting.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(20))
+        pump(for: 0.05)
+        // Closing a 380 panel from 700: the row fits at both ends.
+        shown.motion = PanelMotion(id: 1, widthChange: 380)
+        try await Task.sleep(for: .milliseconds(20))
+        pump(for: 0.05)
+        #expect(shown.row && !shown.stack)
+        // Turned back: from this width the far end would now be 320, but it is the same motion's start.
+        shown.motion = PanelMotion(id: 2, widthChange: -380)
+        try await Task.sleep(for: .milliseconds(20))
+        pump(for: 0.05)
+        #expect(shown.row && !shown.stack)
+        _ = window
+    }
+
     private struct ChoiceHost: View {
         let shown: Shown
 
