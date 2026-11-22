@@ -73,6 +73,7 @@ struct MainView: View {
     private static let widestNarrowingWindow = AgentPanelColumn.widestRoom + 260
     @Namespace private var splitCoordinateSpace
     @State private var sidebarAnimator: SidebarAnimator
+    @State private var importAfterProfiles = false
 
     init(sidebarVisibility: NavigationSplitViewVisibility = .all, sidebarAnimator: SidebarAnimator? = nil) {
         _sidebarAnimator = State(initialValue: sidebarAnimator ?? SidebarAnimator(isHidden: sidebarVisibility == .detailOnly))
@@ -91,6 +92,17 @@ struct MainView: View {
             }
         }
         .sheet(isPresented: $store.showingImport) { ImportSheet() }
+        .sheet(isPresented: $store.showingProfiles, onDismiss: {
+            if importAfterProfiles {
+                importAfterProfiles = false
+                store.openImport()
+            }
+        }, content: {
+            ProfilesSheet(onImport: {
+                importAfterProfiles = true
+                store.showingProfiles = false
+            })
+        })
         // A config file from Finder imports at once; a link opens the import sheet to confirm.
         .dropDestination(for: URL.self) { urls, _ in
             guard let url = urls.first else { return false }
@@ -141,13 +153,21 @@ struct MainView: View {
         }
         // The Agent shows these itself. Elsewhere Edit → Undo would otherwise change routing with no sign.
         .overlay(alignment: .bottom) {
-            if store.page != .agent, store.agentPresentation == .hidden, let toast = agent.toast {
-                ToastView(toast: toast) { agent.undo() }
-                    .padding(.bottom, Spacing.xl)
-                    .transition(reduceMotion ? AnyTransition.opacity : .move(edge: .bottom).combined(with: .opacity))
+            VStack(spacing: Spacing.sm) {
+                // Subscription work, from whichever menu or page started it: one message for all.
+                if let activity = store.activity, !store.showingProfiles {
+                    ActivityToast(activity: activity, retry: { store.retryActivity() }, close: { store.dismissActivity() })
+                        .transition(reduceMotion ? AnyTransition.opacity : .move(edge: .bottom).combined(with: .opacity))
+                }
+                if let toast = agent.toast, showsAgentToast(toast) {
+                    ToastView(toast: toast) { agent.undo() }
+                        .transition(reduceMotion ? AnyTransition.opacity : .move(edge: .bottom).combined(with: .opacity))
+                }
             }
+            .padding(.bottom, Spacing.xl)
         }
         .animation(reduceMotion ? nil : Motion.standard, value: agent.toast)
+        .animation(reduceMotion ? nil : Motion.standard, value: store.activity)
         .overlayPreferenceValue(PageToolbarKey.self) { content in
             // Hidden until there is a profile: without one they do nothing.
             if !store.profiles.isEmpty {
@@ -157,6 +177,11 @@ struct MainView: View {
                     .ignoresSafeArea(.container, edges: .top)
             }
         }
+    }
+
+    private func showsAgentToast(_ toast: Toast) -> Bool {
+        if store.agentPresentation == .detached { return activeState == .key && toast.recordedIn != nil }
+        return store.page != .agent && store.agentPresentation == .hidden
     }
 
     private var panelShown: Bool { store.agentPanel && store.page != .agent }
@@ -297,6 +322,7 @@ struct MainView: View {
             } detail: {
                 SplitDetailViewport(splitWidth: split.size.width, coordinateSpace: splitCoordinateSpace) {
                     pageContent.modifier(TopRowBar(height: Self.topRowHeight))
+                        .modifier(SidebarMotion(motion: SidebarMotion.motion(of: sidebarAnimator)))
                 }
                 .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 // The toolbar has no band. Before macOS 26 nothing may scroll under the title and
@@ -398,7 +424,7 @@ private struct ProfileMenu: View {
                 Button("更新订阅") { store.update(profile.id) }
                     .disabled(store.updatingProfiles.contains(profile.id))
             }
-            Button("管理配置") { store.manageProfiles() }
+            Button("管理配置…") { store.manageProfiles() }
             Button("导入配置…") { store.openImport() }
         } label: {
             HStack(spacing: Spacing.xs) {

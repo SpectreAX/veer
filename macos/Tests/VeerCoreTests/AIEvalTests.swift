@@ -139,6 +139,14 @@ struct AIEvalTests {
             .service(sets: ["openai"], domains: ["openai.com", "chatgpt.com"], to: .newGroup([], excluding: [.hk])),
             .service(sets: ["anthropic"], domains: ["anthropic.com", "claude.ai"], to: .newGroup([], excluding: [.hk])),
         ])),
+        // 2026-11-20: facts Veer can look up, not questions for the user. The reachable part goes first.
+        .init(prompt: "Google 走美国，部分可直连域名走直连", expect: .plan([
+            .service(sets: ["google-cn", "google@cn"], domains: ["google.cn", "googleapis.cn"], to: .direct),
+            .service(sets: ["google"], domains: ["google.com"], to: .region(.us)),
+        ])),
+        .init(prompt: "苹果国内可用的部分直连，其余走香港", expect: .plan([
+            .service(sets: ["apple-cn", "apple@cn"], to: .direct), .service(sets: ["apple"], domains: ["apple.com"], to: .region(.hk)),
+        ])),
         // A top-level domain without the dot, and an exit picked with @.
         .init(prompt: "所有以 jp 结尾的域名都走 @日本出口",
               expect: .either(.plan([.rule("DOMAIN-SUFFIX", "jp", to: .region(.jp))]), .plan([.service(sets: ["tld-jp"], to: .region(.jp))]))),
@@ -230,6 +238,7 @@ struct AIEvalTests {
             case let .clarification(question, options): return "追问：\(question.prefix(60)) [\(options.map(\.label).joined(separator: "|"))]"
             case .outOfScope(let text): return "超出范围：\(text.prefix(60))"
             case .runtime(let steps): return "运行状态：" + steps.map(\.summary).joined(separator: "；")
+            case .appRouting(let changes): return "应用分流：" + changes.map { "\($0.app.name)→\($0.target?.promptName ?? "删除")" }.joined(separator: "；")
             }
         }
 

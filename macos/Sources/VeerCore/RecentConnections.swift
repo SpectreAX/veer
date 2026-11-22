@@ -9,13 +9,18 @@ extension MihomoController {
             public var destinationIP: String?
             public var destinationPort: String?
             public var process: String?
+            /// The executable's full path as the kernel reports it; empty or missing when the core did
+            /// not look the process up (`find-process-mode: off`, Global or Direct mode, its own traffic).
+            public var processPath: String?
 
-            public init(network: String? = nil, host: String? = nil, destinationIP: String? = nil, destinationPort: String? = nil, process: String? = nil) {
+            public init(network: String? = nil, host: String? = nil, destinationIP: String? = nil, destinationPort: String? = nil, process: String? = nil,
+                        processPath: String? = nil) {
                 self.network = network
                 self.host = host
                 self.destinationIP = destinationIP
                 self.destinationPort = destinationPort
                 self.process = process
+                self.processPath = processPath
             }
         }
 

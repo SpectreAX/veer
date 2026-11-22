@@ -230,14 +230,21 @@ public struct AnonymizedConfig: Sendable {
         case "RULE-SET": value = providerNames[payload] ?? "规则集"
         case "DOMAIN", "DOMAIN-SUFFIX", "DOMAIN-KEYWORD", "DOMAIN-REGEX": value = placeholder(payload, "域名")
         case "IP-CIDR", "IP-CIDR6", "SRC-IP-CIDR", "IP-SUFFIX", "IP-ASN": value = placeholder(payload, "IP")
-        case "PROCESS-NAME", "PROCESS-PATH", "PROCESS-NAME-REGEX", "PROCESS-PATH-REGEX": value = placeholder(payload, "进程")
+        // A path can hold the user's name (`/Users/<name>/Applications/…`): never sent as it is.
+        case "PROCESS-NAME", "PROCESS-PATH", "PROCESS-NAME-REGEX", "PROCESS-PATH-REGEX", "PROCESS-NAME-WILDCARD", "PROCESS-PATH-WILDCARD":
+            value = placeholder(homeRedacted(payload), "进程")
         case "AND", "OR", "NOT", "SUB-RULE": value = "<逻辑条件>"
         default: value = placeholder(payload, "值")
         }
         return "\(type),\(value),\(target)\(flags)"
     }
 
-    /// ProfileAnalysis keeps display labels (URLTest); the model should see Mihomo's names (url-test).
+    /// `~/…` for anything under a user's home folder.
+    static func homeRedacted(_ path: String) -> String {
+        path.replacingOccurrences(of: #"(?i)/(?:Users|home)/[^/]+(?=/|$)"#, with: "~", options: .regularExpression)
+    }
+
+        /// ProfileAnalysis keeps display labels (URLTest); the model should see Mihomo's names (url-test).
     static func mihomoType(_ label: String) -> String { ProfileAnalysis.mihomoType(label) }
 
     static func providerBehaviors(_ text: String) -> [String: String] {

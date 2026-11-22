@@ -16,7 +16,8 @@ import VeerProxy
         let profiles = store.profiles
         let settings = store.settings
         store.manageProfiles()
-        #expect(store.onboarding == nil && store.page == .proxies)
+        // Manage Profiles is a sheet over the current page since 2026-11-20 (the Proxies page lost its cards).
+        #expect(store.onboarding == nil && store.showingProfiles)
         #expect(store.phase.isFailed && store.activeProfileID == active && store.profiles == profiles)
         #expect(store.settings == settings && !store.systemProxyOn && !store.tunActive)
     }
@@ -96,7 +97,9 @@ import VeerProxy
         #expect(try store.profileStore.text(of: profile.id) == original)
         let saved = try #require(store.profileStore.loadAll().first { $0.id == profile.id })
         #expect(saved.nodeCount == profile.nodeCount && saved.updatedAt == profile.updatedAt)
-        let message = automatic ? saved.updateError : store.notice
+        // A manual update reports through the one subscription message (`Activity`), since 2026-11-20.
+        let message = automatic ? saved.updateError : store.activity?.message
+        if !automatic { #expect(store.activity?.isFailure == true) }
         #expect(message?.contains("Auto”没有节点或 Provider") == true)
     }
 }

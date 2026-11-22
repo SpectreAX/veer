@@ -8,9 +8,14 @@ struct ConnectionRow: Identifiable, Equatable {
     /// The domain, or the address and port when the core saw no domain.
     let host: String
     let process: String?
+    /// The executable's real path, when the core looked it up; how a row is tied to an app.
+    let processPath: String?
     let network: String
     /// The rule in config spelling: `RuleSet Github`, `Match`.
     let rule: String
+    /// The rule as `/connections` names it, apart: `ProcessPathWildcard` and its payload.
+    let ruleType: String
+    let rulePayload: String
     /// The policy first and the node last (`Proxy → Auto → HK 01`).
     let chain: [String]
     let upload: Int64
@@ -28,8 +33,11 @@ struct ConnectionRow: Identifiable, Equatable {
             host = [metadata.destinationIP, metadata.destinationPort].compactMap { $0 }.joined(separator: ":")
         }
         process = metadata.process.flatMap { $0.isEmpty ? nil : $0 }
+        processPath = metadata.processPath.flatMap { $0.isEmpty ? nil : $0 }
         network = metadata.network ?? ""
         rule = connection.rulePayload.isEmpty ? connection.rule : "\(connection.rule) \(connection.rulePayload)"
+        ruleType = connection.rule
+        rulePayload = connection.rulePayload
         chain = connection.chains.reversed()
         upload = connection.upload
         download = connection.download
@@ -43,8 +51,11 @@ struct ConnectionRow: Identifiable, Equatable {
         id = "log-\(UUID().uuidString)"
         host = route.isAddress ? "\(route.host):\(route.port)" : route.host
         process = route.process
+        processPath = nil
         network = route.network
         rule = route.rule
+        ruleType = ""
+        rulePayload = ""
         chain = route.chain
         upload = 0
         download = 0

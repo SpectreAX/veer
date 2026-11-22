@@ -74,7 +74,7 @@ import VeerUI
     }
 
     @Test func aDraftPutInBeforeTheFieldHasItsWidthIsMeasuredOnceItDoes() async throws {
-        // Two lines at the panel's width: an example or "Ask AI" fills the field as it is built.
+        // Two lines at the panel's width: an example or "Ask Agent" fills the field as it is built.
         let sized = Sized(text: String(repeating: "mini4k.net 打不开，检查一下规则。", count: 3), width: 300)
         let (_, hosting) = host(Field(sized: sized))
         try await settle(0.3)

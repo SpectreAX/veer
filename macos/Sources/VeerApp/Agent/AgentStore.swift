@@ -20,6 +20,8 @@ struct Toast: Equatable, Identifiable {
     let id = UUID()
     let message: String
     var undoable = false
+    var warning = false
+    var recordedIn: UUID?
 }
 
 /// The Agent page: conversations with the AI about the running profile. A written proposal
@@ -43,6 +45,12 @@ final class AgentStore {
     var editingGroup: GroupEditTarget?
     var pendingDeletion: Session?
     var toast: Toast?
+    /// An undo or redo from the moment it is asked for until the core has it (`ReversalState`).
+    var reversal: ReversalState = .idle
+    var reversingTurnID: UUID?
+    @ObservationIgnored private let reversalWork = SerialWork()
+    private var pendingReversals = 0
+    @ObservationIgnored var reversalReset: Task<Void, Never>?
     /// Where the conversation on screen is scrolled to, kept by `ConversationView` as it scrolls, and
     /// the copy a move between the panel and the window hands to the view that comes next. Not
     /// observed: nothing is drawn from them.
@@ -127,6 +135,7 @@ final class AgentStore {
             turnBaseline = sessions.first?.turns.count ?? 0
         }
         proxy.editsRemoved = { [weak self] ids in self?.editsWereRemoved(ids) }
+        proxy.profilesMerged = { [weak self] moved in self?.profilesWereMerged(moved) }
     }
 
     // MARK: Derived state
@@ -230,7 +239,7 @@ final class AgentStore {
         if selectedID == session.id { selectedID = sessions.first?.id }
     }
 
-    /// Starts a conversation, or uses the current one, with `text` in the composer: the "Ask AI"
+    /// Starts a conversation, or uses the current one, with `text` in the composer: the "Ask Agent"
     /// buttons elsewhere in the window.
     func ask(_ text: String) {
         if current == nil || current?.profileID != proxy.activeProfileID { newThread() }
@@ -378,6 +387,7 @@ final class AgentStore {
         request.attachments = attachments
         let proxy = proxy
         request.liveConnections = { domains in await proxy.connectionSummary(for: domains) }
+        if let profileID = session.profileID { request.appLookup = { query in await proxy.appLookup(query, profile: profileID) } }
         if useAI { turn.sentPayload = EditorEngine.payload(for: request) }
         session.turns.append(turn)
         session.updatedAt = .now
@@ -385,7 +395,7 @@ final class AgentStore {
         moveToTop(session.id)
 
         let engine = engine, finalRequest = request
-        startTurn(sessionID: session.id, turnID: turn.id, draftText: live) { progress in
+        startTurn(session: session, turnID: turn.id) { progress in
             try await engine.run(finalRequest, progress: progress)
         }
     }
@@ -403,7 +413,7 @@ final class AgentStore {
         session.updatedAt = .now
         current = session
         let engine = engine, plan = EditPlan(operations: [.groupMembers(targetId: group.id, members: ids)]), regions = session.regions(for: draft.targets)
-        startTurn(sessionID: session.id, turnID: turn.id, draftText: live) { progress in
+        startTurn(session: session, turnID: turn.id) { progress in
             try await engine.run(plan: plan, draft: draft, regions: regions, progress: progress)
         }
     }
@@ -413,15 +423,16 @@ final class AgentStore {
         sessions.insert(sessions.remove(at: index), at: 0)
     }
 
-    private func startTurn(sessionID: UUID, turnID: UUID, draftText: String,
+    private func startTurn(session: Session, turnID: UUID,
                            work: @escaping @Sendable (@escaping @Sendable (EditorEngine.Progress) async -> Void) async throws -> EditorEngine.Output) {
+        let sessionID = session.id
         let started = Date()
         tasks[sessionID] = Task { [weak self] in
             do {
                 let output = try await work { event in
                     await MainActor.run { self?.apply(event, sessionID: sessionID, turnID: turnID) }
                 }
-                self?.finish(sessionID: sessionID, turnID: turnID, started: started, draftText: draftText, output: output)
+                self?.finish(session: session, turnID: turnID, started: started, output: output)
             } catch {
                 self?.fail(sessionID: sessionID, turnID: turnID, started: started, error: error)
             }
@@ -444,6 +455,9 @@ final class AgentStore {
                 reply = "\(proposal.status == .written ? "已应用" : "已提出修改")：\(summary)"  // for the AI
             case .clarification(let question, _), .clarify(let question, _): reply = question
             case .outOfScope(let text), .noChange(let text): reply = text
+            case .appRouting(let proposal):
+                let summary = proposal.changes.map { "\($0.app.name) → \($0.remove ? "删除规则" : ($0.target?.promptName ?? "只改域名例外"))" }  // for the AI
+                reply = (proposal.status == .applied ? "已应用应用分流：" : "已提出应用分流：") + anon.anonymize(summary.joined(separator: "；"))  // for the AI
             case .runtime(let run):
                 reply = "已执行：" + run.items.map { "\($0.step.summary)（\($0.state == .done ? "完成" : "失败")）" }.joined(separator: "；")  // for the AI
                     + (run.undone ? "；用户随后撤销了" : "")  // for the AI
@@ -477,8 +491,8 @@ final class AgentStore {
             case .searched(let records):
                 turn.searches = (turn.searches ?? []) + records
                 turn.steps[0].detail = String(localized: "已联网搜索 \(turn.searches?.count ?? 0) 条，正在根据结果生成计划")
-            case .checking(let domains):
-                turn.steps[0].detail = String(localized: "正在本机检查 \(domains.count) 个域名命中哪条规则")
+            case .checking, .lookingUpApps, .lookingFurther:
+                turn.steps[0].detail = Self.lookingUpDetail(event)
             case let .checked(records, sent):
                 turn.checks = (turn.checks ?? []) + records
                 if var payload = turn.sentPayload {
@@ -493,21 +507,25 @@ final class AgentStore {
         }
     }
 
-    private func finish(sessionID: UUID, turnID: UUID, started: Date, draftText: String, output: EditorEngine.Output) {
+    private func finish(session: Session, turnID: UUID, started: Date, output: EditorEngine.Output) {
+        let sessionID = session.id
         tasks[sessionID] = nil
         mutateTurn(sessionID: sessionID, turnID: turnID) { turn in
             turn.duration = Date().timeIntervalSince(started)
             for index in turn.steps.indices where turn.steps[index].state == .waiting { turn.steps.removeSubrange(index...); break }
             switch output {
             case let .proposal(plan, items, candidate, validation):
-                turn.outcome = .proposal(.init(plan: plan, items: items, accepted: Set(items.map(\.id)), baseDraft: draftText,
+                turn.outcome = .proposal(.init(plan: plan, items: items, accepted: Set(items.map(\.id)), baseDraft: session.draftText,
                                                candidate: candidate, validation: validation, status: .pending))
             case .noChange(let text): turn.outcome = .noChange(text)
             case let .clarification(question, options): turn.outcome = .clarify(question, options: options)
             case .outOfScope(let text): turn.outcome = .outOfScope(text)
-            case .runtime(let steps): turn.outcome = .runtime(RuntimeRun(steps: steps))
+            case .runtime(let steps): turn.outcome = .runtime(RuntimeRun(steps: steps, profileID: session.profileID))
+            case .appRouting(let changes):
+                turn.outcome = .appRouting(AppRoutingProposal(changes: changes, profileID: sessions.first { $0.id == sessionID }?.profileID))
             }
         }
+        if case .appRouting = output { checkAppRouting(sessionID: sessionID, turnID: turnID) }
         if case .proposal = output { autoWriteIfAllowed(sessionID: sessionID, turnID: turnID) }
         if case .runtime = output { perform(sessionID: sessionID, turnID: turnID) }
         announce(String(localized: "处理完成"))
@@ -532,7 +550,18 @@ final class AgentStore {
         tasks[id]?.cancel()
     }
 
-    private func mutateTurn(sessionID: UUID, turnID: UUID, _ change: (inout Turn) -> Void) {
+    /// What a turn's first step says while Veer looks something up for the model.
+    static func lookingUpDetail(_ event: EditorEngine.Progress) -> String? {
+        switch event {
+        case .checking(let domains): String(localized: "正在本机检查 \(domains.count) 个域名命中哪条规则")
+        case .lookingFurther: String(localized: "AI 想让你提供可以查到的信息，已让它先自己查")
+        case .lookingUpApps(let query?): String(localized: "正在查询本机应用：\(query)")
+        case .lookingUpApps(nil): String(localized: "正在查询本机应用和应用规则")
+        default: nil
+        }
+    }
+
+    func mutateTurn(sessionID: UUID, turnID: UUID, _ change: (inout Turn) -> Void) {
         guard let sessionIndex = sessions.firstIndex(where: { $0.id == sessionID }),
               let turnIndex = sessions[sessionIndex].turns.firstIndex(where: { $0.id == turnID }) else { return }
         change(&sessions[sessionIndex].turns[turnIndex])
@@ -618,7 +647,10 @@ final class AgentStore {
         announce(String(localized: "已应用"))
         recordApplied(turnID: id, in: session.id)
         if let group, proxy.isRunning, !profileIsInactive {
-            selectAfterEdit("DIRECT", in: group, session: session, turnID: id, status: .written)
+            Task { [weak self] in
+                guard let self, await selectAfterEdit("DIRECT", in: group, session: session, turnID: id, status: .written) == false else { return }
+                proxy.notice = selectionFailure(node: "DIRECT", group: group)
+            }
         }
     }
 
@@ -629,22 +661,27 @@ final class AgentStore {
     }
 
     /// The core reloads after the edit, so it may not know its new members straight away.
-    private func selectAfterEdit(_ node: String, in group: String, session: Session, turnID: UUID, status: Turn.ProposalStatus) {
-        guard let profileID = session.profileID else { return }
-        let sessionID = session.id
-        Task { [weak self] in
-            for _ in 0..<5 {
-                try? await Task.sleep(for: .milliseconds(400))
-                guard let self, self.proxy.activeProfileID == profileID, self.proxy.isRunning,
-                      self.sessions.first(where: { $0.id == sessionID })?.turns.first(where: { $0.id == turnID })?.proposal?.status == status else { return }
-                let proxy = self.proxy
-                do {
+    private func selectAfterEdit(_ node: String, in group: String, session: Session, turnID: UUID, status: Turn.ProposalStatus) async -> Bool? {
+        for _ in 0..<5 {
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled else { return nil }
+            do {
+                return try await proxy.coreConfigWork.run { [self] in
+                    let turn = sessions.first { $0.id == session.id }?.turns.first { $0.id == turnID }
+                    guard proxy.activeProfileID == session.profileID, proxy.switchingTo == nil, proxy.isRunning,
+                          turn?.proposal?.status == status else { return nil }
                     try await proxy.choose(node, in: group)
-                    return
-                } catch { continue }
+                    return true
+                }
+            } catch {
+                continue
             }
-            self?.proxy.notice = String(localized: "“\(group)”未能切换到 \(node)，请在代理页重试。")
         }
+        return false
+    }
+
+    private func selectionFailure(node: String, group: String) -> String {
+        String(localized: "“\(group)”未能切换到 \(node)，请在代理页重试。")
     }
 
     private func applyMessage(count: Int) -> String {
@@ -659,6 +696,9 @@ final class AgentStore {
               let mode = turn.executionMode, let proposal = turn.proposal,
               mode.writesAutomatically(items: proposal.items.filter { proposal.accepted.contains($0.id) }, validation: proposal.validation,
                                        instruction: turn.prompt),
+              // A web page saying a domain works direct is not enough to send it there unreviewed.
+              !ExecutionMode.needsReviewAfterSearch(items: proposal.items.filter { proposal.accepted.contains($0.id) },
+                                                    searched: turn.searches?.isEmpty == false),
               canWrite(turn) else { return }
         write(turnID: turnID)
         mutateTurn(sessionID: sessionID, turnID: turnID) { $0.autoWritten = true }
@@ -695,7 +735,7 @@ final class AgentStore {
                 self?.updateRun(sessionID, turnID) { $0.items[item.id].state = .running }
                 do {
                     guard let self else { return }
-                    let (result, undo) = try await self.perform(item.step)
+                    let (result, undo) = try await self.perform(item.step, profileID: run.profileID)
                     self.updateRun(sessionID, turnID) { run in
                         run.items[item.id].state = .done
                         run.items[item.id].result = result
@@ -708,10 +748,11 @@ final class AgentStore {
                     }
                 }
             }
-            if let run = self?.runtimeRun(sessionID, turnID), run.canUndo {
-                self?.showToast(String(localized: "已执行，可以撤销"), undoable: true)
+            if let self, let run = runtimeRun(sessionID, turnID), run.canUndo, let profileID = run.profileID,
+               proxy.profiles.contains(where: { $0.id == profileID }) {
+                showToast(String(localized: "已执行，可以撤销"), undoable: true)
                 // Once: there is no redo for a node or mode put back.
-                self?.changes.made(String(localized: "切换节点或模式"), id: turnID, group: sessionID, undoTo: false) { [weak self] _ in
+                changes.made(String(localized: "切换节点或模式"), id: turnID, group: sessionID, undoTo: false) { [weak self] _ in
                     if self?.selectedID != sessionID { self?.select(sessionID) }
                     self?.undoRuntime(sessionID: sessionID, turnID: turnID)
                     return false
@@ -720,13 +761,21 @@ final class AgentStore {
         }
     }
 
-    private func perform(_ step: RuntimeStep) async throws -> (String, RuntimeRun.Undo?) {
+    private func checkRuntimeProfile(_ profileID: UUID?) throws {
+        guard let profileID, proxy.activeProfileID == profileID, proxy.switchingTo == nil else {
+            throw EditorError(String(localized: "配置已经切换，没有执行这项操作。"))
+        }
+    }
+
+    private func perform(_ step: RuntimeStep, profileID: UUID?) async throws -> (String, RuntimeRun.Undo?) {
+        try checkRuntimeProfile(profileID)
         switch step {
         case let .select(group, node):
-            let previous = try await proxy.choose(node, in: group)
+            let previous = try await selectRuntimeNode(node, in: group, profileID: profileID)
             return (String(localized: "“\(group)”已切换到 \(node)"), previous.map { .select(group: group, node: $0) })
         case let .selectFastest(group, regions):
-            let delays = try await proxy.testNow(group)
+            // Results from the last minute count; only older or missing ones are tested again.
+            let delays = try await proxy.testNow(group, reuseFresh: true)
             // Real nodes only: DIRECT and nested groups would always look fastest.
             let members = try await proxy.liveGroup(group).members
                 .filter { !$0.isGroup && !ConfigDocument.builtinPolicies.contains($0.name) }.map(\.name)
@@ -738,11 +787,14 @@ final class AgentStore {
                 throw EditorError(regions.isEmpty ? String(localized: "“\(group)”里的节点都测速超时了。")
                                                   : String(localized: "“\(group)”里没有可用的所选地区节点。"))
             }
-            let previous = try await proxy.choose(best, in: group)
+            let previous = try await selectRuntimeNode(best, in: group, profileID: profileID)
             return (String(localized: "“\(group)”已切换到 \(best)（\(String(delays[best]!)) ms）"), previous.map { .select(group: group, node: $0) })
         case let .mode(raw):
             guard let mode = ProxyStore.Mode(rawValue: raw) else { throw EditorError(String(localized: "不支持的模式。")) }
-            let previous = try await proxy.switchMode(mode)
+            let previous = try await proxy.coreConfigWork.run { [self] in
+                try checkRuntimeProfile(profileID)
+                return try await proxy.switchMode(mode)
+            }
             return (String(localized: "已切换到\(mode.title)模式"), previous == mode ? nil : .mode(previous.rawValue))
         case let .test(group):
             let delays = try await proxy.testNow(group)
@@ -757,25 +809,49 @@ final class AgentStore {
         }
     }
 
+    private func selectRuntimeNode(_ node: String, in group: String, profileID: UUID?) async throws -> String? {
+        try await proxy.coreConfigWork.run { [self] in
+            try checkRuntimeProfile(profileID)
+            return try await proxy.choose(node, in: group)
+        }
+    }
+
     /// Puts back the nodes and mode a turn's actions replaced, last first.
     private func undoRuntime(sessionID: UUID, turnID: UUID) {
-        guard let run = runtimeRun(sessionID, turnID), run.canUndo else { return }
-        updateRun(sessionID, turnID) { $0.undone = true }
-        Task { [weak self] in
-            do {
+        guard runtimeRun(sessionID, turnID)?.canUndo == true else { return }
+        enqueueReversal(in: sessionID) { [weak self] in
+            await self?.restoreRuntime(sessionID: sessionID, turnID: turnID)
+        }
+    }
+
+    private func restoreRuntime(sessionID: UUID, turnID: UUID) async {
+        guard let run = runtimeRun(sessionID, turnID), run.canUndo,
+              let profileID = run.profileID ?? sessions.first(where: { $0.id == sessionID })?.profileID else { return }
+        reversingTurnID = turnID
+        guard proxy.profiles.contains(where: { $0.id == profileID }) else {
+            finishReversal(Self.runtimeUndoMissingProfile, redo: false, sessionID: sessionID, warning: true)
+            return
+        }
+        setReversal(.undoing)
+        let ticket = proxy.generation
+        do {
+            // Share the profile reload queue so a selector or mode write cannot land in the next profile.
+            try await proxy.coreConfigWork.run { [self] in
                 for item in run.items.reversed() {
+                    guard proxy.activeProfileID == profileID, proxy.switchingTo == nil, proxy.generation == ticket else {
+                        throw EditorError(String(localized: "请先切回这项操作所属的配置，再从对话卡片撤销。"))
+                    }
                     switch item.undo {
-                    case let .select(group, node)?: try await self?.proxy.choose(node, in: group)
-                    case let .mode(raw)?: if let mode = ProxyStore.Mode(rawValue: raw) { try await self?.proxy.switchMode(mode) }
+                    case let .select(group, node)?: try await proxy.choose(node, in: group)
+                    case let .mode(raw)?: if let mode = ProxyStore.Mode(rawValue: raw) { try await proxy.switchMode(mode) }
                     case nil: break
                     }
                 }
-                self?.showToast(String(localized: "已撤销"))
-                self?.announce(String(localized: "已撤销"))
-            } catch {
-                self?.updateRun(sessionID, turnID) { $0.undone = false }
-                self?.showToast(self?.message(for: error) ?? "")
             }
+            updateRun(sessionID, turnID) { $0.undone = true }
+            finishReversal(String(localized: "已撤销"), redo: false, sessionID: sessionID)
+        } catch {
+            finishReversal(message(for: error), redo: false, sessionID: sessionID, warning: true)
         }
     }
 
@@ -825,23 +901,31 @@ final class AgentStore {
     /// The last applied change of this conversation, turned off in "my routing"; or, when the
     /// latest thing done was a runtime action, that action put back.
     func undo() {
-        guard let session = current, !isArchived, !refusedWhileBusy else { return }
-        let lastRuntime = session.turns.lastIndex { if case .runtime(let run) = $0.outcome { run.canUndo } else { false } }
+        guard let session = current, !isArchived, !refusedWhileBusy, !isReversing else { return }
+        let lastRuntime = session.turns.lastIndex { if case .runtime(let run) = $0.outcome { canUndoRuntime(run) } else { false } }
         let lastWrite = session.turns.lastIndex { $0.proposal?.status == .written }
         if let lastRuntime, lastRuntime > (lastWrite ?? -1) {
             undoRuntime(turnID: session.turns[lastRuntime].id)
             return
         }
-        guard let index = lastWrite else { return }
-        let id = session.turns[index].id
+        if let lastWrite { undoProposal(session.turns[lastWrite].id, in: session.id) }
+    }
+
+    /// A proposal card acts on its own turn, even if a later runtime action can also be undone.
+    func undoProposal(turnID: UUID) {
+        guard let session = current, !isArchived, !refusedWhileBusy, !isReversing else { return }
+        undoProposal(turnID, in: session.id)
+    }
+
+    private func undoProposal(_ id: UUID, in sessionID: UUID) {
         // As the menu would, so that it moves on to Redo. Else something else is next there, and this
         // change's own item goes, as it would no longer do anything.
-        if !changes.undoIfNext(id), setApplied(false, turnID: id, in: session.id) { changes.forget(id) }
+        if !changes.undoIfNext(id), setApplied(false, turnID: id, in: sessionID) { changes.forget(id) }
     }
 
     /// Turns the most recently undone change back on.
     func redo() {
-        guard let session = current, !isArchived, !refusedWhileBusy,
+        guard let session = current, !isArchived, !refusedWhileBusy, !isReversing,
               let index = session.turns.lastIndex(where: { $0.proposal?.status == .undone }) else { return }
         let id = session.turns[index].id
         guard !changes.redoIfNext(id), setApplied(true, turnID: id, in: session.id) else { return }
@@ -857,6 +941,7 @@ final class AgentStore {
     /// Gone from "my routing", so nothing can turn these on or off: no menu item or button offers to.
     private func editsWereRemoved(_ ids: [UUID]) {
         for id in ids { changes.forget(id) }
+        forgetMissingRuntimeChanges()
         for index in sessions.indices {
             var changed = false
             for turn in sessions[index].turns.indices where ids.contains(sessions[index].turns[turn].id) {
@@ -869,71 +954,132 @@ final class AgentStore {
         }
     }
 
+    /// Conversations about a duplicate profile that a merge removed go on with the one it kept.
+    private func profilesWereMerged(_ moved: [UUID: UUID]) {
+        for index in sessions.indices {
+            guard let from = sessions[index].profileID, let to = moved[from], to != from else { continue }
+            for turn in sessions[index].turns.indices {
+                guard case .runtime(var run) = sessions[index].turns[turn].outcome, run.profileID == nil else { continue }
+                run.profileID = from
+                sessions[index].turns[turn].outcome = .runtime(run)
+            }
+            sessions[index].profileID = to
+            scheduleSave(sessions[index], immediately: true)
+        }
+        forgetMissingRuntimeChanges()
+    }
+
+    private func forgetMissingRuntimeChanges() {
+        let profiles = Set(proxy.profiles.map(\.id))
+        for session in sessions {
+            for turn in session.turns {
+                guard case .runtime(let run) = turn.outcome, run.canUndo,
+                      let original = run.profileID ?? session.profileID, !profiles.contains(original) else { continue }
+                changes.forget(turn.id)
+            }
+        }
+    }
+
     private func recordApplied(turnID: UUID, in sessionID: UUID) {
         changes.made(String(localized: "分流修改"), id: turnID, group: sessionID, undoTo: false) { [weak self] applied in
             self?.setApplied(applied, turnID: turnID, in: sessionID) ?? false
         }
     }
 
-    /// A change on or off in "my routing", shown in its own conversation, as Edit → Undo works from
-    /// any page and conversation. False when it can't be done now.
+    /// Accept the request synchronously so UndoManager can record its opposite immediately.
+    /// The actual changes and their confirmations run in the same order as the menu requests.
     private func setApplied(_ applied: Bool, turnID: UUID, in sessionID: UUID) -> Bool {
-        guard sessions.contains(where: { $0.id == sessionID }) else { return false }
+        guard let session = sessions.first(where: { $0.id == sessionID }), !isArchived(session),
+              let status = session.turns.first(where: { $0.id == turnID })?.proposal?.status,
+              status == .written || status == .undone else { return false }
+        if !isReversing, status != (applied ? .undone : .written) { return false }
         if selectedID != sessionID { select(sessionID) }
-        // Not refused: the menu has already moved on, and a later undo would take an older change.
-        if let task = tasks[sessionID] {
+        if tasks[sessionID] != nil {
             showToast(applied ? String(localized: "Agent 正在处理，完成后会重做。") : String(localized: "Agent 正在处理，完成后会撤销。"))
-            Task { [weak self] in
-                await task.value
-                _ = self?.setApplied(applied, turnID: turnID, in: sessionID)
-            }
-            return true
         }
-        guard var session = current, let profileID = session.profileID,
-              let index = session.turns.firstIndex(where: { $0.id == turnID }),
-              session.turns[index].proposal?.status == (applied ? .undone : .written) else { return false }
-        // Deleted from "my routing" since: there is nothing left to turn on or off.
-        guard proxy.setEdit(turnID, enabled: applied, in: profileID) else {
-            editsWereRemoved([turnID])
-            showToast(String(localized: "这项修改已经从“我的分流”里删除。"))
-            return false
+        enqueueReversal(in: sessionID) { [weak self] in
+            await self?.applyReversal(applied, turnID: turnID, in: sessionID)
         }
-        session.turns[index].proposal?.status = applied ? .written : .undone
-        if applied {
-            session.turns.append(Turn(prompt: "", mode: .local, steps: [], outcome: .note(String(localized: "已重新应用这项修改。"))))
-        } else {
-            session.turns.append(Turn(prompt: "", mode: .local, steps: [], outcome: .note(String(localized: "已撤销这项修改，分流恢复到之前的状态。"))))
-        }
-        session.draftText = (try? proxy.effectiveText(of: profileID)) ?? session.draftText
-        current = session
-        if let proposal = session.turns[index].proposal, let group = directGroup(for: proposal, turn: session.turns[index]),
-           let node = applied ? "DIRECT" : proposal.previousDirectNode, proxy.isRunning, !profileIsInactive {
-            selectAfterEdit(node, in: group, session: session, turnID: turnID, status: applied ? .written : .undone)
-        }
-        let done = applied ? String(localized: "已重做") : String(localized: "已撤销")
-        showToast(done)
-        announce(done)
         return true
     }
 
+    private func enqueueReversal(in sessionID: UUID, _ work: @escaping @MainActor () async -> Void) {
+        pendingReversals += 1
+        reversalWork.add { [weak self] in
+            guard let self else { return }
+            defer { pendingReversals -= 1 }
+            await tasks[sessionID]?.value
+            await work()
+        }
+    }
+
+    private func applyReversal(_ applied: Bool, turnID: UUID, in sessionID: UUID) async {
+        guard var session = sessions.first(where: { $0.id == sessionID }), !isArchived(session), let profileID = session.profileID,
+              let index = session.turns.firstIndex(where: { $0.id == turnID }),
+              session.turns[index].proposal?.status == (applied ? .undone : .written) else { return }
+        // Deleted from "my routing" since: there is nothing left to turn on or off.
+        guard proxy.setEdit(turnID, enabled: applied, in: profileID) else {
+            let reason: String
+            if proxy.routingStore.load(profileID).edits.contains(where: { $0.id == turnID }) {
+                changes.forget(turnID)
+                reason = proxy.notice ?? String(localized: "发生未知错误，请重试。")
+            } else {
+                editsWereRemoved([turnID])
+                reason = String(localized: "这项修改已经从“我的分流”里删除。")
+            }
+            finishReversal(reason, redo: applied, sessionID: sessionID, warning: true)
+            return
+        }
+        let status: Turn.ProposalStatus = applied ? .written : .undone
+        session.turns[index].proposal?.status = status
+        session.draftText = (try? proxy.effectiveText(of: profileID)) ?? session.draftText
+        current = session
+        let proposal = session.turns[index].proposal
+        let apply = profileID == proxy.activeProfileID ? proxy.layerApply : nil
+        await reportReversal(redo: applied, sessionID: sessionID, turnID: turnID, apply: apply) {
+            guard let proposal, let group = directGroup(for: proposal, turn: session.turns[index]),
+                  let node = applied ? "DIRECT" : proposal.previousDirectNode else { return nil }
+            let selected = await selectAfterEdit(node, in: group, session: session, turnID: turnID, status: status)
+            return selected == true ? nil : selectionFailure(node: node, group: group)
+        }
+    }
+
+    func recordReversal(_ message: String, in sessionID: UUID, warning: Bool = false) {
+        guard let index = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
+        var note = Turn(prompt: "", mode: .local, steps: [], outcome: .note(message))
+        if warning { note.noteWarning = true }
+        sessions[index].turns.append(note)
+        scheduleSave(sessions[index])
+    }
+
+    var isReversing: Bool { pendingReversals > 0 || reversal.isWorking }
+
     var canUndo: Bool {
-        guard let turns = current?.turns, !isRunning, !isArchived else { return false }
+        guard let turns = current?.turns, !isRunning, !isArchived, !isReversing else { return false }
         return turns.contains { turn in
-            if case .runtime(let run) = turn.outcome { return run.canUndo }
+            if case .runtime(let run) = turn.outcome { return canUndoRuntime(run) }
             return turn.proposal?.status == .written
         }
     }
 
+    static var runtimeUndoMissingProfile: String { String(localized: "原配置已移除，无法撤销此操作。") }
+
+    func canUndoRuntime(_ run: RuntimeRun) -> Bool {
+        guard run.canUndo, !isArchived, let profileID = run.profileID ?? current?.profileID else { return false }
+        return proxy.profiles.contains { $0.id == profileID }
+    }
+
     /// Undoes one runtime turn from its own card.
     func undoRuntime(turnID: UUID) {
-        guard let id = current?.id, !isArchived, !changes.undoIfNext(turnID) else { return }
+        guard let id = current?.id, let run = runtimeRun(id, turnID), canUndoRuntime(run),
+              !isReversing, !changes.undoIfNext(turnID) else { return }
         undoRuntime(sessionID: id, turnID: turnID)
         changes.forget(turnID)
     }
     /// A turn's files live only as long as this launch, and it means little without them.
     func canRetry(_ turn: Turn) -> Bool { !isArchived && (turn.attachments?.isEmpty != false || sentAttachments[turn.id] != nil) }
 
-    var canRedo: Bool { current?.turns.contains { $0.proposal?.status == .undone } == true && !isRunning && !isArchived }
+    var canRedo: Bool { current?.turns.contains { $0.proposal?.status == .undone } == true && !isRunning && !isArchived && !isReversing }
 
     func retry(turnID: UUID, useLocal: Bool = false) {
         guard let turn = current?.turns.first(where: { $0.id == turnID }) else { return }
@@ -1022,15 +1168,15 @@ final class AgentStore {
         saveQueue.sync { for session in snapshot { try? store.save(session) } }
     }
 
-    func showToast(_ message: String, undoable: Bool = false) {
+    func showToast(_ message: String, undoable: Bool = false, warning: Bool = false, recordedIn: UUID? = nil) {
         toastWork?.cancel()
-        toast = Toast(message: message, undoable: undoable)
+        toast = Toast(message: message, undoable: undoable, warning: warning, recordedIn: recordedIn)
         let work = DispatchWorkItem { [weak self] in self?.toast = nil }
         toastWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 4, execute: work)
     }
 
-    private func announce(_ text: String) {
+    func announce(_ text: String) {
         #if os(macOS)
         NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested,
                              userInfo: [.announcement: text, .priority: NSAccessibilityPriorityLevel.high.rawValue])

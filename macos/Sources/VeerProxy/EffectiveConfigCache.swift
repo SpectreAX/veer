@@ -28,7 +28,7 @@ public struct EffectiveConfigCache: Sendable {
     }()
 
     /// Raised when what is stored, or what it means, changes.
-    static let formatVersion = 1
+    static let formatVersion = 2
 
     private struct Entry: Codable {
         let key: String

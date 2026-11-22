@@ -15,6 +15,8 @@ if [ ! -x "$core" ]; then
 fi
 ln -s "$core" "$work/macos/vendor/mihomo"
 cd "$work/macos"
+# Keep SwiftUI and AppKit preferences in a snapshot-only domain.
+plutil -replace CFBundleIdentifier -string com.yamax.veer.snapshots Resources/Info.plist
 # Snapshot-only copy: ad hoc signing avoids accessing the user's signing keys.
 VEER_SIGN_IDENTITY=- scripts/build-app.sh > "$work/build.log" 2>&1 || {
   tail -60 "$work/build.log" >&2

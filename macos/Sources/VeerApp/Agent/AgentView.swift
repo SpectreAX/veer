@@ -33,9 +33,7 @@ struct AgentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .pageToolbar(.agent) {
-            Button { agent.undo() } label: { Label(String(localized: "撤销修改"), systemImage: "arrow.uturn.backward") }
-                .help(String(localized: "撤销这个对话里最近应用的修改"))
-                .disabled(!agent.canUndo)
+            UndoChangeButton()
             // ⌘N is the File menu's, on every page.
             Button { agent.newThread() } label: { Label(String(localized: "新对话"), systemImage: "square.and.pencil") }
                 .help(String(localized: "新对话（⌘N）"))
@@ -76,7 +74,8 @@ struct AgentConversation: View {
     var body: some View {
         content
             .overlay(alignment: .bottom) {
-                if let toast = agent.toast {
+                // This conversation scrolls to its new record, which already shows the result.
+                if let toast = agent.toast, toast.recordedIn == nil || toast.recordedIn != agent.selectedID {
                     ToastView(toast: toast) { agent.undo() }
                         .padding(.bottom, 120)
                         .padding(.horizontal, compact ? Spacing.md : 0)
@@ -271,4 +270,5 @@ private struct AISetupView: View {
 
 extension Turn {
     var isRuntime: Bool { if case .runtime = outcome { true } else { false } }
+    var isAppRouting: Bool { if case .appRouting = outcome { true } else { false } }
 }

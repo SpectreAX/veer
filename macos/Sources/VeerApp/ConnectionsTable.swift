@@ -1,6 +1,10 @@
 import AppKit
 import SwiftUI
+import VeerCore
 import VeerUI
+
+/// What the connections menu offers for the app a connection came from.
+enum AppRouteAction { case chooseExit, alwaysDirect, block, viewRules, ask }
 
 /// SwiftUI Table remeasures hosted cells during every split-divider step. A native table keeps
 /// cell layout in AppKit without a SwiftUI hosting view or constraints for each text cell.
@@ -16,6 +20,9 @@ struct ConnectionsTable: NSViewRepresentable {
     var testRoute: ((ConnectionRow) -> Void)?
     /// Nil where there is nothing left to close.
     var close: ((Set<ConnectionRow.ID>) -> Void)?
+    /// The app a row came from, when Veer can tell (`AppAttribution`); with `appRoute`, the menu's app actions.
+    var appName: ((ConnectionRow) -> String?)?
+    var appRoute: ((ConnectionRow, AppRouteAction) -> Void)?
 
     /// How visible a column is whose far edge is at `columnEnd` in a viewport that ends at
     /// `viewportEnd`: whole while it is inside, gone once `fadeBand` of it is past the edge.
@@ -227,9 +234,10 @@ struct ConnectionsTable: NSViewRepresentable {
             // Right-click within a multi-selection acts on it; outside it acts on the clicked row.
             contextIDs = table.selectedRowIndexes.contains(row) ? selectedIDs : [rows[row].id]
             let menu = NSMenu()
-            menu.addItem(item(String(localized: "问 AI：为什么这样走？"), action: #selector(askAboutRoute)))
+            menu.addItem(item(String(localized: "问 Agent：为什么这样走？"), action: #selector(askAboutRoute)))
             menu.addItem(item(String(localized: "为这个主机添加规则…"), action: #selector(addHostRule)))
             if parent.testRoute != nil { menu.addItem(item(String(localized: "测试分流"), action: #selector(testHostRoute))) }
+            if parent.appRoute != nil, let row = contextRow { addAppItems(to: menu, row: row) }
             menu.addItem(.separator())
             menu.addItem(item(String(localized: "复制主机"), action: #selector(copyContextHosts)))
             if parent.close != nil {
@@ -238,6 +246,33 @@ struct ConnectionsTable: NSViewRepresentable {
             }
             return menu
         }
+
+        /// What can be done for the app the row came from. A row whose app Veer cannot name gets
+        /// the reason instead, never a guess from the process name.
+        private func addAppItems(to menu: NSMenu, row: ConnectionRow) {
+            menu.addItem(.separator())
+            guard let name = parent.appName?(row) else {
+                let reason = SharedProcesses.isShared(processName: row.process, path: row.processPath)
+                    ? String(localized: "来自共享的系统进程，无法归到某个应用")
+                    : row.processPath == nil ? String(localized: "内核没有报告这个连接的进程") : String(localized: "无法识别这个连接来自哪个应用")
+                let note = NSMenuItem(title: reason, action: nil, keyEquivalent: "")
+                note.isEnabled = false
+                menu.addItem(note)
+                return
+            }
+            menu.addItem(item(String(localized: "为“\(name)”选择出口…"), action: #selector(chooseAppExit)))
+            menu.addItem(item(String(localized: "让“\(name)”始终直连"), action: #selector(appAlwaysDirect)))
+            menu.addItem(item(String(localized: "阻止“\(name)”联网…"), action: #selector(blockApp)))
+            menu.addItem(item(String(localized: "查看“\(name)”的应用规则"), action: #selector(viewAppRules)))
+            menu.addItem(item(String(localized: "问 Agent：“\(name)”怎么走？"), action: #selector(askAboutApp)))
+        }
+
+        @objc private func chooseAppExit() { appAction(.chooseExit) }
+        @objc private func appAlwaysDirect() { appAction(.alwaysDirect) }
+        @objc private func blockApp() { appAction(.block) }
+        @objc private func viewAppRules() { appAction(.viewRules) }
+        @objc private func askAboutApp() { appAction(.ask) }
+        private func appAction(_ action: AppRouteAction) { if let row = contextRow { parent.appRoute?(row, action) } }
 
         private func item(_ title: String, action: Selector) -> NSMenuItem {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")

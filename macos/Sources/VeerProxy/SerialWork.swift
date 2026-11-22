@@ -6,12 +6,21 @@ import Foundation
 
     private var last: Task<Void, Never>?
 
-    public func add(_ work: @escaping @MainActor () async -> Void) {
+    @discardableResult public func add<Value: Sendable>(_ work: @escaping @MainActor () async -> Value) -> Task<Value, Never> {
         let previous = last
-        last = Task { @MainActor in
+        let entry = Task { @MainActor in
             await previous?.value
-            await work()
+            return await work()
         }
+        last = Task { _ = await entry.value }
+        return entry
+    }
+
+    public func run<Value: Sendable>(_ work: @escaping @MainActor () async throws -> Value) async throws -> Value {
+        let entry = add {
+            do { return Result<Value, Error>.success(try await work()) } catch { return .failure(error) }
+        }
+        return try await entry.value.get()
     }
 
     /// Returns once everything added so far has finished.

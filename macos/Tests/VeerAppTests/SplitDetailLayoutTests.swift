@@ -41,4 +41,15 @@ struct SplitDetailLayoutTests {
         #expect(SplitDetailLayout.visibleWidth(proposed: 500, split: 700, leading: 701) == 0)
         #expect(SplitDetailLayout.visibleWidth(proposed: 880, split: 1080, leading: 0) == 880)
     }
+
+    @Test func theSidebarsMotionIsAPanelMotionForThePageSoArrangementsBlendInsteadOfSnapping() {
+        #expect(SidebarMotion.motion(animating: false, hiding: true, width: 200, request: 3) == nil)
+        // Hiding widens the page by the sidebar's width; showing narrows it.
+        #expect(SidebarMotion.motion(animating: true, hiding: true, width: 200, request: 3) == PanelMotion(id: -3, widthChange: 200))
+        #expect(SidebarMotion.motion(animating: true, hiding: false, width: 220, request: 4) == PanelMotion(id: -4, widthChange: -220))
+        // The Overview cards then span both ends, so the 720 pt breakpoint is crossed by blending.
+        let motion = PanelMotion(id: -4, widthChange: -200)
+        let ends = OverviewView.motionWidths(pageWidth: 860, motion: motion)
+        #expect(ends.lowerBound < OverviewArrangement.stackBelow - 2 * 24 && ends.upperBound > OverviewArrangement.stackBelow - 2 * 24)
+    }
 }

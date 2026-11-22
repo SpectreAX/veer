@@ -14,18 +14,33 @@ struct CoreNotRunningView: View {
             // In a scroll view, as on the overview: at its full height, wrapped text here pushed the
             // whole window out of place, the sidebar and the top row with it.
             ScrollView {
-                FailurePanel(message: reason, log: log)
+                FailurePanel(message: reason, log: log, startNetworkNotice: store.coreStartNetworkNotice)
                     .frame(maxWidth: Metrics.readingWidth)
                     .padding(Spacing.xl)
                     .frame(maxWidth: .infinity)
             }
         } else {
             let starting = store.phase == .starting, profile = store.activeProfile != nil
+            let detail = profile ? message : String(localized: "先导入一个配置。")
+            let startNotice = starting ? nil : store.coreStartNetworkNotice
             StateView(symbol: symbol, title: starting ? String(localized: "内核正在启动…") : String(localized: "内核没有运行"),
-                      message: profile ? message : String(localized: "先导入一个配置。"),
+                      message: detail, actionNotice: startNotice,
                       actionTitle: starting ? nil : profile ? String(localized: "启动") : String(localized: "导入配置…")) {
                 if profile { store.start() } else { store.openImport() }
             }
+        }
+    }
+}
+
+extension ProxyStore {
+    /// What Start and Retry can enable before the core begins carrying traffic.
+    var coreStartNetworkNotice: String? {
+        guard activeProfile != nil else { return nil }
+        switch (settings.tun, systemProxyRemembered) {
+        case (true, true): return String(localized: "启动时会打开系统代理，并尝试用 TUN 接管流量。")
+        case (true, false): return String(localized: "启动时会尝试用 TUN 接管流量。若失败，将打开系统代理。")
+        case (false, true): return String(localized: "启动后将打开系统代理。")
+        case (false, false): return nil
         }
     }
 }
@@ -35,6 +50,7 @@ struct FailurePanel: View {
     @Environment(ProxyStore.self) private var store
     let message: String
     let log: [String]
+    var startNetworkNotice: String?
     var logHeight: CGFloat = 180
     /// Where this is what to do next, and Return should do it.
     var retryIsDefault = false
@@ -62,6 +78,9 @@ struct FailurePanel: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(Spacing.sm)
                 .background(Color.codeBackground, in: RoundedRectangle(cornerRadius: Radius.small))
+            }
+            if let startNetworkNotice {
+                Text(startNetworkNotice).font(.callout).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
             }
             // On a line of its own, as the row below is full in a narrow column. The way out if an update
             // is what stopped it starting; TUN runs the bundled one anyway.
@@ -102,8 +121,7 @@ struct FailurePanel: View {
     private var retryResult: String { String(localized: "仍然失败（第 \(String(immediateFailures)) 次重试）") }
 
     @ViewBuilder private func profileActions(_ profile: Profile) -> some View {
-        // On Proxies the profiles are already above this panel.
-        if store.page != .proxies { Button("管理配置") { store.manageProfiles() }.neutralControl() }
+        Button("管理配置…") { store.manageProfiles() }.neutralControl()
         if profile.isSubscription {
             Button { store.update(profile.id) } label: {
                 HStack(spacing: Spacing.xs) {

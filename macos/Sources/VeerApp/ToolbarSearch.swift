@@ -17,6 +17,11 @@ extension ProxyStore {
 }
 
 enum ToolbarSearchFocus {
+    static func clear(_ query: Binding<String>) {
+        query.wrappedValue = ""
+        focus()
+    }
+
     /// Puts the cursor in the key window's capsule field. By hand: the shortcut lives in the app's
     /// commands, which have no way into the page that made the field.
     static func focus() {
@@ -46,9 +51,10 @@ struct ToolbarSearchField: View {
     var body: some View {
         HStack(spacing: Spacing.xs) {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary).opacity(store.canSearch ? 1 : 0.5)
+                .accessibilityHidden(true)
             field
             if !text.isEmpty {
-                Button { text = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                Button { ToolbarSearchFocus.clear($text) } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
                     .buttonStyle(.plain)
                     .help(String(localized: "清除搜索"))
                     .accessibilityLabel(String(localized: "清除搜索"))

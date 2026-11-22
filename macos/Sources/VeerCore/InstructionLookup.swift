@@ -25,10 +25,38 @@ public struct LookupHints: Sendable, Codable, Equatable, Hashable {
         public let isFakeIP: Bool
     }
 
+    /// A service the instruction names (Google, Steam…) and its MetaCubeX rule sets: the whole
+    /// service and, where the catalog has them, the parts reachable in mainland China (`google-cn`,
+    /// `google@cn`) and outside it (`google@!cn`). Found by name, so the model need not ask the user
+    /// for a domain list Veer can look up.
+    public struct Service: Sendable, Codable, Equatable, Hashable {
+        public let mention: String
+        public let set: String
+        public let mainland: [String]
+        public let outside: [String]
+    }
+
     public var domains: [Domain]
     public var addresses: [Address]
+    public var services: [Service] = []
 
-    public var isEmpty: Bool { domains.isEmpty && addresses.isEmpty }
+    public init(domains: [Domain], addresses: [Address], services: [Service] = []) {
+        self.domains = domains
+        self.addresses = addresses
+        self.services = services
+    }
+
+    enum CodingKeys: String, CodingKey { case domains, addresses, services }
+
+    /// Turns saved before services were looked up have none.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        domains = try container.decode([Domain].self, forKey: .domains)
+        addresses = try container.decode([Address].self, forKey: .addresses)
+        services = try container.decodeIfPresent([Service].self, forKey: .services) ?? []
+    }
+
+    public var isEmpty: Bool { domains.isEmpty && addresses.isEmpty && services.isEmpty }
 
     /// Domain → the site's own rule set, for the local parser.
     public var ownSets: [String: String] {
@@ -53,6 +81,14 @@ public struct LookupHints: Sendable, Codable, Equatable, Hashable {
             if let asn = entry.asn { parts.append("AS\(asn) \(entry.organization ?? "")，网段 \(entry.network ?? "未知")") }
             if !entry.geoip.isEmpty { parts.append("geoip 规则集 \(entry.geoip.joined(separator: "、"))") }
             lines.append("· \(entry.address)：\(parts.isEmpty ? "没有查到" : parts.joined(separator: "；"))")
+        }
+        for service in services {
+            var parts = ["规则集 \(service.set)"]
+            if !service.mainland.isEmpty {
+                parts.append("其中在中国大陆可以直接访问的部分：\(service.mainland.joined(separator: "、"))（社区维护的列表，Veer 没有实测它们现在能否直连）")
+            }
+            if !service.outside.isEmpty { parts.append("不含中国大陆部分的：\(service.outside.joined(separator: "、"))") }
+            lines.append("· 指令提到的服务“\(service.mention)”：\(parts.joined(separator: "；"))")  // for the AI
         }
         return lines.joined(separator: "\n")
     }
@@ -85,11 +121,12 @@ public struct InstructionLookup: Sendable {
             guard let address = IPAddr(match), !addresses.contains(address), addresses.count < 4 else { continue }
             addresses.append(address)
         }
-        guard !domains.isEmpty || !addresses.isEmpty else { return nil }
+        let available = await index?.geositeCatalog()
+        let services = Self.services(in: scan, catalog: available)
+        guard !domains.isEmpty || !addresses.isEmpty || !services.isEmpty else { return nil }
 
-        var hints = LookupHints(domains: [], addresses: [])
+        var hints = LookupHints(domains: [], addresses: [], services: services)
         if !domains.isEmpty, let database = try? await geo.geosite() {
-            let available = await index?.geositeCatalog()
             for domain in domains {
                 let hits = database.hits(for: domain, available: available).filter { !$0.geositeRuleOnly }
                 let own = Self.ownSet(for: domain, in: hits)
@@ -107,6 +144,39 @@ public struct InstructionLookup: Sendable {
                                                        isPrivate: report.isPrivate, isFakeIP: address.isFakeIP))
         }
         return hints.isEmpty ? nil : hints
+    }
+
+    /// What people call services, in both languages, and their MetaCubeX geosite names.
+    static let serviceNames: [(names: [String], set: String)] = [
+        (["google", "谷歌"], "google"), (["youtube", "油管"], "youtube"), (["gmail"], "google"),
+        (["apple", "苹果", "icloud"], "apple"), (["microsoft", "微软", "onedrive", "office"], "microsoft"),
+        (["github"], "github"), (["steam"], "steam"), (["netflix", "奈飞", "网飞"], "netflix"), (["spotify"], "spotify"),
+        (["telegram", "电报"], "telegram"), (["twitter"], "twitter"), (["facebook", "脸书"], "facebook"),
+        (["instagram"], "instagram"), (["discord"], "discord"), (["tiktok"], "tiktok"), (["bilibili", "哔哩哔哩", "b站"], "bilibili"),
+        (["chatgpt", "openai"], "openai"), (["claude", "anthropic"], "anthropic"), (["gemini"], "google-gemini"),
+        (["amazon", "亚马逊"], "amazon"), (["nvidia", "英伟达"], "nvidia"), (["adobe"], "adobe"), (["cloudflare"], "cloudflare"),
+        (["xbox"], "xbox"), (["playstation"], "playstation"), (["nintendo", "任天堂"], "nintendo"), (["epic games", "epic"], "epicgames"),
+        (["paypal"], "paypal"), (["dropbox"], "dropbox"), (["twitch"], "twitch"), (["reddit"], "reddit"), (["disney"], "disney"),
+    ]
+
+    /// Services named in `scan` (lowercased), at most four, with the variants the catalog has.
+    /// Without a catalog only the service's own name is given, as the prompt's common ones are known.
+    static func services(in scan: String, catalog: Set<String>?) -> [LookupHints.Service] {
+        var found: [LookupHints.Service] = []
+        for entry in serviceNames where found.count < 4 && !found.contains(where: { $0.set == entry.set }) {
+            guard let mention = entry.names.first(where: { contains(scan, $0) }) else { continue }
+            if let catalog, !catalog.contains(entry.set) { continue }
+            let mainland = ["\(entry.set)-cn", "\(entry.set)@cn"].filter { catalog?.contains($0) == true }
+            let outside = ["\(entry.set)@!cn"].filter { catalog?.contains($0) == true }
+            found.append(.init(mention: mention, set: entry.set, mainland: mainland, outside: outside))
+        }
+        return found
+    }
+
+    /// A Latin name as a whole word (not "steam" in "mysteamer.example"); a Chinese one anywhere.
+    static func contains(_ scan: String, _ name: String) -> Bool {
+        guard name.unicodeScalars.allSatisfy(\.isASCII) else { return scan.contains(name) }
+        return scan.matches(#"(?<![a-z0-9.\-])"# + NSRegularExpression.escapedPattern(for: name) + #"(?![a-z0-9\-])"#)
     }
 
     /// A specific, plain set named after one of the domain's labels: `jal` for www.jal.co.jp,

@@ -12,6 +12,8 @@ public struct EditorEngine: Sendable {
         case outOfScope(String)
         /// Veer: actions on the running core, with real group and node names.
         case runtime([RuntimeStep])
+        /// Veer: which apps go where, with real names, for review.
+        case appRouting([AppRouteChange])
     }
 
     public enum Progress: Sendable {
@@ -23,6 +25,8 @@ public struct EditorEngine: Sendable {
         case reasoning(String)
         /// The first answer was unusable; Veer sent the error back and asked again.
         case retrying(String)
+        /// The model asked the user for facts Veer or the model can look up; Veer sent it back once.
+        case lookingFurther
         /// The model asked Veer to search these queries.
         case searching([String])
         /// What the searches found (also sent back to the model).
@@ -30,6 +34,8 @@ public struct EditorEngine: Sendable {
         /// What the local geodata says about the instruction's domains and IPs.
         case lookedUp(LookupHints)
         case checking([String])
+        /// The model asked for the apps on this Mac (and the profile's app rules).
+        case lookingUpApps(String?)
         /// The results and the message that carried them to the model.
         case checked([CheckRecord], sent: String)
     }
@@ -61,6 +67,8 @@ public struct EditorEngine: Sendable {
         public var liveConnections: (@Sendable ([String]) async -> String?)?
         /// Files and images sent with the instruction.
         public var attachments: [ChatAttachment] = []
+        /// Veer on macOS: looks up apps and the profile's app rules, which turns on the app-routing tools.
+        public var appLookup: (@Sendable (String?) async -> AppLookupResult)?
 
         public init(prompt: String, draft: ConfigDocument, regions: [String: Region], useAI: Bool, settings: AISettings, apiKey: String?,
                     history: [(role: String, content: String)] = [], shareRuleLiterals: Bool = false) {
@@ -83,6 +91,9 @@ public struct EditorEngine: Sendable {
     let lookup: InstructionLookup?
     /// Tests domains against the draft when the model asks; nil answers that checking is unavailable.
     let checker: DomainChecker?
+    /// Sends a question for facts back to the model once (`ClarificationPolicy`). Off only to
+    /// measure the pipeline without it.
+    var guardsClarifications = true
 
     public init(ai: AIClient = AIClient(), validator: ConfigValidating = MihomoValidator(), verifier: RuleSetVerifying = NetworkRuleSetVerifier(),
                 searcher: RuleSearching = WebSearchService(), lookup: InstructionLookup? = nil, checker: DomainChecker? = nil) {
@@ -143,15 +154,15 @@ public struct EditorEngine: Sendable {
         let anonymized = AnonymizedConfig.make(document: request.draft, regions: request.regions, shareRuleLiterals: request.shareRuleLiterals,
                                                 instruction: request.prompt + attached)
         let system = SystemPrompt.build(config: anonymized.yaml, search: request.search != nil, mode: request.mode, runtime: request.runtime,
-                                        replyLanguage: request.replyLanguage, attachments: !request.attachments.isEmpty)
+                                        replyLanguage: request.replyLanguage, attachments: !request.attachments.isEmpty,
+                                        appRouting: request.appLookup != nil)
         // Lookup results travel with the instruction (and are anonymized with it).
         let prompt = anonymized.context.anonymize(request.prompt + (hints.map { "\n\n" + $0.message } ?? "") + attached)
         let images = request.attachments.compactMap(\.image)
         let model = request.settings.modelLabel
         var followUps: [(role: String, content: String)] = []
         var attempt = 0
-        var searchRounds = 0
-        var checkRounds = 0
+        var tools = ToolState()
         while true {
             let httpRequest = try ai.makeRequest(settings: request.settings, apiKey: request.apiKey, system: system, history: request.history,
                                                  prompt: prompt, images: images, followUps: followUps, stream: request.settings.thinks)
@@ -161,21 +172,26 @@ public struct EditorEngine: Sendable {
                 if let understanding = decoded.understanding, !understanding.isEmpty {
                     await progress(.understanding(anonymized.context.restore(understanding)))
                 }
-                if case let .search(queries) = decoded.reply {
-                    let message = try await searchMessage(queries, request: request, rounds: &searchRounds, progress: progress)
+                if let message = try await followUp(for: decoded.reply, request: request, anonymized: anonymized, tools: &tools, progress: progress) {
                     followUps += [("assistant", String(answer.prefix(8_000))), ("user", message)]
                     continue
                 }
-                if case let .check(raw) = decoded.reply {
-                    let message = try await checkMessage(raw, request: request, anonymized: anonymized, rounds: &checkRounds, progress: progress)
-                    followUps += [("assistant", String(answer.prefix(8_000))), ("user", message)]
+                // A question for facts (which domains) rather than a choice: back to the model once, to
+                // look them up instead of handing the user work Veer can do.
+                if guardsClarifications, case let .clarification(question, options) = decoded.reply, !tools.lookedFurther, request.mode != .plan,
+                   ClarificationPolicy.asksForFacts(question, options: options) {
+                    tools.lookedFurther = true
+                    await progress(.lookingFurther)
+                    followUps += [("assistant", String(answer.prefix(8_000))),
+                                  ("user", ClarificationPolicy.lookFurtherMessage(search: request.search != nil && tools.search < SearchQueries.maxRounds))]
                     continue
                 }
                 if request.mode == .plan, case .plan = decoded.reply {
                     throw EditorError(String(localized: "计划模式下不要输出修改计划。请用 clarification 写出分析，用 options 给出 2 到 3 个方案。"))
                 }
                 if attempt == 0 { await progress(.finished(0, detail: String(localized: "已由 \(model) 解析"))) }
-                return try await handle(Self.restored(decoded.reply, anonymized), request: request, progress: progress, restore: anonymized.context.restore)
+                return try await handle(Self.restored(decoded.reply, anonymized), request: request, progress: progress, restore: anonymized.context.restore,
+                                        references: tools.references)
             } catch let error as EditorError where attempt < Self.repairAttempts {
                 // Send the problem back once instead of showing the user an unusable answer.
                 attempt += 1
@@ -184,6 +200,45 @@ public struct EditorEngine: Sendable {
                               ("user", "你上一次的输出无法使用：\(error.message)\n请根据这个问题修正，重新输出一个完整、符合格式的 JSON 对象，不要输出其他内容。")]
             }
         }
+    }
+
+    /// How many times the model has asked Veer for each kind of data this turn.
+    struct ToolState {
+        var search = 0
+        var check = 0
+        var apps = 0
+        /// A question for facts went back to the model once.
+        var lookedFurther = false
+        /// The apps handed to the model so far, by reference.
+        var references = AppReferences()
+    }
+
+    /// Veer's answer to a reply that asks for data (a search, a check, an app lookup); nil for any other reply.
+    private func followUp(for reply: AssistantReply, request: Request, anonymized: AnonymizedConfig, tools rounds: inout ToolState,
+                          progress: @Sendable (Progress) async -> Void) async throws -> String? {
+        switch reply {
+        case let .search(queries):
+            return try await searchMessage(queries, request: request, rounds: &rounds.search, progress: progress)
+        case let .check(raw):
+            return try await checkMessage(raw, request: request, anonymized: anonymized, rounds: &rounds.check, progress: progress)
+        case let .apps(query):
+            guard let lookup = request.appLookup else { throw EditorError(String(localized: "这里不能查询本机应用。请直接输出修改计划或澄清问题。")) }
+            rounds.apps += 1
+            guard rounds.apps <= 3 else { throw EditorError(String(localized: "已经查询过本机应用，请直接给出 appRoutes 或澄清问题。")) }
+            await progress(.lookingUpApps(query))
+            let result = await lookup(query)
+            return anonymized.context.anonymize(rounds.references.message(for: result, query: query, lastRound: rounds.apps == 3))
+        default:
+            return nil
+        }
+    }
+
+    /// App routes with real apps and exits, from the references this turn's lookups gave out.
+    func appRouting(_ reply: AssistantReply, request: Request, references: AppReferences, restore: (String) -> String) throws -> Output {
+        guard case let .appRoutes(changes) = reply else { throw EditorError(String(localized: "AI 请求了应用查询，但本轮不能再查询。请换一种说法再试。")) }
+        guard request.appLookup != nil else { throw EditorError(String(localized: "这里不能修改应用分流。请直接输出修改计划或澄清问题。")) }
+        guard request.mode != .plan else { throw EditorError(String(localized: "计划模式下不要输出修改。请用 clarification 写出分析，用 options 给出 2 到 3 个方案。")) }
+        return .appRouting(try changes.map { try $0.resolved(references: references, draft: request.draft, restore: restore) })
     }
 
     /// The model's next answer. Thinking models stream, so their reasoning shows while they work.
@@ -243,7 +298,7 @@ public struct EditorEngine: Sendable {
 
     /// `restore` turns the model's exit labels back into real names (runtime actions name groups by label).
     func handle(_ reply: AssistantReply, request: Request, progress: @Sendable (Progress) async -> Void,
-                restore: (String) -> String = { $0 }) async throws -> Output {
+                restore: (String) -> String = { $0 }, references: AppReferences = AppReferences()) async throws -> Output {
         switch reply {
         case let .clarification(question, options):
             // Exit buttons only help when the question is about where traffic should go.
@@ -266,6 +321,9 @@ public struct EditorEngine: Sendable {
         case let .runtime(actions):
             guard request.runtime else { throw EditorError(String(localized: "这里不能切换节点或模式，只能修改分流规则。")) }
             return .runtime(try actions.map { try $0.resolved(in: request.draft, restore: restore) })
+        case .apps, .appRoutes:
+            // A lookup is answered inside the AI loop; one reaching here was not allowed.
+            return try appRouting(reply, request: request, references: references, restore: restore)
         }
     }
 

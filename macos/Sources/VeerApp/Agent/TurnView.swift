@@ -9,7 +9,17 @@ struct TurnView: View {
         if case .note(let text) = turn.outcome {
             HStack(spacing: Spacing.sm) {
                 Rectangle().fill(Color.separatorLine).frame(height: 1)
-                Label(text, systemImage: "clock.arrow.circlepath").font(.caption).foregroundStyle(.secondary).fixedSize()
+                Label {
+                    Text(text).foregroundStyle(turn.noteWarning == true ? .primary : .secondary)
+                } icon: {
+                    if turn.noteWarning == true {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color.statusWarning)
+                    } else {
+                        Image(systemName: "clock.arrow.circlepath").foregroundStyle(.secondary)
+                    }
+                }
+                    .font(turn.noteWarning == true ? .callout : .caption)
+                    .fixedSize(horizontal: false, vertical: true).layoutPriority(1)
                 Rectangle().fill(Color.separatorLine).frame(height: 1)
             }
         } else {
@@ -50,21 +60,18 @@ struct AssistantTurn: View {
     @Environment(AgentStore.self) private var store
     let turn: Turn
     @State private var stepsExpanded = false
+    @Environment(\.agentMetaStartsOpen) private var metaStartsOpen
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.md) {
-            StepsView(turn: turn, expanded: $stepsExpanded).modifier(SoftenedUnderComposer())
+            StepsView(turn: turn, expanded: $stepsExpanded, understanding: turn.foldsUnderstanding ? turn.understanding : nil)
+                .modifier(SoftenedUnderComposer())
+                .onAppear { if metaStartsOpen { stepsExpanded = true } }
             if let reasoning = turn.reasoning, !reasoning.isEmpty {
                 ReasoningView(text: reasoning, running: turn.outcome == .running, source: turn.mode.label).modifier(SoftenedUnderComposer())
             }
-            if let understanding = turn.understanding, !understanding.isEmpty {
-                Label { Text(understanding).textSelection(.enabled).fixedSize(horizontal: false, vertical: true) } icon: {
-                    Image(systemName: "lightbulb").foregroundStyle(Color.veerAccent)
-                }
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .accessibilityLabel(String(localized: "AI 的理解：\(understanding)"))
-                .modifier(SoftenedUnderComposer())
+            if !turn.foldsUnderstanding, let understanding = turn.understanding, !understanding.isEmpty {
+                UnderstandingLine(text: understanding).modifier(SoftenedUnderComposer())
             }
             if let lookups = turn.lookups {
                 LookupHintsView(hints: lookups, local: turn.mode == .local).modifier(SoftenedUnderComposer())
@@ -101,8 +108,10 @@ struct AssistantTurn: View {
                 Text(String(localized: "已停止。分流没有变化。")).foregroundStyle(.secondary)
             case .runtime(let run):
                 RuntimeRunView(turn: turn, run: run)
+            case .appRouting(let proposal):
+                AppRoutingProposalView(turn: turn, proposal: proposal)
             }
-            if turn.sentPayload != nil, turn.outcome != .running, turn.proposal == nil, !turn.isRuntime {
+            if turn.sentPayload != nil, turn.outcome != .running, turn.proposal == nil, !turn.isRuntime, !turn.isAppRouting {
                 Button(String(localized: "查看发送给 AI 的内容")) { store.payloadTurnID = turn.id }
                     .buttonStyle(.link).foregroundStyle(Color.veerAccent).font(.callout).modifier(SoftenedUnderComposer())
             }
@@ -142,9 +151,53 @@ struct ClarificationView: View {
     }
 }
 
+/// The model's restatement of the request.
+struct UnderstandingLine: View {
+    let text: String
+
+    var body: some View {
+        Label { Text(text).textSelection(.enabled).fixedSize(horizontal: false, vertical: true) } icon: {
+            Image(systemName: "lightbulb").foregroundStyle(Color.veerAccent)
+        }
+        .font(.callout)
+        .foregroundStyle(.primary)
+        .accessibilityLabel(String(localized: "AI 的理解：\(text)"))
+    }
+}
+
+extension Turn {
+    /// Once its changes are settled (applied, undone, discarded, or the run is over), a turn's
+    /// restatement waits under the meta line. Before that it stays in view: the model puts its
+    /// caveats there, such as a direct route nobody tested, and they matter before Apply. Answers
+    /// without changes keep it too, as it is their only context.
+    var foldsUnderstanding: Bool {
+        guard !steps.isEmpty, understanding?.isEmpty == false else { return false }
+        switch outcome {
+        case .proposal(let proposal): return proposal.status != .pending
+        case .appRouting(let proposal): return proposal.status != .pending
+        case .runtime(let run): return run.finished
+        default: return false
+        }
+    }
+}
+
+extension EnvironmentValues {
+    /// Snapshots only: turns open their meta line, so the folded content can be looked at.
+    @Entry var agentMetaStartsOpen = false
+    /// Align an opened disclosure with the visible top of the conversation after layout.
+    @Entry var agentMetaToReveal: Binding<AgentMetaAnchor?>?
+}
+
+struct AgentMetaAnchor: Hashable {
+    let turnID: UUID
+}
+
 struct StepsView: View {
     let turn: Turn
     @Binding var expanded: Bool
+    /// Shown with the steps when they are open; see `Turn.foldsUnderstanding`.
+    var understanding: String?
+    @Environment(\.agentMetaToReveal) private var metaToReveal
 
     private var running: Bool { turn.outcome == .running }
 
@@ -153,23 +206,30 @@ struct StepsView: View {
             if running {
                 rows
             } else if !turn.steps.isEmpty {
-                Button { withAnimation(Motion.standard) { expanded.toggle() } } label: {
-                    HStack(spacing: Spacing.xs) {
-                        if let icon = summaryIcon { Image(systemName: icon.0).foregroundStyle(icon.1) }
-                        Text(summary)
-                        Image(systemName: "chevron.right").imageScale(.small).rotationEffect(.degrees(expanded ? 90 : 0))
+                DisclosureGroup(isExpanded: Binding(get: { expanded }, set: {
+                    metaToReveal?.wrappedValue = $0 ? AgentMetaAnchor(turnID: turn.id) : nil
+                    expanded = $0
+                })) {
+                    VStack(alignment: .leading, spacing: Spacing.xs) {
+                        rows
+                        Text(String(localized: "步骤是 Veer 的真实任务状态，不是模型的推理过程。"))
+                            .font(.caption).foregroundStyle(.primary)
+                        // After the note, which speaks for the steps only: this line is the model's own.
+                        if let understanding { UnderstandingLine(text: understanding).padding(.top, Spacing.xs) }
                     }
-                    .font(.caption).foregroundStyle(.tertiary)
-                    .contentShape(Rectangle())
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityElement(children: .contain)
+                } label: {
+                    HStack(spacing: Spacing.xs) {
+                        if let icon = summaryIcon { Image(systemName: icon.0).foregroundStyle(icon.1).accessibilityHidden(true) }
+                        Text(summary)
+                    }
+                    .font(.caption).foregroundStyle(.primary)
+                    .accessibilityLabel(accessibleSummary)
+                    .help(understanding == nil ? String(localized: "查看 Veer 处理这条指令的步骤") :
+                        String(localized: "查看 Veer 处理这条指令的步骤和 AI 的理解"))
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(expanded ? String(localized: "\(accessibleSummary)，已展开") : String(localized: "\(accessibleSummary)，已折叠"))
-                .help(String(localized: "查看 Veer 处理这条指令的步骤"))
-                if expanded {
-                    rows.padding(.leading, Spacing.lg)
-                    Text(String(localized: "步骤是 Veer 的真实任务状态，不是模型的推理过程。"))
-                        .font(.caption).foregroundStyle(.tertiary).padding(.leading, Spacing.lg)
-                }
+                .id(AgentMetaAnchor(turnID: turn.id))
             }
         }
     }
@@ -190,7 +250,9 @@ struct StepsView: View {
     }
 
     private var accessibleSummary: String {
-        String(localized: "\(summary)，完成 \(turn.steps.filter { $0.state == .done }.count) 步")
+        let done = turn.steps.filter { $0.state == .done }.count
+        return understanding == nil ? String(localized: "\(summary)，完成 \(done) 步")
+            : String(localized: "\(summary)，完成 \(done) 步，含 AI 的理解")
     }
 
     private var rows: some View {
@@ -243,10 +305,12 @@ struct ProposalView: View {
 
     private var acceptedCount: Int { proposal.accepted.count }
     private var editable: Bool { proposal.status == .pending && !store.isArchived && proposal.baseDraft == store.current?.draftText }
+    private var reversing: Bool { store.reversingTurnID == turn.id && store.reversal.isWorking }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.md) {
             Text(summary).fixedSize(horizontal: false, vertical: true).modifier(SoftenedUnderComposer())
+                .opacity(reversing ? 0 : 1).accessibilityHidden(reversing)
             VStack(spacing: Spacing.sm) {
                 ForEach(proposal.items) { item in
                     ChangeRow(item: item, accepted: proposal.accepted.contains(item.id), editable: editable,
@@ -298,7 +362,7 @@ struct ProposalView: View {
             ? String(localized: "准备了 \(proposal.items.count) 项分流修改，等待你确认。")
             : String(localized: "准备了 \(proposal.items.count) 项分流修改，已选择 \(acceptedCount) 项。")
         case .written: String(localized: "已应用 \(acceptedCount) 项修改，记在“我的分流”里。")
-        case .undone: String(localized: "这组修改应用后已被撤销。")
+        case .undone: String(localized: "已撤销“我的分流”里的这组修改。")
         case .discarded: String(localized: "已放弃这组修改，分流没有变化。")
         case .stale: String(localized: "这组修改基于之前的分流生成。")
         }
@@ -325,14 +389,16 @@ struct ProposalView: View {
                 }
             case .undone:
                 StatusBadge(kind: .neutral, text: String(localized: "已撤销"))
-                if store.canRedo, store.current?.turns.last(where: { $0.proposal?.status == .undone })?.id == turn.id {
-                    Button(String(localized: "重做")) { store.redo() }.buttonStyle(.link).foregroundStyle(Color.veerAccent)
+                    .opacity(reversing ? 0 : 1).accessibilityHidden(reversing)
+                if reversing || (store.canRedo && store.current?.turns.last(where: { $0.proposal?.status == .undone })?.id == turn.id) {
+                    ReversalLink(turnID: turn.id, redo: !reversing) { store.redo() }
                 }
             case .written:
                 StatusBadge(kind: .success, text: turn.autoWritten == true
                             ? String(localized: "已按\(turn.executionMode?.title ?? "")模式直接应用") : String(localized: "已应用"))
-                if !store.isArchived, store.current?.turns.last(where: { $0.proposal?.status == .written })?.id == turn.id {
-                    Button(String(localized: "撤销")) { store.undo() }.buttonStyle(.link).foregroundStyle(Color.veerAccent)
+                    .opacity(reversing ? 0 : 1).accessibilityHidden(reversing)
+                if reversing || (!store.isArchived && store.current?.turns.last(where: { $0.proposal?.status == .written })?.id == turn.id) {
+                    ReversalLink(turnID: turn.id, redo: reversing) { store.undoProposal(turnID: turn.id) }
                 }
             case .discarded:
                 StatusBadge(kind: .neutral, text: String(localized: "已放弃"))
@@ -963,8 +1029,11 @@ struct RuntimeRunView: View {
                 } else if run.finished {
                     StatusBadge(kind: run.items.allSatisfy { $0.state == .done } ? .success : .warning,
                                 text: run.items.allSatisfy { $0.state == .done } ? String(localized: "已执行") : String(localized: "部分没有完成"))
-                    if run.canUndo, !store.isArchived {
-                        Button(String(localized: "撤销")) { store.undoRuntime(turnID: turn.id) }.buttonStyle(.link).foregroundStyle(Color.veerAccent)
+                    if store.canUndoRuntime(run) {
+                        ReversalLink(turnID: turn.id, redo: false) { store.undoRuntime(turnID: turn.id) }
+                    } else if run.canUndo, !store.isArchived {
+                        Text(AgentStore.runtimeUndoMissingProfile)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 if turn.sentPayload != nil {

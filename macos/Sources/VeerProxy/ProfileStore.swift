@@ -39,14 +39,9 @@ public final class ProfileStore: @unchecked Sendable {
         self.secrets = secrets ?? paths.makeSecretStore()
     }
 
-    public func loadAll() -> [Profile] {
-        lock.withLock {
-            guard let data = try? Data(contentsOf: paths.profileIndex) else { return [] }
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            return (try? decoder.decode([Profile].self, from: data)) ?? []
-        }
-    }
+    public func loadAll() -> [Profile] { (try? readIndex()) ?? [] }
+
+    public func readIndex() throws -> [Profile] { try lock.withLock { try Self.read(paths.profileIndex) } }
 
     public func text(of id: UUID) throws -> String {
         do { return try String(contentsOf: file(id), encoding: .utf8) } catch {
@@ -58,8 +53,8 @@ public final class ProfileStore: @unchecked Sendable {
     public func save(_ profile: Profile, text: String) throws {
         try paths.prepare()
         try lock.withLock {
+            var all = try Self.read(paths.profileIndex, allowMissing: true)
             try Data(text.utf8).write(to: file(profile.id), options: .atomic)
-            var all = Self.read(paths.profileIndex)
             if let index = all.firstIndex(where: { $0.id == profile.id }) { all[index] = profile } else { all.append(profile) }
             try Self.write(all, to: paths.profileIndex)
         }
@@ -68,7 +63,7 @@ public final class ProfileStore: @unchecked Sendable {
     /// Replaces a profile's entry in the index, leaving its config text alone.
     public func saveInfo(_ profile: Profile) throws {
         try lock.withLock {
-            var all = Self.read(paths.profileIndex)
+            var all = try Self.read(paths.profileIndex, allowMissing: true)
             guard let index = all.firstIndex(where: { $0.id == profile.id }) else { return }
             all[index] = profile
             try Self.write(all, to: paths.profileIndex)
@@ -76,11 +71,19 @@ public final class ProfileStore: @unchecked Sendable {
     }
 
     public func delete(_ id: UUID) {
-        lock.withLock {
-            try? FileManager.default.removeItem(at: file(id))
-            try? Self.write(Self.read(paths.profileIndex).filter { $0.id != id }, to: paths.profileIndex)
+        try? remove([id])
+    }
+
+    /// Commits removal to the index before cleaning up the files and secrets. An index write
+    /// failure leaves every profile intact, including when a batch of duplicates is removed.
+    public func remove(_ ids: Set<UUID>) throws {
+        try lock.withLock {
+            let profiles = try Self.read(paths.profileIndex)
+            guard ids.isSubset(of: Set(profiles.map(\.id))) else { throw CocoaError(.fileReadNoSuchFile) }
+            try Self.write(profiles.filter { !ids.contains($0.id) }, to: paths.profileIndex)
+            for id in ids { try? FileManager.default.removeItem(at: file(id)) }
         }
-        secrets.delete(for: Self.secretKey(id))
+        for id in ids { secrets.delete(for: Self.secretKey(id)) }
     }
 
     public func subscriptionURL(of id: UUID) -> URL? { secrets.read(for: Self.secretKey(id)).flatMap(URL.init(string:)) }
@@ -93,11 +96,14 @@ public final class ProfileStore: @unchecked Sendable {
 
     static func secretKey(_ id: UUID) -> String { "subscription-\(id.uuidString)" }
 
-    private static func read(_ url: URL) -> [Profile] {
-        guard let data = try? Data(contentsOf: url) else { return [] }
+    private static func read(_ url: URL, allowMissing: Bool = false) throws -> [Profile] {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return (try? decoder.decode([Profile].self, from: data)) ?? []
+        do {
+            return try decoder.decode([Profile].self, from: Data(contentsOf: url))
+        } catch let error as CocoaError where allowMissing && error.code == .fileReadNoSuchFile {
+            return []
+        }
     }
 
     private static func write(_ profiles: [Profile], to url: URL) throws {

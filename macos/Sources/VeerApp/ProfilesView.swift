@@ -4,57 +4,90 @@ import UniformTypeIdentifiers
 import VeerCore
 import VeerProxy
 
-/// The top of the proxies page: every profile as a card, a click from running. It stays there with the
-/// core stopped. In a row while they fit, else one above the other, scrolling past a few so that the
-/// nodes below keep the room.
-struct ProfileBar: View {
+/// The top of the Proxies page, only while there is something to say: the last action's failure and
+/// what "my routing" could not do. The profile cards that used to sit here covered the nodes; the
+/// profiles are in Manage Profiles, from the profile menu under the title.
+struct ProxiesNotices: View {
     @Environment(ProxyStore.self) private var store
-    @Environment(\.panelReserve) private var panelReserve
-    @State private var pendingDeletion: Profile?
-    @State private var details: Profile?
-
-    private static let tileWidth: CGFloat = 320
-    private static let stackedHeight: CGFloat = 220
-
-    static func rowWidth(count: Int) -> CGFloat {
-        CGFloat(count) * tileWidth + CGFloat(max(0, count - 1)) * Spacing.sm
-    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Spacing.sm) {
-            // In a row the tiles share the width, each at least `tileWidth`, so the row's need is
-            // known; the choice of a row or a stack holds while the Agent panel moves, and the
-            // tiles' widths follow the page in either.
-            SteadyChoice(requiredWidth: Self.rowWidth(count: store.profiles.count)) {
-                HStack(spacing: Spacing.sm) {
-                    tiles(width: Self.tileWidth)
-                }
-                // A row only where it would still fit beside the open Agent panel: the same
-                // arrangement with the panel open or closed, so the cards never change places or
-                // jump in width as it moves.
-                .frame(minWidth: 0, idealWidth: Self.rowWidth(count: store.profiles.count) + panelReserve, maxWidth: .infinity)
-            } narrow: {
-                ScrollViewReader { reader in
-                    ScrollView {
-                        VStack(spacing: Spacing.sm) { tiles(width: nil) }
-                    }
-                    .onAppear { if let active = store.activeProfileID { reader.scrollTo(active) } }
-                    .onChange(of: store.activeProfileID) { _, active in if let active { reader.scrollTo(active) } }
-                }
-                .frame(maxHeight: Self.stackedHeight)
+        let notice = store.phase.isFailed ? nil : store.notice
+        if notice != nil || store.effective.map(EffectiveWarnings.hasAny) == true {
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                // Held to a few lines, with the rest in a tooltip: wrapped text at its full height
+                // would push the page out of place.
+                if let notice { StatusBadge(kind: .warning, text: notice).lineLimit(3).help(notice) }
+                if let effective = store.effective { EffectiveWarnings(effective: effective) }
             }
-            // Cards as tall as each other, and the stack as tall as it needs up to its limit.
-            .fixedSize(horizontal: false, vertical: true)
-            // Which would otherwise center a row with room to spare.
             .frame(maxWidth: .infinity, alignment: .leading)
-            // Held to a few lines, with the rest in a tooltip: this page has no scroll of its own up
-            // here, and wrapped text at its full height pushes the whole window out of place.
-            if let notice = store.notice, !store.phase.isFailed { StatusBadge(kind: .warning, text: notice).lineLimit(3).help(notice) }
-            if let effective = store.effective { EffectiveWarnings(effective: effective) }
+            .padding(.horizontal, Spacing.xl)
+            .padding(.top, Spacing.sm)
         }
-        .padding(.horizontal, Spacing.xl)
-        .padding(.top, Spacing.sm)
-        .sheet(item: $details) { ProfileDetailSheet(profile: $0) }
+    }
+}
+
+/// Every profile, from the profile menu, the Proxy menu or a failed start: switch, update, nodes
+/// and routing, export, delete and import, and copies of one subscription to merge.
+struct ProfilesSheet: View {
+    @Environment(ProxyStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    @State private var pendingDeletion: Profile?
+    @State private var details: Profile?
+    @State private var merging: MergePlan?
+    @State var removedCopies: [RemovedProfile] = []
+    @State var mergeProblem: String?
+    @State var restoreResult: String?
+    var onImport: () -> Void = {}
+
+    var body: some View {
+        VStack(spacing: Spacing.sm) {
+            if let details {
+                ProfileDetailSheet(profile: details, back: { self.details = nil })
+            } else {
+                profileList
+            }
+            if let activity = store.activity {
+                ActivityToast(activity: activity, retry: { store.retryActivity() }, close: { store.dismissActivity() })
+                    .padding([.horizontal, .bottom], Spacing.md)
+            }
+        }
+        .frame(height: details == nil ? nil : 520)
+        .frame(maxHeight: 520)
+        .onExitCommand {
+            if details != nil { details = nil } else { dismiss() }
+        }
+        .onChange(of: store.profiles.isEmpty) { _, empty in if empty, removedCopies.isEmpty { dismiss() } }
+        .onChange(of: mergeProblem ?? restoreResult) { _, message in
+            if let message { Self.announce(message) }
+        }
+    }
+
+    private var profileList: some View {
+        VStack(alignment: .leading, spacing: Spacing.md) {
+            Text("管理配置").font(.title3.weight(.semibold))
+            ScrollViewReader { reader in
+                ScrollView {
+                    VStack(spacing: Spacing.sm) {
+                        ForEach(store.profiles) { profile in
+                            ProfileTile(profile: profile, active: profile.id == store.activeProfileID, width: nil,
+                                        showDetails: { details = profile }, delete: { pendingDeletion = profile })
+                                .id(profile.id)
+                        }
+                        duplicates
+                    }
+                }
+                .onAppear { if let active = store.activeProfileID { reader.scrollTo(active) } }
+            }
+            .frame(minHeight: 120, maxHeight: 380)
+            mergeFeedback
+            HStack {
+                Button("导入配置…", action: onImport)
+                Spacer()
+                closeButton
+            }
+        }
+        .padding(Spacing.xl)
+        .frame(width: 520)
         .alert("删除配置？", isPresented: Binding(get: { pendingDeletion != nil }, set: { if !$0 { pendingDeletion = nil } })) {
             Button("删除", role: .destructive) { if let profile = pendingDeletion { store.delete(profile.id) } }
             Button("取消", role: .cancel) {}
@@ -63,20 +96,120 @@ struct ProfileBar: View {
                  ? String(localized: "这是正在使用的配置，删除后内核会停止。")
                  : String(localized: "配置文件、订阅链接和“我的分流”会从本机删除。"))
         }
+        .confirmationDialog(mergeTitle, isPresented: Binding(get: { merging != nil }, set: { if !$0 { merging = nil } }), titleVisibility: .visible) {
+            Button("合并") {
+                if let plan = merging {
+                    do {
+                        let removed = try store.mergeDuplicates(plan)
+                        removedCopies.append(contentsOf: removed)
+                        mergeProblem = nil
+                        restoreResult = nil
+                        // Said as well as shown, as a restore's result is: the way back is in this sheet.
+                        Self.announce(String(localized: "可恢复 \(removedCopies.count) 份已合并的副本"))
+                    } catch let error as EditorError {
+                        mergeProblem = error.message
+                    } catch {
+                        mergeProblem = String(localized: "无法合并副本。配置未改动。")
+                    }
+                }
+                merging = nil
+            }
+            Button("取消", role: .cancel) { merging = nil }
+        } message: {
+            Text(mergeMessage)
+        }
     }
 
-    private func tiles(width: CGFloat?) -> some View {
-        ForEach(store.profiles) { profile in
-            ProfileTile(profile: profile, active: profile.id == store.activeProfileID, width: width,
-                        showDetails: { details = profile }, delete: { pendingDeletion = profile })
-                .id(profile.id)
+    /// Copies of one subscription link (imported twice before Veer recognized it), with a merge.
+    @ViewBuilder private var duplicates: some View {
+        ForEach(store.duplicateProfiles(), id: \.first?.id) { copies in
+            let plan = store.mergePlan(copies)
+            let summary = String(localized: "“\(copies[0].name)”等 \(copies.count) 份配置使用同一个订阅链接")
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                HStack(spacing: Spacing.sm) {
+                    StatusBadge(kind: .warning, text: summary)
+                        .lineLimit(2)
+                        .help(summary)
+                    Spacer(minLength: Spacing.sm)
+                    Button("合并…") { merging = plan }
+                        .disabled(plan?.remove.isEmpty != false)
+                        .accessibilityLabel(Text(String(localized: "合并“\(copies[0].name)”的副本")))
+                        .help(String(localized: "保留一份，删除没有自己修改的副本"))
+                }
+                if plan?.remove.isEmpty != false {
+                    Text(String(localized: "这些副本有自己的“我的分流”修改，或无法读取这些修改。"))
+                        .font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
+    }
+
+    @ViewBuilder private var mergeFeedback: some View {
+        if !removedCopies.isEmpty {
+            HStack(spacing: Spacing.sm) {
+                Text(String(localized: "可恢复 \(removedCopies.count) 份已合并的副本"))
+                Spacer(minLength: Spacing.sm)
+                Button("恢复副本") {
+                    let remaining = store.restoreMergedCopies(removedCopies)
+                    let restored = removedCopies.count - remaining.count
+                    removedCopies = remaining
+                    mergeProblem = removedCopies.isEmpty ? nil : String(localized: "有 \(removedCopies.count) 份副本未能恢复。你可以重试。")
+                    restoreResult = restored > 0 ? String(localized: "已恢复 \(restored) 份副本。") : nil
+                }
+            }
+            .font(.callout)
+        }
+        if let restoreResult {
+            StatusBadge(kind: .success, text: restoreResult)
+        }
+        if let mergeProblem {
+            Label(mergeProblem, systemImage: "exclamationmark.triangle.fill")
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// While merged copies can be restored, Return does nothing here: the merge was confirmed with Return,
+    /// and a second press closed the sheet and the way back with it. Close still works when clicked.
+    @ViewBuilder private var closeButton: some View {
+        if Self.closeIsDefault(pendingCopies: removedCopies.count) {
+            Button("关闭") { dismiss() }.keyboardShortcut(.defaultAction).primaryAction(.regular)
+        } else {
+            Button("关闭") { dismiss() }
+        }
+    }
+
+    static func closeIsDefault(pendingCopies: Int) -> Bool { pendingCopies == 0 }
+
+    static func announce(_ message: String) {
+        NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested,
+                             userInfo: [.announcement: message, .priority: NSAccessibilityPriorityLevel.medium.rawValue])
+    }
+
+    private var mergeTitle: String { String(localized: "合并重复的配置？") }
+
+    private var mergeMessage: String { merging.map(Self.mergeMessage) ?? "" }
+
+    /// The confirmation's text: what stays, and by name what goes.
+    static func mergeMessage(_ plan: MergePlan) -> String {
+        // Names what goes: the summary row names only the first copy, and a copy may have been renamed.
+        let names = plan.remove.map { "“\($0.name)”" }.formatted(.list(type: .and))
+        var text = String(localized: "保留“\(plan.keep.name)”，删除 \(plan.remove.count) 份没有自己修改的副本：\(names)。")
+        if !plan.keptWithChanges.isEmpty {
+            text += String(localized: "另有 \(plan.keptWithChanges.count) 份含有分流修改或无法检查，将保留。")
+        }
+        return text + String(localized: "相关对话会转到保留的配置。关闭此窗口前可以恢复删除的副本。")
     }
 }
 
 /// What the layer could not do for the profile in use.
 private struct EffectiveWarnings: View {
     let effective: EffectiveConfig
+
+    static func hasAny(_ effective: EffectiveConfig) -> Bool {
+        effective.conflictCount > 0 || !effective.emptiedGroups.isEmpty || !effective.keptNodes.isEmpty
+    }
 
     var body: some View {
         if effective.conflictCount > 0 {
@@ -217,6 +350,8 @@ struct ProfileDetailSheet: View {
     @State private var query = ""
     @State private var nodes: [String] = []
     @State private var layer = RoutingLayer()
+    @State private var routingReplayError: String?
+    var back: (() -> Void)?
 
     enum Tab: Hashable { case nodes, routing, check }
 
@@ -238,12 +373,13 @@ struct ProfileDetailSheet: View {
             case .check: ConfigCheckList(profile: profile, done: reload)
             }
             HStack {
+                if let back { Button("后退", action: back) }
                 Spacer()
-                Button("完成") { dismiss() }.keyboardShortcut(.defaultAction).primaryAction(.regular)
+                Button("关闭") { dismiss() }.keyboardShortcut(.defaultAction).primaryAction(.regular)
             }
         }
         .padding(Spacing.xl)
-        .frame(width: 560, height: 520)
+        .frame(width: 560, height: back == nil ? 520 : nil)
         .onAppear(perform: reload)
     }
 
@@ -292,7 +428,7 @@ struct ProfileDetailSheet: View {
 
     @ViewBuilder private var routingList: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
-            Picker("规则", selection: Binding(get: { layer.template ?? "" }, set: { value in
+            Picker("规则来源", selection: Binding(get: { layer.template ?? "" }, set: { value in
                 store.setTemplate(value.isEmpty ? nil : value, for: profile.id)
                 reload()
             })) {
@@ -301,10 +437,37 @@ struct ProfileDetailSheet: View {
             }
             .fixedSize()
             .neutralControl()
-            Text("模板按地区为这份配置的节点分组，并用内核自带的 GEOSITE 和 GEOIP 数据分流：AI 服务优先走美国，国内网站和苹果服务直连，广告拦截。下面的修改在模板之上重新应用。")
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Text(Self.routingNote(template: layer.template))
+                .font(.caption).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
+            if let routingReplayError {
+                StatusBadge(kind: .failure, text: routingReplayError).fixedSize(horizontal: false, vertical: true)
+            }
             edits
         }
+        .task(id: layerNeedingReplay) {
+            routingReplayError = nil
+            guard layerNeedingReplay != nil else { return }
+            do {
+                _ = try await store.effectiveTextInBackground(of: profile.id)
+            } catch {
+                if !Task.isCancelled { routingReplayError = store.message(for: error) }
+            }
+        }
+    }
+
+    /// The stopped core won't rebuild the invalidated config for us. Refresh its conflict report
+    /// while this tab is visible, and retry for the new layer if the user switches rules again.
+    private var layerNeedingReplay: RoutingLayer? {
+        guard profile.id == store.activeProfileID, store.effective == nil, layer.edits.contains(where: \.enabled) else { return nil }
+        return layer
+    }
+
+    /// What the chosen rules are, and what the edits below sit on. With the subscription's rules,
+    /// what the template would replace them with: choosing it applies at once.
+    static func routingNote(template: String?) -> String {
+        template == nil
+            ? String(localized: "下面的修改在订阅自带的规则之上重新应用。选模板会立即替换这些规则：按地区分组，AI 服务优先走美国，国内网站和苹果服务直连，拦截广告。")
+            : String(localized: "按地区分组，AI 服务优先走美国，国内网站和苹果服务直连，拦截广告。下面的修改在模板之上重新应用。")
     }
 
     @ViewBuilder private var edits: some View {
@@ -351,7 +514,7 @@ private struct EditRow: View {
                     Tag(text: edit.source.label)
                     Text(Format.relative(edit.createdAt)).font(.caption).foregroundStyle(.secondary)
                 }
-                ForEach(conflicts.uniqued(), id: \.self) { StatusBadge(kind: .warning, text: $0, compact: true) }
+                ForEach(conflicts.uniqued(), id: \.self) { StatusBadge(kind: .warning, text: $0) }
             }
             Spacer(minLength: 0)
             Button(role: .destructive) { confirmingDelete = true } label: { Image(systemName: "trash") }
@@ -499,7 +662,7 @@ private struct ConfigCheckList: View {
                 if !finding.fix.isEmpty, let title = finding.fixTitle {
                     Button(title) { fix(finding) }.secondaryAction().disabled(fixing != nil)
                 } else if let instruction = finding.aiInstruction {
-                    Button(String(localized: "问 AI")) {
+                    Button(String(localized: "问 Agent")) {
                         dismiss()
                         agent.open(asking: instruction)
                     }

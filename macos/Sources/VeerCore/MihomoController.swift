@@ -55,9 +55,11 @@ public struct MihomoController: Sendable {
 
     // MARK: Reading
 
-    public func version() async throws -> String {
+    /// The core's version. `timeout` limits a request that something other than the core may
+    /// accept and never answer.
+    public func version(timeout: TimeInterval? = nil) async throws -> String {
         struct Version: Decodable { let version: String; let meta: Bool? }
-        let version: Version = try await decode(request("GET", "/version"))
+        let version: Version = try await decode(request("GET", "/version", timeout: timeout))
         return version.version
     }
 
@@ -97,9 +99,10 @@ public struct MihomoController: Sendable {
         public var loaded: Bool { updatedAt.map { !$0.hasPrefix("0001-01-01") } ?? false }
     }
 
-    public func ruleProviders() async throws -> [String: RuleProviderState] {
+    /// `timeout` limits a request that something other than the core may accept and never answer.
+    public func ruleProviders(timeout: TimeInterval? = nil) async throws -> [String: RuleProviderState] {
         struct Providers: Decodable { let providers: [String: RuleProviderState] }
-        let providers: Providers = try await decode(request("GET", "/providers/rules"))
+        let providers: Providers = try await decode(request("GET", "/providers/rules", timeout: timeout))
         return providers.providers
     }
 
@@ -214,20 +217,64 @@ public struct MihomoController: Sendable {
     /// Picks `proxy` in the select group `group`.
     public func select(_ proxy: String, in group: String) async throws {
         let body = try JSONSerialization.data(withJSONObject: ["name": proxy])
-        try await expectNoContent(request("PUT", "/proxies/" + group, body: body))
+        try await expectNoContent(request("PUT", "/proxies/" + Self.segment(group), body: body))
+    }
+
+    /// The group's selection as the core reports it now, to confirm a switch took.
+    public func selection(of group: String) async throws -> String? {
+        let proxy: Proxy = try await decode(request("GET", "/proxies/" + Self.segment(group)))
+        return proxy.now
+    }
+
+    /// What one delay test of one node or group came to.
+    public enum DelayOutcome: Sendable, Equatable {
+        case delay(Int)
+        /// The core gave up after `timeout` (HTTP 504).
+        case timedOut
+        /// The node answered with an error, could not be dialled, or its address did not resolve (HTTP 503).
+        case failed(String)
+    }
+
+    /// Tests one node or group (`GET /proxies/{name}/delay`). The core records the result in the
+    /// node's history, as a group test does, but only for this one, so a caller can bound how many
+    /// run at once. A timeout or a failed dial is an outcome, not an error; only an unreachable
+    /// controller or an unknown name throws.
+    public func testDelay(proxy name: String, url: String = Self.delayURL, timeout: Int = 5000) async throws -> DelayOutcome {
+        let (data, response) = try await send(request("GET", "/proxies/" + Self.segment(name) + "/delay",
+                                                      query: ["url": url, "timeout": String(timeout)], timeout: TimeInterval(timeout) / 1000 + 5))
+        switch response.statusCode {
+        case 200:
+            struct Delay: Decodable { let delay: Int }
+            guard let delay = try? JSONDecoder().decode(Delay.self, from: data) else {
+                throw EditorError(String(localized: "控制器的回应无法识别，它可能不是 Mihomo。"))
+            }
+            return delay.delay > 0 ? .delay(delay.delay) : .failed("")
+        case 504, 408: return .timedOut
+        case 503:
+            struct Message: Decodable { let message: String }
+            return .failed((try? JSONDecoder().decode(Message.self, from: data))?.message ?? "")
+        default:
+            try check(response, data)
+            return .failed("")
+        }
+    }
+
+    /// One path segment, escaped once: `appendingPathComponent` would turn a `/` in a name into a
+    /// new segment, and an escaped one into `%252F`.
+    static func segment(_ name: String) -> String {
+        name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/?#%"))) ?? name
     }
 
     /// Tests every member of `group`; members that fail are missing from the result.
     public func testDelay(group: String, url: String = Self.delayURL, timeout: Int = 5000) async throws -> [String: Int] {
-        try await decode(request("GET", "/group/" + group + "/delay", query: ["url": url, "timeout": String(timeout)]))
+        try await decode(request("GET", "/group/" + Self.segment(group) + "/delay", query: ["url": url, "timeout": String(timeout)]))
     }
 
     public static let delayURL = "https://www.gstatic.com/generate_204"
 
     /// Reloads one rule set from its file (or URL): the rest of the config stays as it is.
     public func refreshRuleProvider(_ name: String) async throws {
-        let escaped = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? name
-        try await expectNoContent(request("PUT", "/providers/rules/" + escaped))
+        try await expectNoContent(request("PUT", "/providers/rules/" + Self.segment(name)))
     }
 
     /// One answer record of `/dns/query`: `data` is the address, name or text.
@@ -330,13 +377,21 @@ public struct MihomoController: Sendable {
 
     // MARK: HTTP
 
-    private func request(_ method: String, _ path: String, query: [String: String] = [:], body: Data? = nil) -> URLRequest {
-        var url = base.appendingPathComponent(String(path.dropFirst()))
+    /// `path` is already escaped: names in it go through `segment`.
+    private func request(_ method: String, _ path: String, query: [String: String] = [:], body: Data? = nil,
+                         timeout: TimeInterval? = nil) -> URLRequest {
+        var url = base
+        if var components = URLComponents(url: base, resolvingAgainstBaseURL: false) {
+            var prefix = components.percentEncodedPath
+            while prefix.hasSuffix("/") { prefix.removeLast() }
+            components.percentEncodedPath = prefix + path
+            url = components.url ?? base.appendingPathComponent(String(path.dropFirst()))
+        }
         if !query.isEmpty, var components = URLComponents(url: url, resolvingAgainstBaseURL: false) {
             components.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
             url = components.url ?? url
         }
-        var request = URLRequest(url: url, timeoutInterval: method == "GET" ? 10 : 60)
+        var request = URLRequest(url: url, timeoutInterval: timeout ?? (method == "GET" ? 10 : 60))
         request.httpMethod = method
         if let secret { request.setValue("Bearer \(secret)", forHTTPHeaderField: "Authorization") }
         if let body {

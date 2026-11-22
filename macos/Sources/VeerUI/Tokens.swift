@@ -69,6 +69,11 @@ public extension Color {
                                      highContrastLight: rgb(0.039, 0.33, 0.145), highContrastDark: rgb(0.05, 0.36, 0.16))
     /// A label or glyph on `accentFill`.
     static let onAccent = Color.white
+    /// Veer green as text on Liquid Glass (a toast's Retry or Undo). The glass lightens what it draws: the
+    /// accent rendered at 3.9:1 on a light toast, below 4.5:1 for small text. In light this is the
+    /// accent's Increase Contrast green (rendered 4.5:1 or more, measured); dark keeps the accent.
+    static let accentOnGlass = adaptive("VeerAccentOnGlass", light: rgb(0.039, 0.33, 0.145), dark: rgb(0.24, 0.80, 0.50),
+                                        highContrastLight: rgb(0.02, 0.25, 0.10), highContrastDark: rgb(0.42, 0.91, 0.64))
 
     /// Behind the selected row of a sidebar or list: the system's own, which follows the color the
     /// person chose and stays dark enough for a white label, as the plain accent color doesn't.

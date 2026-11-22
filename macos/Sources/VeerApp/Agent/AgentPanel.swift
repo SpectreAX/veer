@@ -86,9 +86,7 @@ struct AgentPanel: View {
             .accessibilityValue(agent.current?.title ?? "")
             Spacer(minLength: Spacing.sm)
             Group {
-                Button { agent.undo() } label: { Label(String(localized: "撤销修改"), systemImage: "arrow.uturn.backward") }
-                    .help(String(localized: "撤销这个对话里最近应用的修改"))
-                    .disabled(!agent.canUndo)
+                UndoChangeButton()
                 Button { agent.newThread() } label: { Label(String(localized: "新对话"), systemImage: "square.and.pencil") }
                     .help(String(localized: "新对话（⌘N）"))
                     .disabled(proxy.activeProfile == nil)

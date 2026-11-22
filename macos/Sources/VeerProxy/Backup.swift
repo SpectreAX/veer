@@ -20,7 +20,7 @@ public enum Backup {
     /// Veer's own preferences worth carrying over; window positions and Sparkle's state are not.
     public static let settingsKeys = [
         "runtimeSettings", "aiSettings", "searchSettings", "shareRuleLiterals", "restoreLastState", "showRateInMenuBar",
-        "showExitIP", "reconnectAfterChanges", "collapsedGroups", "hotKeys", "activeProfile", "proxiesShowMap", "AppleLanguages",
+        "showExitIP", "reconnectAfterChanges", "collapsedGroups", "hotKeys", "activeProfile", "proxiesShowMap", "proxiesShowApps", "AppleLanguages",
     ]
 
     static let folder = "Veer Backup"

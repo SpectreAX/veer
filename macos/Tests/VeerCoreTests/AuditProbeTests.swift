@@ -12,7 +12,7 @@ struct AuditProbeTests {
         case let .outOfScope(message): return "OUT \(message.prefix(30))"
         case let .search(queries): return "SEARCH \(queries)"
         case let .check(domains): return "CHECK \(domains)"
-        case let .runtime(actions): return "RUNTIME \(actions)"
+        case .runtime, .apps, .appRoutes: return "TOOL \(reply)"
         case let .plan(plan):
             return "PLAN " + plan.operations.map { op -> String in
                 switch op {

@@ -77,21 +77,44 @@ struct GeneralSettings: View {
 
 struct ProxySettings: View {
     @Environment(ProxyStore.self) private var store
+    @Environment(\.controlActiveState) private var activeState
     @State private var portText = ""
+    @FocusState private var portFocused: Bool
 
     var body: some View {
         @Bindable var store = store
         Form {
             Section {
-                TextField(String(localized: "代理端口"), text: $portText, prompt: Text(verbatim: "7890"))
-                    .onChange(of: portText) { _, _ in applyPort() }
+                // Each setting says what it does in its own row, as System Settings does, in place of one
+                // footnote about some of them. The second text is the row's secondary line.
+                TextField(text: $portText, prompt: Text(verbatim: "7890")) {
+                    Text(String(localized: "代理端口"))
+                    Text(String(localized: "HTTP 和 SOCKS 共用，修改后重新启动内核生效"))
+                }
+                // Saved when editing ends (Return, leaving the field, leaving the window, closing the pane),
+                // not on each key: typing 65536 passed through 6553, a valid port that was saved before the
+                // last digit. Leaving the window counts because a click on a switch does not take the focus
+                // from the field, and a core restarted from the main window would use the old port.
+                .focused($portFocused)
+                .onSubmit { endPortEdit(leaving: false) }
+                .onChange(of: portFocused) { _, focused in if !focused { endPortEdit(leaving: true) } }
+                .onChange(of: activeState) { _, state in if state != .key { endPortEdit(leaving: true) } }
                 if let problem = portProblem {
                     StatusBadge(kind: .warning, text: problem, compact: true)
                 }
-                Toggle(String(localized: "允许局域网设备连接"), isOn: $store.settings.allowLAN)
+                Toggle(isOn: $store.settings.allowLAN) {
+                    Text(String(localized: "允许局域网设备连接"))
+                    Text(String(localized: "同一网络里的设备可以把这台 Mac 当作代理"))
+                }
                 Toggle(String(localized: "IPv6"), isOn: $store.settings.ipv6)
-                Toggle(String(localized: "按进程匹配"), isOn: $store.settings.processMatching)
-                Toggle(String(localized: "禁用 QUIC"), isOn: $store.settings.disableQUIC)
+                Toggle(isOn: $store.settings.processMatching) {
+                    Text(String(localized: "按进程匹配"))
+                    Text(String(localized: "规则可以按应用分流，连接页显示进程名"))
+                }
+                Toggle(isOn: $store.settings.disableQUIC) {
+                    Text(String(localized: "禁用 QUIC"))
+                    Text(String(localized: "拒绝 UDP 443 端口的连接，浏览器改用更适合代理的 TCP"))
+                }
                 Toggle(String(localized: "切换配置、节点或分流后断开旧连接"), isOn: $store.reconnectAfterChanges)
                 Picker(String(localized: "日志级别"), selection: $store.settings.logLevel) {
                     ForEach(["error", "warning", "info", "debug"], id: \.self) { Text(verbatim: $0).tag($0) }
@@ -99,25 +122,40 @@ struct ProxySettings: View {
                 .neutralControl()
             } header: {
                 Text(String(localized: "内核"))
-            } footer: {
-                Text(String(localized: "HTTP 和 SOCKS 共用这个端口，修改端口后重新启动内核才会生效；其他设置立即生效。按进程匹配让规则能按应用分流，连接页也会显示进程名。禁用 QUIC 会拒绝 UDP 443 端口的连接，浏览器会改用更适合代理的 TCP。"))
-                    .font(.caption).foregroundStyle(.secondary)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .formStyle(.grouped)
         .onAppear { portText = String(store.settings.mixedPort) }
+        .onDisappear { endPortEdit(leaving: true) }
     }
 
-    private var portProblem: String? {
-        guard let port = Int(portText) else { return portText.isEmpty ? nil : String(localized: "端口只能是数字。") }
+    private var portProblem: String? { Self.portProblem(portText) }
+
+    /// Why `text` is not a port to save, or nil when it is one or is empty.
+    static func portProblem(_ text: String) -> String? {
+        guard let port = Int(text) else { return text.isEmpty ? nil : String(localized: "端口只能是数字。") }
         return (1024...65535).contains(port) ? nil : String(localized: "请使用 1024 到 65535 之间的端口。")
     }
 
-    private func applyPort() {
-        guard portProblem == nil, let port = Int(portText) else { return }
-        store.settings.mixedPort = port
+    /// The port `text` names when it may be saved; anything else leaves the saved port as it is.
+    static func port(from text: String) -> Int? {
+        guard portProblem(text) == nil else { return nil }
+        return Int(text)
+    }
+
+    /// What the field shows once an edit ends without a port to save. Empty text goes back to the saved
+    /// port at once, since the placeholder would read as a value; other text keeps its warning while the
+    /// field is still in use, and goes back when the edit is left.
+    static func textAfterEdit(_ text: String, saved: Int, leaving: Bool) -> String {
+        guard port(from: text) == nil, text.isEmpty || leaving else { return text }
+        return String(saved)
+    }
+
+    private func endPortEdit(leaving: Bool) {
+        if let port = Self.port(from: portText), port != store.settings.mixedPort {
+            store.settings.mixedPort = port
+        }
+        portText = Self.textAfterEdit(portText, saved: store.settings.mixedPort, leaving: leaving)
     }
 }
 

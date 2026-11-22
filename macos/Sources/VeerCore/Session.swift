@@ -142,6 +142,8 @@ public struct Turn: Codable, Identifiable, Sendable, Equatable {
         case note(String)
         /// Veer: actions on the running core and their results.
         case runtime(RuntimeRun)
+        /// Veer: a change of which apps go where, for review.
+        case appRouting(AppRoutingProposal)
     }
 
     public let id: UUID
@@ -150,6 +152,8 @@ public struct Turn: Codable, Identifiable, Sendable, Equatable {
     public let mode: Mode
     public var steps: [Step]
     public var outcome: Outcome
+    /// An operation note that records a failure or a partially applied change.
+    public var noteWarning: Bool?
     public var sentPayload: AIRequestPayload?
     public var duration: TimeInterval?
     /// The model's one-line reading of the instruction (and its assumptions).

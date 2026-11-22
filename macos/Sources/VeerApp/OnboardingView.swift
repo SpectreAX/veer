@@ -57,7 +57,7 @@ private struct AddProfileStep: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.lg) {
             StepHeader(title: String(localized: "欢迎使用 Veer"),
-                       message: String(localized: "先添加你的订阅。粘贴订阅链接，或者选择一个 Mihomo / Clash 配置文件。订阅链接只保存在这台 Mac 上。"))
+                       message: String(localized: "粘贴订阅链接，或选择 Mihomo / Clash 配置文件。链接只保存在这台 Mac 上。"))
             ImportForm()
         }
     }
@@ -72,13 +72,13 @@ private struct RoutingStep: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.lg) {
             StepHeader(title: String(localized: "选择分流方式"),
-                       message: String(localized: "分流决定哪些网站走代理、哪些直连。之后随时可以在 Agent 里用一句话调整。"))
+                       message: String(localized: "分流决定哪些网站走代理、哪些直连。之后可以在 Agent 里调整。"))
             VStack(spacing: Spacing.sm) {
                 OptionCard(title: String(localized: "保留订阅自带的规则"),
-                           detail: String(localized: "大多数订阅已经配好了常用分流，推荐直接使用。"),
+                           detail: String(localized: "推荐。大多数订阅已配好常用分流。"),
                            selected: choice == .keep) { choice = .keep }
                 OptionCard(title: String(localized: "使用内置模板"),
-                           detail: String(localized: "用 Veer 的规则模板替换订阅自带的规则：按地区分组，AI 服务优先走美国，国内网站直连。"),
+                           detail: String(localized: "替换订阅自带的规则：按地区分组，AI 服务优先走美国，国内网站直连。"),
                            selected: choice == .template) { choice = .template }
             }
             HStack {
@@ -129,7 +129,7 @@ private struct StartStep: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.lg) {
             StepHeader(title: String(localized: "开启代理"),
-                       message: String(localized: "开启后，Veer 启动内核并设置系统代理，浏览器和大多数 App 会按分流规则上网。"))
+                       message: String(localized: "开启后，Veer 启动内核并打开系统代理，浏览器和大多数 App 会按分流上网。"))
             HStack(spacing: Spacing.md) {
                 VStack(alignment: .leading, spacing: Spacing.xxs) {
                     Text(store.activeProfile?.name ?? "").font(.headline).lineLimit(1).truncationMode(.middle)

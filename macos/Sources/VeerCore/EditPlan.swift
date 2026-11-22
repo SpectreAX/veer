@@ -95,6 +95,10 @@ public enum AssistantReply: Sendable, Equatable {
     case check([String])
     /// Veer: change the running core (node, mode, delay test, connections), not the config.
     case runtime([RuntimeAction])
+    /// Veer: look up apps on this Mac and the profile's app rules (nil lists them all).
+    case apps(String?)
+    /// Veer: change which apps go where (`AppRoutingAgent.swift`).
+    case appRoutes([AppRouteRequest])
 }
 
 extension EditPlan {
@@ -122,27 +126,64 @@ extension EditPlan {
             throw EditorError(String(localized: "AI 没有返回有效的结构化计划，请换一种说法再试。"))
         }
         let understanding = (root["understanding"] as? String).map { String($0.trimmingCharacters(in: .whitespacesAndNewlines).prefix(400)) }
+        if let tool = try decodeTool(root) { return (tool, understanding) }
+        guard Set(root.keys).isSubset(of: ["schemaVersion", "operations", "understanding"]),
+              (root["schemaVersion"] as? NSNumber)?.intValue == 1,
+              let rawOperations = root["operations"] as? [Any],
+              (1...32).contains(rawOperations.count) else {
+            throw EditorError(String(localized: "AI 返回的修改计划格式无效，请重新生成。"))
+        }
+        return (.plan(EditPlan(operations: try rawOperations.map(decodeOperation))), understanding)
+    }
+
+    /// A reply that asks Veer for something (search, check, runtime, apps) or asks the user; nil for a plan.
+    static func decodeTool(_ root: [String: Any]) throws -> AssistantReply? {
+        if let reply = try decodeRequest(root) { return reply }
+        return try decodeClarification(root)
+    }
+
+    static func decodeRequest(_ root: [String: Any]) throws -> AssistantReply? {
         if let search = root["search"] {
             guard Set(root.keys).isSubset(of: ["search", "understanding"]), let request = search as? [String: Any],
                   Set(request.keys).isSubset(of: ["queries"]), let queries = request["queries"] as? [String], !queries.isEmpty else {
                 throw EditorError(String(localized: "AI 的搜索请求格式无效：search 只能包含 queries（字符串数组），且不能和计划或问题同时出现。"))
             }
-            return (.search(Array(queries.prefix(SearchQueries.maxQueries * 2))), understanding)
+            return (.search(Array(queries.prefix(SearchQueries.maxQueries * 2))))
         }
         if let check = root["check"] {
             guard Set(root.keys).isSubset(of: ["check", "understanding"]), let request = check as? [String: Any],
                   Set(request.keys).isSubset(of: ["domains"]), let domains = request["domains"] as? [String], !domains.isEmpty else {
                 throw EditorError(String(localized: "AI 的检查请求格式无效：check 只能包含 domains（字符串数组），且不能和计划或问题同时出现。"))
             }
-            return (.check(Array(domains.prefix(DomainChecker.maxDomains * 2))), understanding)
+            return (.check(Array(domains.prefix(DomainChecker.maxDomains * 2))))
         }
         if let runtime = root["runtime"] {
             guard Set(root.keys).isSubset(of: ["runtime", "understanding"]), let request = runtime as? [String: Any],
                   Set(request.keys).isSubset(of: ["actions"]), let actions = request["actions"] as? [Any], (1...8).contains(actions.count) else {
                 throw EditorError(String(localized: "AI 的运行状态操作格式无效：runtime 只能包含 actions（1 到 8 项），且不能和计划或问题同时出现。"))
             }
-            return (.runtime(try actions.map(RuntimeAction.decode)), understanding)
+            return (.runtime(try actions.map(RuntimeAction.decode)))
         }
+        if let apps = root["apps"] {
+            guard Set(root.keys).isSubset(of: ["apps", "understanding"]), let request = apps as? [String: Any],
+                  Set(request.keys).isSubset(of: ["query"]) else {
+                throw EditorError(String(localized: "AI 的应用查询格式无效：apps 只能包含 query（字符串，可省略），且不能和其他内容同时出现。"))
+            }
+            let query = (request["query"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (.apps(query.flatMap { $0.isEmpty ? nil : String($0.prefix(60)) }))
+        }
+        if let routes = root["appRoutes"] {
+            guard Set(root.keys).isSubset(of: ["appRoutes", "understanding"]), let request = routes as? [String: Any],
+                  Set(request.keys).isSubset(of: ["changes"]), let changes = request["changes"] as? [Any],
+                  (1...AppRouteRequest.maxChanges).contains(changes.count) else {
+                throw EditorError(String(localized: "AI 的应用分流格式无效：appRoutes 只能包含 changes（1 到 8 项），且不能和其他内容同时出现。"))
+            }
+            return (.appRoutes(try changes.map(AppRouteRequest.decode)))
+        }
+        return nil
+    }
+
+    static func decodeClarification(_ root: [String: Any]) throws -> AssistantReply? {
         if let clarification = root["clarification"] {
             guard Set(root.keys).isSubset(of: ["clarification", "understanding", "options"]), let question = clarification as? String,
                   !question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -162,15 +203,9 @@ extension EditPlan {
                     options.append(ClarifyOption(label: String(label.prefix(40)), prompt: String(prompt.prefix(300))))
                 }
             }
-            return (.clarification(String(question.prefix(500)), options: options), understanding)
+            return (.clarification(String(question.prefix(500)), options: options))
         }
-        guard Set(root.keys).isSubset(of: ["schemaVersion", "operations", "understanding"]),
-              (root["schemaVersion"] as? NSNumber)?.intValue == 1,
-              let rawOperations = root["operations"] as? [Any],
-              (1...32).contains(rawOperations.count) else {
-            throw EditorError(String(localized: "AI 返回的修改计划格式无效，请重新生成。"))
-        }
-        return (.plan(EditPlan(operations: try rawOperations.map(decodeOperation))), understanding)
+        return nil
     }
 
     static func decodeOperation(_ raw: Any) throws -> Operation {

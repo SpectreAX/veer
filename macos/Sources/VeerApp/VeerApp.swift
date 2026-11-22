@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import VeerCore
 
 @main
 struct VeerApp: App {
@@ -45,8 +46,8 @@ struct VeerApp: App {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    static let store = ProxyStore()
-    static let agent = AgentStore(proxy: store)
+    static let store = makeStore(ProcessInfo.processInfo.environment)
+    static let agent = makeAgent(proxy: store, ProcessInfo.processInfo.environment)
     /// Opens the main window; set by the menu bar label, which can reach `openWindow`.
     static var openMain: (() -> Void)?
 
@@ -84,8 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        // Snapshots draw sample stores. These two hold the person's real conversations and proxy
-        // state, loaded at launch all the same, and quitting must not write them back.
+        // A snapshot run's two stores are throwaway placeholders (`makeStore`); nothing to keep.
         guard !Self.isSnapshotRun(ProcessInfo.processInfo.environment) else { return }
         Self.agent.flush()
         Self.store.shutdown()
@@ -93,6 +93,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     nonisolated static func isSnapshotRun(_ environment: [String: String]) -> Bool {
         environment["VEER_SNAPSHOT_DIR"] != nil
+    }
+
+    /// The store behind the app's own scenes: the main window, the menu bar and Settings open in
+    /// a snapshot run too. There they get an empty store in a throwaway folder, with defaults of
+    /// its own, no core and a system proxy that does nothing, so the run never reads or writes the
+    /// person's profiles or preferences. The snapshots themselves draw stores of their own.
+    static func makeStore(_ environment: [String: String]) -> ProxyStore {
+        isSnapshotRun(environment) ? SnapshotRunner.sample(profiles: false) : ProxyStore()
+    }
+
+    /// As `makeStore`: in a snapshot run, no saved conversations, settings or keys are read.
+    static func makeAgent(proxy: ProxyStore, _ environment: [String: String]) -> AgentStore {
+        guard isSnapshotRun(environment) else { return AgentStore(proxy: proxy) }
+        return AgentStore(proxy: proxy, keyStore: FileKeyStore(url: proxy.paths.secrets),
+                          defaults: UserDefaults(suiteName: "veer-snapshot-agent-\(UUID().uuidString)")!, persist: false)
     }
 
     /// Closing the window keeps the proxy running in the menu bar.
@@ -125,6 +140,7 @@ struct VeerCommands: Commands {
     let agent: AgentStore
     @FocusedValue(\.sidebar) private var sidebar
     @AppStorage("proxiesShowMap") private var proxiesShowMap = false
+    @AppStorage("proxiesShowApps") private var proxiesShowApps = false
     @AppStorage("agentWindowOnTop") private var agentWindowOnTop = false
 
     var body: some Commands {
@@ -185,10 +201,20 @@ struct VeerCommands: Commands {
             Divider()
             // The top row's `GlassSwitch`, for anyone who cannot or does not Tab to it. Choosing one
             // goes to the page, so it never changes a view that isn't showing.
-            Toggle("网格", isOn: Binding(get: { !proxiesShowMap }, set: { _ in proxiesShowMap = false; store.page = .proxies }))
-                .disabled(!store.isRunning || store.groups.isEmpty)
-            Toggle("地图", isOn: Binding(get: { proxiesShowMap }, set: { _ in proxiesShowMap = true; store.page = .proxies }))
-                .disabled(!store.isRunning || store.groups.isEmpty)
+            Toggle("网格", isOn: Binding(get: { !proxiesShowMap && !proxiesShowApps }, set: { _ in
+                proxiesShowMap = false
+                proxiesShowApps = false
+                store.page = .proxies
+            }))
+            .disabled(!store.isRunning || store.groups.isEmpty)
+            Toggle("地图", isOn: Binding(get: { proxiesShowMap && !proxiesShowApps }, set: { _ in
+                proxiesShowMap = true
+                proxiesShowApps = false
+                store.page = .proxies
+            }))
+            .disabled(!store.isRunning || store.groups.isEmpty)
+            Toggle("应用分流", isOn: Binding(get: { proxiesShowApps }, set: { _ in proxiesShowApps = true; store.page = .proxies }))
+                .disabled(store.profiles.isEmpty)
             Divider()
         }
         CommandGroup(after: .windowArrangement) {
@@ -213,6 +239,8 @@ struct VeerCommands: Commands {
             .disabled(store.profiles.isEmpty)
             Button("更新订阅") { if let profile = store.activeProfile { store.update(profile.id) } }
                 .disabled(store.activeProfile?.isSubscription != true || store.activeProfile.map { store.updatingProfiles.contains($0.id) } == true)
+            Button("管理配置…") { store.manageProfiles() }
+                .disabled(store.profiles.isEmpty)
             Divider()
             Picker("模式", selection: Binding(get: { store.mode }, set: { store.setMode($0) })) {
                 ForEach(ProxyStore.Mode.allCases) { Text($0.title).tag($0) }
@@ -229,7 +257,7 @@ struct VeerCommands: Commands {
         let groups = store.groups, allCollapsed = !groups.isEmpty && groups.allSatisfy { store.collapsedGroups.contains($0.name) }
         Button(allCollapsed ? String(localized: "menu.expandGroups", defaultValue: "展开全部策略组")
                             : String(localized: "menu.collapseGroups", defaultValue: "收起全部策略组")) { store.setAllCollapsed(!allCollapsed) }
-            .disabled(store.page != .proxies || groups.isEmpty || proxiesShowMap)
+            .disabled(store.page != .proxies || groups.isEmpty || proxiesShowMap || proxiesShowApps)
         Divider()
         Button(store.connectionsPaused ? String(localized: "menu.resumeConnections", defaultValue: "继续刷新连接")
                                        : String(localized: "menu.pauseConnections", defaultValue: "暂停刷新连接")) { store.connectionsPaused.toggle() }

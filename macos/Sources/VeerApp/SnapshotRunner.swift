@@ -142,7 +142,18 @@ enum SnapshotRunner {
             }, view: AnyView(MainView())),
             Scene(name: "04-overview-running", store: { running() }, view: AnyView(MainView())),
             Scene(name: "05-proxies", store: { running(page: .proxies) }, view: AnyView(MainView())),
-            Scene(name: "06-profiles", store: { running(page: .proxies) }, view: AnyView(MainView())),
+            Scene(name: "06-profiles", size: CGSize(width: 520, height: 520), store: { sample() }, view: AnyView(ProfilesSheet())),
+            Scene(name: "06a-profiles-duplicates", size: CGSize(width: 520, height: 520), store: { profilesWithDuplicates() },
+                  view: AnyView(ProfilesSheet())),
+            Scene(name: "06b-profiles-restore", size: CGSize(width: 520, height: 520), store: { sample() },
+                  view: AnyView(ProfilesSheet(removedCopies: removedProfileSamples()))),
+            Scene(name: "06c-profiles-restore-failed", size: CGSize(width: 520, height: 520), store: { sample() },
+                  view: AnyView(ProfilesSheet(removedCopies: removedProfileSamples(count: 1),
+                                              mergeProblem: String(localized: "有 \(1) 份副本未能恢复。你可以重试。")))),
+            Scene(name: "06d-profiles-duplicates-protected", size: CGSize(width: 520, height: 520), store: { profilesWithDuplicates(protected: true) },
+                  view: AnyView(ProfilesSheet())),
+            Scene(name: "06e-profiles-restored", size: CGSize(width: 520, height: 520), store: { profilesWithDuplicates() },
+                  view: AnyView(ProfilesSheet(restoreResult: String(localized: "已恢复 \(2) 份副本。")))),
             Scene(name: "06b-tools", store: { running(page: .tools) }, view: AnyView(MainView())),
             Scene(name: "04d-overview-detecting", store: {
                 let store = running()
@@ -215,9 +226,33 @@ enum SnapshotRunner {
                 store.phase = .failed(String(localized: "策略组“\("♻️ 自动选择")”没有节点或 Provider，无法启动。请更新订阅或换用有效配置；本地配置可在“编辑成员”中修复。"), log: [])
                 return store
             }, view: AnyView(MainView())),
+            // Another program held the port picked for the core's controller: stopped at once, not after a minute.
+            Scene(name: "07h-failed-controller-port", store: { controllerPortTaken() }, view: AnyView(MainView())),
+            Scene(name: "07i-failed-controller-port-smallest", size: CGSize(width: 860, height: 560), store: { controllerPortTaken() },
+                  view: AnyView(MainView())),
             Scene(name: "08-proxies-stopped", store: {
                 let store = sample()
                 store.page = .proxies
+                return store
+            }, view: AnyView(MainView())),
+            // The core stopped on the pages that need it. Without a profile the app shows onboarding instead.
+            Scene(name: "08f-empty-stopped-connections", store: { stopped(page: .connections) }, view: AnyView(MainView())),
+            Scene(name: "08g-empty-stopped-logs-narrow", size: CGSize(width: 860, height: 560), store: { stopped(page: .logs) }, view: AnyView(MainView())),
+            Scene(name: "08h-stopped-start-proxy", store: {
+                let store = stopped(page: .connections)
+                store.systemProxyRemembered = true
+                return store
+            }, view: AnyView(MainView())),
+            Scene(name: "08i-stopped-start-tun", size: CGSize(width: 860, height: 560), store: {
+                let store = stopped(page: .logs)
+                store.agentPanel = true
+                store.settings.tun = true
+                return store
+            }, view: AnyView(MainView())),
+            Scene(name: "08j-retry-tun-and-proxy", size: CGSize(width: 1320, height: 820), store: {
+                let store = failed(page: .requests)
+                store.settings.tun = true
+                store.systemProxyRemembered = true
                 return store
             }, view: AnyView(MainView())),
             Scene(name: "09-agent-setup", store: { running(page: .agent) }, view: AnyView(MainView())),
@@ -289,6 +324,31 @@ enum SnapshotRunner {
                 agent.settings.provider = .ollama
                 sampleThread(agent, status: .written)
             }),
+            // The meta line open: the steps, their note, then the restatement folded under them.
+            Scene(name: "09d-agent-applied-meta-open", store: { running(page: .agent) },
+                  view: AnyView(MainView().environment(\.agentMetaStartsOpen, true)), agent: { agent in
+                      agent.settings.provider = .ollama
+                      sampleThread(agent, status: .written)
+                  }),
+            Scene(name: "09d-agent-applied-meta-open-narrow", size: CGSize(width: 860, height: 560), store: { running(page: .agent) },
+                  view: AnyView(MainView().environment(\.agentMetaStartsOpen, true)), agent: longMetaThread),
+            Scene(name: "09d-agent-applied-meta-closed-narrow", size: CGSize(width: 860, height: 560), store: { running(page: .agent) },
+                  view: AnyView(MainView()), agent: longMetaThread),
+            Scene(name: "09e-agent-undoing", size: CGSize(width: 860, height: 560), store: { running(page: .agent) }, view: AnyView(MainView()),
+                  agent: { agent in
+                      sampleThread(agent, status: .undone)
+                      agent.reversingTurnID = agent.current?.turns.last?.id
+                      agent.reversal = .undoing
+                  }),
+            Scene(name: "09f-agent-undo-failed", store: { running(page: .agent) }, view: AnyView(MainView()), agent: failedReversal),
+            Scene(name: "09f-agent-undo-failed-narrow", size: CGSize(width: 860, height: 560), store: { running(page: .agent) },
+                  view: AnyView(MainView()), agent: failedReversal),
+            Scene(name: "09f-agent-undo-failed-panel", size: CGSize(width: 1440, height: 900), store: { running(panel: true) },
+                  view: AnyView(MainView()), agent: failedReversal),
+            Scene(name: "09g-agent-undo-profile-removed", size: CGSize(width: 860, height: 560), store: { running(page: .agent) },
+                  view: AnyView(MainView()), agent: removedRuntimeProfile),
+            Scene(name: "09h-agent-undo-failed-away", store: { running() }, view: AnyView(MainView()), agent: failedReversal),
+            Scene(name: "09h-agent-undo-failed-detached", store: { detached() }, view: AnyView(MainView()), agent: failedReversal),
             Scene(name: "24-panel-overview", store: { running(panel: true) }, view: AnyView(MainView()), agent: { agent in
                 agent.settings.provider = .ollama
                 sampleThread(agent, status: .pending)
@@ -480,7 +540,14 @@ enum SnapshotRunner {
                   view: AnyView(SampleProfileSheet(tab: .routing))),
             Scene(name: "13-settings-general", size: CGSize(width: 520, height: 360), store: { sample() }, view: AnyView(GeneralSettings())),
             Scene(name: "14b-settings-core", size: CGSize(width: 560, height: 300), store: { sample() }, view: AnyView(CoreSettings())),
-            Scene(name: "14-settings-proxy", size: CGSize(width: 520, height: 300), store: { sample() }, view: AnyView(ProxySettings())),
+            // The Settings window is 560 wide; tall enough for the whole pane.
+            Scene(name: "14-settings-proxy", size: CGSize(width: 560, height: 680), store: { sample() }, view: AnyView(ProxySettings())),
+            // The validation state: a port below 1024 shows its warning under the port row.
+            Scene(name: "14c-settings-proxy-invalid-port", size: CGSize(width: 560, height: 680), store: {
+                let store = sample()
+                store.settings.mixedPort = 80
+                return store
+            }, view: AnyView(ProxySettings())),
             Scene(name: "15-overview-tun", store: { running(tun: true) }, view: AnyView(MainView())),
             Scene(name: "18-proxies-map", size: CGSize(width: 900, height: 520), store: { running(page: .proxies) }, view: AnyView(NodeMapView())),
             Scene(name: "18b-proxies-map-page", store: { running(page: .proxies) }, view: AnyView(NodeMapView().frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.surface))),
@@ -529,16 +596,59 @@ enum SnapshotRunner {
             }, view: AnyView(MainView().defaultAppStorage(mapDefaults()))),
             Scene(name: "18h-proxies-map-window-wide", size: CGSize(width: 1440, height: 900), store: { running(page: .proxies) },
                   view: AnyView(MainView().defaultAppStorage(mapDefaults()))),
+            Scene(name: "18i-proxies-map-filtered-region", size: CGSize(width: 360, height: 540), store: { running(page: .proxies) },
+                  view: AnyView(NodeMapView(query: "香港").background(Color.surface))),
+            Scene(name: "18j-proxies-map-testing", size: CGSize(width: 360, height: 540), store: {
+                let store = running(page: .proxies)
+                store.testingScopes.insert(.region("JP"))
+                for member in store.groups.flatMap(\.members) where store.region(of: member.name) == "JP" { store.delays[member.name] = .testing }
+                return store
+            }, view: AnyView(NodeMapView().background(Color.surface))),
+            Scene(name: "18k-proxies-map-no-results", size: CGSize(width: 360, height: 540), store: { running(page: .proxies) },
+                  view: AnyView(NodeMapView(query: "Relay K9", clearSearch: {}).background(Color.surface))),
+            // A search that finds nothing, in the window: the grid, the map, and the map beside the panel.
+            Scene(name: "18m-proxies-grid-no-results", store: { running(page: .proxies) },
+                  view: AnyView(MainView().environment(\.proxiesStartingQuery, "Relay K9"))),
+            Scene(name: "18n-proxies-map-window-no-results", store: { running(page: .proxies) },
+                  view: AnyView(MainView().defaultAppStorage(mapDefaults()).environment(\.proxiesStartingQuery, "Relay K9"))),
+            Scene(name: "18o-proxies-map-no-results-smallest", size: CGSize(width: 860, height: 560), store: {
+                let store = running(page: .proxies)
+                store.agentPanel = true
+                return store
+            }, view: AnyView(MainView().defaultAppStorage(mapDefaults()).environment(\.proxiesStartingQuery, "Relay K9"))),
+            Scene(name: "18l-proxies-map-test-failed", size: CGSize(width: 360, height: 540), store: {
+                let store = running(page: .proxies)
+                for member in store.groups.flatMap(\.members) where store.region(of: member.name) == "JP" {
+                    store.delays[member.name] = .failed("DNS lookup")
+                }
+                return store
+            }, view: AnyView(NodeMapView().background(Color.surface))),
             Scene(name: "04j-overview-wide", size: CGSize(width: 1440, height: 900), store: { running() }, view: AnyView(MainView())),
             Scene(name: "19-profiles-update-failed", store: {
                 let store = running(page: .proxies)
-                if var first = store.profiles.first {
-                    first.updateError = String(localized: "无法下载订阅：网络错误或超时。")
-                    first.usage?.expire = .now.addingTimeInterval(2 * 86_400)
-                    store.profiles[0] = first
+                if let first = store.profiles.first {
+                    let reason = String(localized: "无法下载订阅：网络错误或超时。")
+                    store.activity = Activity(profileID: first.id, name: first.name, kind: .failed(reason))
                 }
                 return store
             }, view: AnyView(MainView())),
+            Scene(name: "19a-profiles-sheet-update-failed", size: CGSize(width: 520, height: 520), store: {
+                let store = sample()
+                if let first = store.profiles.first, let link = URL(string: "https://subscription.example.invalid/config") {
+                    let copy = Profile(name: "东京备用订阅 Tokyo Backup", isSubscription: true, nodeCount: 5)
+                    try? store.profileStore.save(copy, text: sampleConfig)
+                    try? store.profileStore.setSubscriptionURL(link, for: first.id)
+                    try? store.profileStore.setSubscriptionURL(link, for: copy.id)
+                    store.profiles = store.profileStore.loadAll()
+                    let reason = String(localized: "无法下载订阅：网络错误或超时。")
+                    store.activity = Activity(profileID: first.id, name: first.name, kind: .failed(reason))
+                }
+                return store
+            }, view: AnyView(ProfilesSheet())),
+            // The Agent's toast with Undo, over a page with the Agent hidden: green text on glass (`accentOnGlass`).
+            Scene(name: "19b-toast-undo", store: { running(page: .overview) }, view: AnyView(MainView()), agent: { agent in
+                agent.toast = Toast(message: String(localized: "已应用 \(2) 项修改，内核已生效"), undoable: true)
+            }),
             Scene(name: "21-profile-check", size: CGSize(width: 560, height: 520), store: { sample() },
                   view: AnyView(SampleProfileSheet(tab: .check))),
             Scene(name: "22-settings-shortcuts", size: CGSize(width: 560, height: 320), store: { sample() }, view: AnyView(HotKeySettings())),
@@ -546,6 +656,18 @@ enum SnapshotRunner {
             Scene(name: "20-profile-template", size: CGSize(width: 560, height: 520), store: {
                 let store = sample()
                 if let id = store.profiles.first?.id { store.setTemplate(RuleTemplate.standard, for: id) }
+                return store
+            }, view: AnyView(SampleProfileSheet(tab: .routing))),
+            // The failure state: an edit whose exit the refreshed subscription no longer has.
+            Scene(name: "20b-profile-routing-conflict", size: CGSize(width: 560, height: 520), store: { routingConflictStore(template: false) },
+                  view: AnyView(SampleProfileSheet(tab: .routing))),
+            Scene(name: "20c-profile-template-conflict", size: CGSize(width: 560, height: 520), store: { routingConflictStore(template: true) },
+                  view: AnyView(SampleProfileSheet(tab: .routing))),
+            // Just after switching the rules with the core stopped: no config built yet, so the tab
+            // replays the edits itself and the lost exit's warning comes back.
+            Scene(name: "20d-profile-template-replay-stopped", size: CGSize(width: 560, height: 520), store: {
+                let store = routingConflictStore(template: true)
+                store.effective = nil
                 return store
             }, view: AnyView(SampleProfileSheet(tab: .routing))),
             Scene(name: "16-settings-tun-approval", size: CGSize(width: 560, height: 460), store: {
@@ -561,7 +683,7 @@ enum SnapshotRunner {
                 store.helperProbe = { .ready }
                 return store
             }, view: AnyView(TUNSettings())),
-        ] + sidebarScenes()
+        ] + sidebarScenes() + appRoutingScenes()
     }
 
     static func sampleConnections() -> [ConnectionRow] {
@@ -618,7 +740,31 @@ enum SnapshotRunner {
                                                          note: nil, sets: [], address: nil)]
     }
 
-    static func sampleThread(_ agent: AgentStore, status: Turn.ProposalStatus) {
+    private static func failedReversal(_ agent: AgentStore) {
+        sampleThread(agent, status: .undone)
+        guard let id = agent.selectedID else { return }
+        let reason = String(localized: "无法下载订阅：网络错误或超时。")
+        let message = String(localized: "撤销已保存，但内核没有重新载入：\(reason)")
+        agent.finishReversal(message, redo: false, sessionID: id, warning: true)
+    }
+
+    private static func removedRuntimeProfile(_ agent: AgentStore) {
+        sampleThread(agent, status: .undone)
+        var run = RuntimeRun(steps: [.mode("direct")], profileID: UUID())
+        run.items[0].state = .done
+        run.items[0].undo = .mode("rule")
+        run.items[0].result = String(localized: "已切换到\(ProxyStore.Mode.direct.title)模式")
+        let turn = Turn(prompt: "切换到直连模式", mode: .local, steps: [], outcome: .runtime(run))
+        agent.current?.turns = [turn]
+    }
+
+    private static func longMetaThread(_ agent: AgentStore) {
+        agent.settings.provider = .ollama
+        let understanding = String(localized: "把 Netflix 相关域名的流量交给日本节点。保留现有规则的顺序和其他服务的分流，让本地设备仍可访问。如果之后切换了出口，先检查已保存的规则再继续修改。")
+        sampleThread(agent, status: .written, understanding: understanding)
+    }
+
+    static func sampleThread(_ agent: AgentStore, status: Turn.ProposalStatus, understanding: String = "把 Netflix 的流量交给日本节点") {
         guard let profile = agent.proxy.activeProfile, let text = try? agent.proxy.effectiveText(of: profile.id),
               let document = try? ConfigDocument.parse(text), let target = document.target(named: "🇯🇵 日本 大阪 02") else { return }
         let plan = EditPlan(operations: [.route(matchType: "DOMAIN-SUFFIX", match: "netflix.com", targetId: target.id),
@@ -631,7 +777,7 @@ enum SnapshotRunner {
         var turn = Turn(prompt: "Netflix 走日本", mode: .ai(model: "qwen3:14b"), steps: steps, outcome: .proposal(.init(
             plan: plan, items: result.items, accepted: Set(result.items.map(\.id)), baseDraft: text, candidate: result.candidate,
             validation: ValidationResult(status: .passed, message: String(localized: "Mihomo 校验通过")), status: status)))
-        turn.understanding = "把 Netflix 的流量交给日本节点"
+        turn.understanding = understanding
         turn.duration = 3.2
         session.turns = [turn]
         agent.sessions = [session]
@@ -647,6 +793,28 @@ enum SnapshotRunner {
             guard let query = RouteQuery(domain, port: 443, network: .tcp) else { return nil }
             return DomainChecker.record(domain, trace: RouteTracer.trace(query, rules: rules, data: RouteData()), sets: sets)
         }
+    }
+
+    /// The sample profile in use, with one enabled edit to a group the profile no longer has and one
+    /// that still applies, as after a subscription refresh dropped “美国专线”.
+    static func routingConflictStore(template: Bool) -> ProxyStore {
+        let store = sample()
+        guard let id = store.profiles.first?.id else { return store }
+        store.activeProfileID = id
+        let base = sampleConfig.replacingOccurrences(of: "proxy-groups:\n", with: "proxy-groups:\n  - {name: 美国专线, type: select, proxies: [🇺🇸 美国 洛杉矶 01]}\n")
+        func edit(_ prompt: String, _ target: String, _ match: String, _ base: String) -> RoutingLayer.Edit? {
+            guard let document = try? ConfigDocument.parse(base), let targetID = document.target(named: target)?.id else { return nil }
+            let plan = EditPlan(operations: [.route(matchType: "DOMAIN-SUFFIX", match: match, targetId: targetID)])
+            guard let result = try? PlanApplier.apply(plan, to: document) else { return nil }
+            return RoutingLayer.Edit(createdAt: .now.addingTimeInterval(-86400), source: .agent, prompt: prompt, plan: plan,
+                                     accepted: [0], items: result.items, base: base)
+        }
+        var layer = RoutingLayer(edits: [edit("Hulu 走美国专线", "美国专线", "hulu.com", base),
+                                         edit("Netflix 走节点选择", "节点选择", "netflix.com", sampleConfig)].compactMap { $0 })
+        if template { layer.template = RuleTemplate.standard }
+        try? store.routingStore.save(layer, for: id)
+        store.effective = try? layer.apply(to: sampleConfig)
+        return store
     }
 
     /// The node sheet for the sample's first profile.
@@ -683,6 +851,26 @@ enum SnapshotRunner {
       - MATCH,节点选择
     """)
 
+    private static func profilesWithDuplicates(protected: Bool = false) -> ProxyStore {
+        let store = sample()
+        guard let original = store.activeProfile,
+              let link = URL(string: "https://subscription.example.invalid/tokyo") else { return store }
+        let backup = Profile(name: "东京备用订阅 Tokyo Backup", isSubscription: true, nodeCount: 5)
+        try? store.profileStore.save(backup, text: sampleConfig)
+        try? store.profileStore.setSubscriptionURL(link, for: original.id)
+        try? store.profileStore.setSubscriptionURL(link, for: backup.id)
+        if protected { try? store.routingStore.save(RoutingLayer(excludedNodes: ["🇸🇬 新加坡 01"]), for: backup.id) }
+        store.profiles = store.profileStore.loadAll()
+        return store
+    }
+
+    private static func removedProfileSamples(count: Int = 2) -> [RemovedProfile] {
+        ["Tokyo Backup", "Sydney Backup"].prefix(count).map { name in
+            RemovedProfile(profile: Profile(name: name, isSubscription: true, nodeCount: 5), text: sampleConfig,
+                           link: URL(string: "https://subscription.example.invalid/config")!)
+        }
+    }
+
     static func sample(profiles: Bool = true, config: String = sampleConfig) -> ProxyStore {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("veer-snapshot-\(UUID().uuidString)")
         let defaults = UserDefaults(suiteName: "veer-snapshot-\(UUID().uuidString)")!
@@ -714,9 +902,24 @@ enum SnapshotRunner {
         return store
     }
 
+    static func controllerPortTaken() -> ProxyStore {
+        let store = sample()
+        store.phase = .failed(ProxyStore.message(for: .controller(31377)), log: [
+            "time=\"2026-10-29T10:00:00+08:00\" level=info msg=\"Mixed(http+socks) proxy listening at: 127.0.0.1:7890\"",
+            "time=\"2026-10-29T10:00:00+08:00\" level=error msg=\"External controller listen error: listen tcp 127.0.0.1:31377: bind: address already in use\"",
+        ])
+        return store
+    }
+
     static func detached(page: Page = .overview) -> ProxyStore {
         let store = running(page: page)
         store.agentPresentation = .detached
+        return store
+    }
+
+    static func stopped(page: Page) -> ProxyStore {
+        let store = sample()
+        store.page = page
         return store
     }
 
@@ -829,5 +1032,134 @@ enum SnapshotRunner {
         guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
         view.cacheDisplay(in: view.bounds, to: bitmap)
         try? bitmap.representation(using: .png, properties: [:])?.write(to: url)
+    }
+}
+
+// App Routing scenes: sample data, in this file so it stays out of the localization scan.
+extension SnapshotRunner {
+    /// App Routing: the view at each window size, its empty and not-in-effect states, the app picker,
+    /// a connection that hit an app rule, and the Agent's proposal card. Apps are read from this Mac's
+    /// own folders (read-only), so icons and helpers are real; one rule points at an app that is gone.
+    static func appRoutingScenes() -> [Scene] {
+        func window() -> AnyView { AnyView(MainView().defaultAppStorage(appRoutingDefaults())) }
+        return [
+            Scene(name: "40-app-routing", store: { appRoutingStore() }, view: window()),
+            Scene(name: "40b-app-routing-smallest", size: CGSize(width: 860, height: 560), store: { appRoutingStore() },
+                  view: window()),
+            Scene(name: "40c-app-routing-wide", size: CGSize(width: 1440, height: 900), store: { appRoutingStore() },
+                  view: window()),
+            Scene(name: "40d-app-routing-panel", store: { appRoutingStore(panel: true) }, view: window()),
+            // The narrowest page: the smallest window beside the panel, where each row takes two lines.
+            Scene(name: "40h-app-routing-panel-smallest", size: CGSize(width: 860, height: 560), store: { appRoutingStore(panel: true) },
+                  view: window()),
+            Scene(name: "40e-app-routing-empty", store: { appRoutingStore(rules: false) }, view: window()),
+            Scene(name: "40f-app-routing-global", store: {
+                let store = appRoutingStore()
+                store.mode = .global
+                return store
+            }, view: window()),
+            Scene(name: "40g-app-routing-stopped", store: { appRoutingStore(running: false) }, view: window()),
+            Scene(name: "41-app-picker", size: CGSize(width: 560, height: 560), store: {
+                let store = appRoutingStore()
+                store.loadApps()
+                return store
+            }, view: AnyView(AppPickerSheet(existing: [], targets: (["节点选择", "自动选择", "Netflix"], ["🇭🇰 香港 01"])) { _, _ in })),
+            Scene(name: "42-connections-app-rule", store: {
+                let store = appRoutingStore(page: .connections)
+                store.connectionsPaused = true
+                store.connections = sampleAppConnections()
+                return store
+            }, view: AnyView(ConnectionsView(selection: ["app-0"]))),
+            Scene(name: "43-agent-app-proposal", store: { appRoutingStore(page: .agent) }, view: AnyView(MainView()), agent: appProposalThread),
+        ]
+    }
+
+    static func appRoutingDefaults() -> UserDefaults {
+        let defaults = UserDefaults(suiteName: "veer-snapshot-\(UUID().uuidString)")!
+        defaults.set(true, forKey: "proxiesShowApps")
+        return defaults
+    }
+
+    /// Apps found on this Mac where they exist, else stand-ins at the usual paths.
+    static func sampleApps() -> [AppIdentity] {
+        let names = ["Google Chrome", "Claude", "Safari", "Ghostty"]
+        var apps = names.map { name in
+            AppDiscovery.identity(ofBundle: URL(fileURLWithPath: "/Applications/\(name).app"))
+                ?? AppIdentity(kind: .bundle, name: name, bundlePath: "/Applications/\(name).app",
+                               executablePath: "/Applications/\(name).app/Contents/MacOS/\(name)")
+        }
+        apps.append(AppIdentity(kind: .executable, name: "curl", executablePath: "/usr/bin/curl", flavor: .commandLine))
+        apps.append(AppIdentity(kind: .bundle, name: "旧版聊天工具", bundleID: "com.example.oldchat", bundlePath: "/Applications/OldChat.app",
+                                executablePath: "/Applications/OldChat.app/Contents/MacOS/OldChat", flavor: .electron))
+        return apps
+    }
+
+    static func appRoutingStore(page: Page = .proxies, rules: Bool = true, running: Bool = true, panel: Bool = false) -> ProxyStore {
+        let store = running ? self.running(page: page, panel: panel) : sample()
+        store.page = page
+        guard rules, let id = store.activeProfileID else { return store }
+        let apps = sampleApps()
+        var layer = store.routingStore.load(id)
+        layer.appRules = [
+            AppRule(app: apps[0], target: .policy("节点选择"),
+                    domains: [.init(matchType: "DOMAIN-SUFFIX", value: "bank.example.cn", target: .direct)]),
+            AppRule(app: apps[1], target: .policy("🇯🇵 日本 大阪 02")),
+            AppRule(app: apps[2], target: .policy("🇺🇸 美国 洛杉矶 01")),
+            AppRule(app: apps[4], target: .direct),
+            AppRule(app: apps[3], target: .reject, enabled: false),
+            AppRule(app: apps[5], target: .policy("已删除的策略组")),
+        ]
+        try? store.routingStore.save(layer, for: id)
+        // As the core's start does: the route map reads which app rule a connection hit from it.
+        _ = try? store.effectiveText(of: id)
+        store.appRoutingFocus = apps[0].id
+        store.runningApps = [apps[0], apps[1]]
+        return store
+    }
+
+    static func sampleAppConnections() -> [ConnectionRow] {
+        typealias Connection = MihomoController.Connection
+        let chrome = sampleApps()[0], helper = chrome.helpers.first?.path ?? chrome.executablePath
+        struct Sample {
+            let host: String, process: String, path: String, rule: String, payload: String, chain: [String]
+        }
+        let rows = [
+            Sample(host: "www.youtube.com", process: URL(fileURLWithPath: helper).lastPathComponent, path: helper, rule: "ProcessPathWildcard",
+                   payload: chrome.root + "/*", chain: ["🇯🇵 日本 东京 IPLC 01 | 0.5x 高速稳定线路", "节点选择"]),
+            Sample(host: "updates.example.org", process: "curl", path: "/usr/bin/curl", rule: "ProcessPath", payload: "/usr/bin/curl", chain: ["DIRECT"]),
+            Sample(host: "www.apple.com", process: "com.apple.WebKit.Networking",
+                   path: "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.Networking.xpc/Contents/MacOS/"
+                       + "com.apple.WebKit.Networking", rule: "DomainSuffix", payload: "apple.com", chain: ["DIRECT"]),
+        ]
+        return rows.enumerated().map { index, row in
+            let connection = Connection(id: "app-\(index)", metadata: .init(network: "tcp", host: row.host, destinationPort: "443",
+                                                                           process: row.process, processPath: row.path),
+                                        chains: row.chain, rule: row.rule, rulePayload: row.payload, upload: 4_000, download: 210_000,
+                                        start: .now.addingTimeInterval(-Double(30 * (index + 1))))
+            return ConnectionRow(connection, uploadRate: 200, downloadRate: 8_000)
+        } + sampleConnections()
+    }
+
+    /// "Chrome 走日本，curl 直连": the Agent's proposal, pending, checked by Mihomo.
+    static func appProposalThread(_ agent: AgentStore) {
+        agent.settings.provider = .ollama
+        guard let profile = agent.proxy.activeProfile, let text = try? agent.proxy.effectiveText(of: profile.id) else { return }
+        let apps = sampleApps()
+        var session = Session(title: "Chrome 走日本，curl 直连", source: .pasted, text: text)
+        session.profileID = profile.id
+        session.exitsConfirmed = true
+        let steps = EditorEngine.stepTitles.enumerated().map { Turn.Step(id: $0.offset, title: $0.element, state: .done) }
+        var proposal = AppRoutingProposal(changes: [AppRouteChange(app: apps[0], target: .policy("🇯🇵 日本 大阪 02")),
+                                                    AppRouteChange(app: apps[2], target: .direct),
+                                                    AppRouteChange(app: apps[4], target: nil, remove: true)],
+                                          profileID: profile.id)
+        proposal.validation = ValidationResult(status: .passed, message: "")
+        var turn = Turn(prompt: "Chrome 走大阪节点，Safari 直连，curl 的规则删掉", mode: .ai(model: "qwen3:14b"), steps: steps,
+                        outcome: .appRouting(proposal))
+        turn.understanding = "按应用分流：Chrome 走日本大阪节点，Safari 直连，删除 curl 的应用规则。"
+        turn.duration = 2.4
+        session.turns = [turn]
+        agent.sessions = [session]
+        agent.selectedID = session.id
     }
 }

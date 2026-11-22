@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import VeerCore
 
 enum Format {
     /// Bytes per second as `1.2 MB/s`, with the same English units in every language (the
@@ -26,6 +27,33 @@ enum Format {
         if seconds < 60 { return "\(seconds)s" }
         if seconds < 3600 { return "\(seconds / 60)m" }
         return "\(seconds / 3600)h \(seconds % 3600 / 60)m"
+    }
+
+    /// A node's delay state in words: never a bare "timeout" for a test that did not run.
+    static func delay(_ state: NodeDelay) -> String {
+        switch state {
+        case .untested, .cancelled: "—"
+        case .testing: String(localized: "测速中…")
+        case .coreNotReady: String(localized: "内核未就绪")
+        case .measured(let value): "\(value) ms"
+        case .timedOut: String(localized: "超时")
+        case .failed(let reason) where Self.isDNSFailure(reason): String(localized: "域名解析失败")
+        case .failed: String(localized: "无法连接")
+        }
+    }
+
+    static func delayKind(_ state: NodeDelay) -> StatusKind {
+        switch state {
+        case .untested, .cancelled, .testing, .coreNotReady: .neutral
+        case .measured(let value): delayKind(value)
+        case .timedOut, .failed: .failure
+        }
+    }
+
+    /// The core's words for a name that did not resolve.
+    static func isDNSFailure(_ reason: String) -> Bool {
+        let text = reason.lowercased()
+        return ["lookup", "no such host", "dns", "resolve"].contains { text.contains($0) }
     }
 
     static func delay(_ delay: Int?) -> String {

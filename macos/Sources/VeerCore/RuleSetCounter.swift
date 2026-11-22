@@ -17,6 +17,8 @@ public struct RuleSetCounter: Sendable {
     }
 
     let binary: URL
+    /// Picks the counting core's controller port; tests hold a port and hand it over.
+    var pickPort: @Sendable () -> Int? = { try? RuleSetCounter.freePort() }
 
     public init(binary: URL) { self.binary = binary }
 
@@ -51,7 +53,7 @@ public struct RuleSetCounter: Sendable {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("veer-rulesets-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         defer { try? FileManager.default.removeItem(at: directory) }
-        let port = try Self.freePort()
+        guard let port = pickPort() else { throw EditorError(String(localized: "无法为内置 Mihomo 分配本机端口。")) }
         let secret = UUID().uuidString
         let config: Node = .mapping(.init([
             (Node(stringLiteral: "external-controller"), Node(stringLiteral: "127.0.0.1:\(port)")),
@@ -84,7 +86,13 @@ public struct RuleSetCounter: Sendable {
         var counts: [String: Count] = [:]
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline, process.isRunning {
-            if let states = try? await controller.ruleProviders() {
+            // Another program on the controller port: the core runs on without a controller, and
+            // waiting would only end in a misleading download timeout. Counts already made stay.
+            if Ports.listenFailed(on: port, in: output.string.split(separator: "\n")) {
+                return Self.failing(names, in: counts, String(localized: "内置 Mihomo 的控制端口 \(String(port)) 被其他程序占用，未能计数。请重试。"))
+            }
+            // A short limit, because a program holding the port may accept and never answer.
+            if let states = try? await controller.ruleProviders(timeout: 2) {
                 for name in names where counts[name] == nil {
                     if let state = states[name], state.loaded { counts[name] = .entries(state.ruleCount) }
                     else if output.string.contains("initial rule provider \(name) error") { counts[name] = .failed("下载或解析失败") }
@@ -93,26 +101,21 @@ public struct RuleSetCounter: Sendable {
             }
             try await Task.sleep(for: .milliseconds(200))
         }
-        let reason = process.isRunning ? "超过 \(Int(timeout)) 秒仍未下载完成" : "内置 Mihomo 意外退出"
+        return Self.failing(names, in: counts, process.isRunning ? "超过 \(Int(timeout)) 秒仍未下载完成" : "内置 Mihomo 意外退出")
+    }
+
+    /// `counts` with every name not yet counted failed for `reason`.
+    private static func failing(_ names: [String], in counts: [String: Count], _ reason: String) -> [String: Count] {
+        var counts = counts
         for name in names where counts[name] == nil { counts[name] = .failed(reason) }
         return counts
     }
 
-    /// A free TCP port on 127.0.0.1, found by binding to port 0.
+    /// A free TCP port on 127.0.0.1 for the counting core's controller, outside the ephemeral range
+    /// (see `Ports.free()`), so another socket can't take it before the core binds it.
     static func freePort() throws -> Int {
-        let socket = Darwin.socket(AF_INET, SOCK_STREAM, 0)
-        guard socket >= 0 else { throw EditorError(String(localized: "无法为内置 Mihomo 分配本机端口。")) }
-        defer { close(socket) }
-        var address = sockaddr_in()
-        address.sin_family = sa_family_t(AF_INET)
-        address.sin_addr.s_addr = inet_addr("127.0.0.1")
-        address.sin_port = 0
-        var length = socklen_t(MemoryLayout<sockaddr_in>.size)
-        let bound = withUnsafeMutablePointer(to: &address) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(socket, $0, length) == 0 && getsockname(socket, $0, &length) == 0 }
-        }
-        guard bound else { throw EditorError(String(localized: "无法为内置 Mihomo 分配本机端口。")) }
-        return Int(UInt16(bigEndian: address.sin_port))
+        guard let port = Ports.free() else { throw EditorError(String(localized: "无法为内置 Mihomo 分配本机端口。")) }
+        return port
     }
 }
 #endif

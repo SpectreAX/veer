@@ -69,7 +69,7 @@ extension AgentStore {
         if next == .detached { detach() } else { proxy.agentPresentation = next }
     }
 
-    /// Anything that asks for the Agent, such as ⌘N or "Ask AI": its window if that is where it is or
+    /// Anything that asks for the Agent, such as ⌘N or "Ask Agent": its window if that is where it is or
     /// was last, else the panel. On the Agent page the page is the Agent.
     func showAgent() {
         switch proxy.agentPresentation {

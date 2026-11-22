@@ -127,10 +127,12 @@ public struct RuntimeRun: Codable, Sendable, Equatable {
 
     public var items: [Item]
     public var undone: Bool
+    public var profileID: UUID?
 
-    public init(steps: [RuntimeStep]) {
+    public init(steps: [RuntimeStep], profileID: UUID? = nil) {
         items = steps.enumerated().map { Item(id: $0.offset, step: $0.element) }
         undone = false
+        self.profileID = profileID
     }
 
     public var finished: Bool { items.allSatisfy { $0.state == .done || $0.state == .failed } }

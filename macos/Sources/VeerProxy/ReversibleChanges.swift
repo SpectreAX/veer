@@ -18,6 +18,8 @@ import Foundation
         let id: UUID
         let group: UUID
         let name: String
+        /// A card can use the native stack only if this action occupies the whole group.
+        let independent: Bool
     }
 
     private struct Stacks {
@@ -33,19 +35,26 @@ import Foundation
     /// opposite when redoing. `change` returns false when there is no way back from that, which ends the chain.
     public func made(_ name: String, id: UUID, group: UUID, undoTo state: Bool, change: @escaping @MainActor (Bool) -> Bool) {
         guard let manager else { return }
-        let entry = Entry(id: id, group: group, name: name)
-        let target = targets[id] ?? Target()
-        targets[id] = target
-        // A group of its own, closed now: forgetting a change still in the group the manager opens by
-        // itself would leave that group behind, empty, as a Cmd-Z that does nothing.
+        let entry = Entry(id: id, group: group, name: name, independent: manager.groupingLevel == 0)
+        register(entry, to: state, change: change, on: manager)
+    }
+
+    private func register(_ entry: Entry, to state: Bool, change: @escaping @MainActor (Bool) -> Bool, on manager: UndoManager) {
+        let target = targets[entry.id] ?? Target()
+        targets[entry.id] = target
+        // Avoid an implicit parent around this registration. Preserve any group the editor already
+        // opened, and restore event grouping immediately so text editing still groups normally.
+        let suspendEventGrouping = manager.groupsByEvent && manager.groupingLevel == 0
+        if suspendEventGrouping { manager.groupsByEvent = false }
         manager.beginUndoGrouping()
         manager.registerUndo(withTarget: target) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.run(entry, to: state, change: change)
             }
         }
-        manager.setActionName(name)
+        manager.setActionName(entry.name)
         manager.endUndoGrouping()
+        if suspendEventGrouping { manager.groupsByEvent = true }
         if manager.isUndoing {
             entries.redo.append(entry)
         } else {
@@ -58,23 +67,23 @@ import Foundation
         guard let manager else { return }
         if manager.isUndoing { entries.undo.removeLast() } else { entries.redo.removeLast() }
         if change(state) {
-            made(entry.name, id: entry.id, group: entry.group, undoTo: !state, change: change)
+            register(entry, to: !state, change: change, on: manager)
         } else if !entries.undo.contains(where: { $0.id == entry.id }), !entries.redo.contains(where: { $0.id == entry.id }) {
             targets[entry.id] = nil
         }
     }
 
     /// Undoes change `id` if it is next, which the menu then shows as Redo, as if it were chosen there.
-    /// False if something else is next, such as typing, or another conversation's change.
+    /// False if something else is next, or if Undo would also reverse another action in its group.
     public func undoIfNext(_ id: UUID) -> Bool {
-        guard let manager, let next = entries.undo.last, next.id == id, manager.canUndo,
+        guard let manager, manager.groupingLevel == 0, let next = entries.undo.last, next.id == id, next.independent, manager.canUndo,
               manager.undoActionName == next.name else { return false }
         manager.undo()
         return true
     }
 
     public func redoIfNext(_ id: UUID) -> Bool {
-        guard let manager, let next = entries.redo.last, next.id == id, manager.canRedo,
+        guard let manager, manager.groupingLevel == 0, let next = entries.redo.last, next.id == id, next.independent, manager.canRedo,
               manager.redoActionName == next.name else { return false }
         manager.redo()
         return true

@@ -6,6 +6,7 @@ struct ConversationView: View {
     @Environment(AgentStore.self) private var store
     @Environment(\.agentCompact) private var compact
     @State private var followsBottom = true
+    @State private var metaToReveal: AgentMetaAnchor?
     /// The composer's bar, for placing the button back to the newest turn above it.
     @State private var barHeight: CGFloat = 0
     /// The composer's top, for softening what goes under it (`SoftenedUnderComposer`).
@@ -61,12 +62,12 @@ struct ConversationView: View {
                 .frame(maxWidth: Metrics.readingWidth)
                 .frame(maxWidth: .infinity)
                 .environment(\.composerEdge, softensUnderComposer ? composerTop : nil)
+                .environment(\.agentMetaToReveal, $metaToReveal)
             }
             // A scroll view per session, opening at the newest turn. Reusing one kept the previous
             // session's scroll position, which can lie past the end of a shorter session's content
             // and left the conversation blank.
-            .defaultScrollAnchor(.bottom)
-            .modifier(BottomFollowing(followsBottom: $followsBottom, proxy: proxy))
+            .modifier(BottomFollowing(followsBottom: $followsBottom, metaToReveal: $metaToReveal, proxy: proxy))
             // After the geometry tracking, so a new session's scroll view is not compared with the
             // previous one's position.
             .id(store.selectedID)
@@ -79,7 +80,10 @@ struct ConversationView: View {
                 followsBottom = true
                 withAnimation(Motion.standard) { proxy.scrollTo("bottom", anchor: .bottom) }
             }
-            .onChange(of: store.selectedID) { followsBottom = true }
+            .onChange(of: store.selectedID) {
+                followsBottom = true
+                metaToReveal = nil
+            }
             .onChange(of: followsBottom) { record(turns) }
             .onAppear { restore(turns: turns, proxy: proxy) }
             .modifier(ComposerBar(asBar: compact) { composerBar })
@@ -217,14 +221,27 @@ struct ConversationView: View {
 /// geometry; before it the conversation only jumps to new turns.
 private struct BottomFollowing: ViewModifier {
     @Binding var followsBottom: Bool
+    @Binding var metaToReveal: AgentMetaAnchor?
     let proxy: ScrollViewProxy
 
     func body(content: Content) -> some View {
         if #available(macOS 15, *) {
-            tracked(content.softScrollEdge([.top, .bottom]))
+            // BottomTracking handles size changes separately, so expanding details can pause following.
+            tracked(content.defaultScrollAnchor(.bottom, for: .initialOffset)
+                .defaultScrollAnchor(.bottom, for: .alignment)
+                .softScrollEdge([.top, .bottom]))
         } else {
-            content
+            content.defaultScrollAnchor(.bottom)
+                .onChange(of: metaToReveal) {
+                    if let metaToReveal { reveal(metaToReveal) }
+                }
         }
+    }
+
+    private func reveal(_ anchor: AgentMetaAnchor) {
+        metaToReveal = nil
+        followsBottom = false
+        proxy.scrollTo(anchor, anchor: .top)
     }
 
     @available(macOS 15, *)
@@ -234,6 +251,11 @@ private struct BottomFollowing: ViewModifier {
                 BottomTracking(contentHeight: geometry.contentSize.height, containerHeight: geometry.containerSize.height,
                                atBottom: ConversationView.isAtBottom(geometry))
             } action: { old, new in
+                // Growing a disclosure must leave its control reachable above the text it revealed.
+                if let metaToReveal, old.contentHeight != new.contentHeight {
+                    reveal(metaToReveal)
+                    return
+                }
                 // Reaching the bottom by any means means following the newest turn again.
                 if new.atBottom { followsBottom = true }
                 // Content grew or the window was resized: stay on the newest turn if following it.

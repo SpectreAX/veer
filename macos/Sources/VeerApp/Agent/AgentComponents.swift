@@ -7,10 +7,11 @@ struct ToastView: View {
 
     var body: some View {
         HStack(spacing: Spacing.md) {
-            Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.veerAccent)
+            Image(systemName: toast.warning ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(toast.warning ? StatusKind.warning.color : Color.veerAccent)
             Text(toast.message).font(.callout)
             if toast.undoable {
-                Button(String(localized: "撤销"), action: undo).buttonStyle(.borderless).foregroundStyle(Color.veerAccent)
+                Button(String(localized: "撤销"), action: undo).buttonStyle(.borderless).foregroundStyle(Color.accentOnGlass)
             }
         }
         .padding(.horizontal, Spacing.lg)

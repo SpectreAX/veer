@@ -37,6 +37,12 @@ public enum ExecutionMode: String, Sendable, Codable, CaseIterable, Identifiable
         }
     }
 
+    /// A turn that searched the web and sends traffic to DIRECT waits for review in every mode:
+    /// search results are pages anyone can write, and DIRECT takes the proxy out of the way.
+    public static func needsReviewAfterSearch(items: [ChangeItem], searched: Bool) -> Bool {
+        searched && items.contains { $0.targetName == "DIRECT" }
+    }
+
     /// Whether a proposal goes into the draft without review. A failed Mihomo check always waits,
     /// and so does traffic sent into a group made for another service that the user did not name.
     public func writesAutomatically(items: [ChangeItem], validation: ValidationResult, instruction: String? = nil) -> Bool {
@@ -58,7 +64,21 @@ public enum ExecutionMode: String, Sendable, Codable, CaseIterable, Identifiable
         }
     }
 
-    /// Why a mode that writes on its own left a proposal for review (nil when it would not write anyway).
+    /// Whether app-routing changes apply without review. Blocking an app or removing its rule always
+    /// waits in Auto, as a broad change does; a failed or missing check always waits except in Full.
+    public func appliesAppRoutingAutomatically(_ changes: [AppRouteChange], validation: ValidationResult?) -> Bool {
+        guard let validation else { return false }
+        switch self {
+        case .manual, .plan: return false
+        case .full: return validation.status != .failed
+        case .acceptEdits: return validation.status == .passed
+        case .auto:
+            return validation.status == .passed && changes.count <= 8
+                && changes.allSatisfy { !$0.remove && $0.target != .reject && !$0.domains.contains { $0.target == .reject } }
+        }
+    }
+
+        /// Why a mode that writes on its own left a proposal for review (nil when it would not write anyway).
     public func heldReason(validation: ValidationResult, items: [ChangeItem] = [], instruction: String? = nil) -> String? {
         if self != .manual, self != .plan, let instruction,
            let group = GroupPurpose.unnamedDedicated(in: items, instruction: instruction).first {

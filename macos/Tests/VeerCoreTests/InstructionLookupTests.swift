@@ -37,8 +37,10 @@ struct InstructionLookupTests {
         #expect(hints.message.contains("www.jal.co.jp：自己的规则集 jal；宽泛分类 tld-!cn"))
         #expect(hints.message.contains("1.1.1.1：AS13335 Cloudflare, Inc.，网段 1.1.1.0/24；geoip 规则集 au、cloudflare"))
         #expect(hints.message.contains("192.168.1.5：局域网地址"))
-        // Exit names are not taken for domains; nothing to look up gives nil.
-        #expect(await lookup.hints(for: "Netflix 走 hk.example 出口", exitNames: ["hk.example 出口"]) == nil)
+        // Exit names are not taken for domains; nothing to look up gives nil. A service the
+        // instruction names (Netflix) is a hint of its own since 2026-11-20, never a domain.
+        #expect(await lookup.hints(for: "走 hk.example 出口", exitNames: ["hk.example 出口"]) == nil)
+        #expect(await lookup.hints(for: "Netflix 走 hk.example 出口", exitNames: ["hk.example 出口"])?.domains.isEmpty == true)
         // Without geodata there are no hints.
         let empty = GeoDataStore(directory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
         #expect(await InstructionLookup(geo: empty, index: nil).hints(for: "www.jal.co.jp 直连") == nil)

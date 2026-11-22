@@ -3,7 +3,7 @@ import Testing
 @testable import VeerProxy
 
 @MainActor struct ReversibleChangesTests {
-    /// Changes that are on or off, on an undo manager that groups by hand, as there is no event loop.
+    /// Changes that are on or off, using the native undo manager.
     @MainActor private final class Fixture {
         let manager = UndoManager()
         let changes = ReversibleChanges()
@@ -11,20 +11,18 @@ import Testing
         var state: [UUID: Bool] = [:]
         var refuses = false
 
-        init() {
-            manager.groupsByEvent = false
+        init(groupsByEvent: Bool = false) {
+            manager.groupsByEvent = groupsByEvent
             changes.manager = manager
         }
 
         @discardableResult func apply(_ id: UUID = UUID(), group: UUID? = nil) -> UUID {
             state[id] = true
-            manager.beginUndoGrouping()
             changes.made("Change", id: id, group: group ?? self.group, undoTo: false) { [self] on in
                 guard !refuses else { return false }
                 state[id] = on
                 return true
             }
-            manager.endUndoGrouping()
             return id
         }
 
@@ -71,6 +69,42 @@ import Testing
         #expect(fixture.state[first] == true)
         #expect(fixture.changes.undoIfNext(second))
         #expect(fixture.changes.undoIfNext(first))
+    }
+
+    @Test func twoChangesInOneEventHaveSeparateUndoGroups() {
+        let fixture = Fixture(groupsByEvent: true)
+        let first = fixture.apply()
+        let second = fixture.apply()
+        #expect(fixture.manager.groupsByEvent)
+        #expect(fixture.changes.undoIfNext(second))
+        #expect(fixture.state[second] == false)
+        #expect(fixture.state[first] == true)
+        #expect(fixture.changes.redoIfNext(second))
+        #expect(fixture.state[second] == true)
+        #expect(fixture.changes.undoIfNext(second))
+        #expect(fixture.changes.undoIfNext(first))
+    }
+
+    @Test func aCardLeavesTheRestOfAnExistingGroupAlone() {
+        let fixture = Fixture()
+        fixture.manager.beginUndoGrouping()
+        let first = fixture.apply()
+        let second = fixture.apply()
+        fixture.manager.endUndoGrouping()
+
+        #expect(!fixture.changes.undoIfNext(second))
+        #expect(fixture.state[first] == true)
+        #expect(fixture.state[second] == true)
+        // The card applies its own change and removes only its action from the native group.
+        fixture.state[second] = false
+        fixture.changes.forget(second)
+        fixture.manager.undo()
+        #expect(fixture.state[first] == false)
+        #expect(fixture.state[second] == false)
+        #expect(!fixture.changes.redoIfNext(first))
+        fixture.manager.redo()
+        #expect(fixture.state[first] == true)
+        #expect(fixture.state[second] == false)
     }
 
     /// Cmd-Z in a text field takes the typing, and a button must not take it instead.

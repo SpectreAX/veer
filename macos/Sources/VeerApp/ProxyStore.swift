@@ -44,7 +44,16 @@ final class ProxyStore {
             /// Latest test in ms; 0 when it failed, nil before any test.
             let delay: Int?
             let isGroup: Bool
+            /// What Veer knows of its delay in the running profile (`LatencyTest`).
+            let state: NodeDelay
             var id: String { name }
+
+            init(name: String, delay: Int?, isGroup: Bool, state: NodeDelay? = nil) {
+                self.name = name
+                self.isGroup = isGroup
+                self.state = state ?? NodeDelay(history: delay)
+                self.delay = state?.legacyDelay ?? delay
+            }
         }
 
         let name: String
@@ -121,7 +130,28 @@ final class ProxyStore {
     var helperBusy = false
     var uploadRate: Int64 = 0
     var downloadRate: Int64 = 0
-    var testingGroups: Set<String> = []
+    var testingScopes: Set<LatencyScope> = []
+    /// Each node's delay as Veer tested it in the running profile; cleared with every new profile.
+    var delays: [String: NodeDelay] = [:]
+    @ObservationIgnored var delayTimes: [String: Date] = [:]
+    @ObservationIgnored var latencyRuns: [LatencyScope: Task<Void, Never>] = [:]
+    @ObservationIgnored var delayFlush: Task<Void, Never>?
+    /// Bumped by every profile switch and core stop: work started under an older one is dropped,
+    /// so a test or reload that finishes late can't write into the profile that replaced it.
+    @ObservationIgnored var generation = 0
+    /// What delay tests fetch through each node; tests point it at a server on this Mac.
+    @ObservationIgnored var delayURL = MihomoController.delayURL
+    /// Picks the controller's port for each start; tests hold a port and hand it over.
+    @ObservationIgnored var pickControllerPort: () -> Int? = { Ports.free() }
+    /// The profile being switched to while its config is checked and loaded.
+    var switchingTo: UUID?
+    @ObservationIgnored var profileAfterStartup: UUID?
+    /// The profile the core runs while a switch is under way: where a failed switch goes back to.
+    @ObservationIgnored var committedProfileID: UUID?
+    @ObservationIgnored let coreConfigWork = SerialWork()
+    /// The one subscription update or import in progress, and how the last one went.
+    var activity: Activity?
+    @ObservationIgnored var activityDismissal: Task<Void, Never>?
     var updatingProfiles: Set<UUID> = []
     /// An action's failure, shown where the action is until the next one.
     var notice: String?
@@ -130,6 +160,8 @@ final class ProxyStore {
     var onboarding: OnboardingStep?
 
     var showingImport = false
+    /// Manage Profiles, the sheet every profile is switched, updated and managed from.
+    var showingProfiles = false
     var importText = ""
     var importing = false
     var importError: String?
@@ -152,17 +184,18 @@ final class ProxyStore {
                 try? await Task.sleep(for: .milliseconds(600))
                 guard !Task.isCancelled else { return }
                 await reloadRunningCore()
-                if settings.logLevel != oldValue.logLevel { startLogs() }
+                if !Task.isCancelled, isRunning, settings.logLevel != oldValue.logLevel { startLogs() }
             }
         }
     }
     @ObservationIgnored private var settingsReload: Task<Void, Never>?
-    @ObservationIgnored private var updateSchedule: Task<Void, Never>?
-    @ObservationIgnored private var lastAutomaticUpdate: [UUID: Date] = [:]
+    @ObservationIgnored var updateSchedule: Task<Void, Never>?
+    @ObservationIgnored var lastAutomaticUpdate: [UUID: Date] = [:]
     /// Shows a usage alert; a system notification in the app, replaced in tests.
     @ObservationIgnored var notifier: ((title: String, body: String)) -> Void = { UsageNotifier.post($0) }
     /// Effective configs by profile, so views and the Agent do not rebuild them on every draw.
-    @ObservationIgnored private var effectiveCache: [UUID: EffectiveConfig] = [:]
+    @ObservationIgnored var effectiveCache: [UUID: EffectiveConfig] = [:]
+    @ObservationIgnored private var effectiveRevisions: [UUID: Int] = [:]
     /// Where traffic leaves the proxy: shown on the overview while the core runs.
     var exit: ExitInfo?
     var showExitIP: Bool { didSet { defaults.set(showExitIP, forKey: "showExitIP"); if !showExitIP { exit = nil } } }
@@ -177,12 +210,26 @@ final class ProxyStore {
     @ObservationIgnored private let systemProxyWork = SerialWork()
     /// Changes gone from "my routing", for the Agent, whose conversations can still undo them.
     @ObservationIgnored var editsRemoved: (([UUID]) -> Void)?
+    /// The last "my routing" change on its way into the running core, to wait for before saying it took.
+    @ObservationIgnored var layerApply: Task<LayerApplied, Never>?
+    enum LayerApplied: Equatable {
+        /// Saved; the core is not running this profile, so it takes it at the next start.
+        case saved
+        case running
+        case refused(String)
+    }
+    /// Removed duplicate profile → the profile kept in its place, for conversations to follow.
+    @ObservationIgnored var profilesMerged: (([UUID: UUID]) -> Void)?
+    /// Subscription links being imported now, so the same link twice makes one profile.
+    @ObservationIgnored var importingLinks: Set<String> = []
     /// On only because TUN could not start, not because anyone asked for it.
     @ObservationIgnored private var systemProxyIsFallback = false
     /// Groups folded on the Proxies page, by name; remembered across launches.
     var collapsedGroups: Set<String> { didSet { defaults.set(Array(collapsedGroups), forKey: "collapsedGroups") } }
     /// The active profile with its "my routing" layer applied, as the core last loaded it.
     var effective: EffectiveConfig?
+    /// App routing's apps and state (`ProxyStoreAppRouting.swift`).
+    var apps = AppRoutingState()
 
     var activeProfile: Profile? { profiles.first { $0.id == activeProfileID } }
     var isRunning: Bool { phase == .running }
@@ -205,7 +252,7 @@ final class ProxyStore {
     var coreRevision = 0
     /// `coreRevision` when the core running now started.
     @ObservationIgnored var runningCoreRevision = 0
-    @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored let defaults: UserDefaults
     @ObservationIgnored private var core: CoreRunning?
     /// The latest start of the core, step by step (`StartupTimeline`); also in the diagnostics bundle.
     @ObservationIgnored var startup: StartupTimeline?
@@ -394,7 +441,7 @@ final class ProxyStore {
     }
 
     /// Validate before helper/TUN setup; the editor may still open damaged groups for repair.
-    private func startableText(of id: UUID) async throws -> String {
+    func startableText(of id: UUID) async throws -> String {
         let text = try await effectiveTextInBackground(of: id)
         try await Task.detached { try ConfigDocument.requireGroupMembers(in: text) }.value
         return text
@@ -409,16 +456,25 @@ final class ProxyStore {
             return
         }
         guard !Ports.inUse(settings.mixedPort) else {
-            phase = .failed(String(localized: "端口 \(String(settings.mixedPort)) 已被其他程序占用。退出占用它的代理软件，或在设置中换一个端口。"), log: [])
+            phase = .failed(Self.portInUseMessage(settings.mixedPort), log: [])
             return
         }
         phase = .starting
         let signpost = beginStartup()
-        Task {
-            defer { endStartup(signpost) }
+        let ticket = generation
+        coreConfigWork.add { [self] in
+            defer {
+                endStartup(signpost)
+                if ticket == generation, let selected = profileAfterStartup {
+                    profileAfterStartup = nil
+                    activate(selected)
+                }
+            }
+            guard phase == .starting, ticket == generation else { return }
             do {
-                try await bringUpCore(profile: profile.id, binary: binary)
+                try await bringUpCore(profile: profile.id, binary: binary, ticket: ticket)
             } catch {
+                guard ticket == generation, phase == .starting else { return }
                 core?.stop()
                 tunActive = false
                 phase = .failed(message(for: error), log: core?.tail ?? [])
@@ -427,30 +483,55 @@ final class ProxyStore {
     }
 
     /// From the profile's text to a core that answers and carries traffic.
-    private func bringUpCore(profile: UUID, binary: URL) async throws {
+    private func bringUpCore(profile: UUID, binary: URL, ticket: Int) async throws {
         try paths.prepare()
-        guard let port = Ports.free() else { throw EditorError(String(localized: "找不到可用的本机端口来控制内核。")) }
+        guard let port = pickControllerPort() else { throw EditorError(String(localized: "找不到可用的本机端口来控制内核。")) }
         let secret = RuntimeConfig.makeSecret()
         let text = try await startableText(of: profile)
+        guard ticket == generation, phase == .starting else { return }
         reached(.configReady)
         let (core, tunFailure) = try await launchPreferringTUN(text: text, port: port, secret: secret, binary: binary)
+        guard ticket == generation, phase == .starting else {
+            core.stop()
+            self.core = nil
+            hotSets = nil
+            tunActive = false
+            return
+        }
         let controller = MihomoController(base: URL(string: "http://127.0.0.1:\(port)")!, secret: secret)
         self.controller = controller
         controllerAccess = (port, secret)
         runningPort = settings.mixedPort
-        switch try await coreBecomesReady(controller, controllerPort: port, proxyPort: settings.mixedPort) {
+        switch try await coreBecomesReady(controller, controllerPort: port, proxyPort: settings.mixedPort, log: { core.tail }) {
         case .calledOff: return
         case .ready: break
         case .timedOut:
-            core.stop()
-            self.core = nil
-            self.controller = nil
+            abandonStart(core)
             phase = .failed(String(localized: "内核在 60 秒内没有就绪，可能正在下载 GeoIP 数据或网络不通。"), log: core.tail)
             return
+        case .portTaken(let conflict):
+            abandonStart(core)
+            logStartup("Port taken: \(conflict)")
+            phase = .failed(Self.message(for: conflict), log: core.tail)
+            return
         }
+        guard ticket == generation, phase == .starting else { return }
         await coreDidStart(tunFailure: tunFailure)
         reached(.uiReady)
         logStartup("Core started")
+    }
+
+    /// Stops a core that never became ready and clears what its start set up, so the next start
+    /// begins from nothing.
+    private func abandonStart(_ core: CoreRunning) {
+        core.stop()
+        self.core = nil
+        controller = nil
+        controllerAccess = nil
+        runningPort = nil
+        hotSets = nil
+        hotLines = [:]
+        tunActive = false
     }
 
     /// Starts the core with TUN when it is on and the helper is ready; without it the core runs
@@ -490,8 +571,11 @@ final class ProxyStore {
         }.value
         let core: CoreRunning = tun ? HelperCore(geodata: home) : CoreProcess(binary: binary, home: home)
         reached(.runtimeWritten)
-        try await core.start(config: path) { status, log in
-            Task { @MainActor in self.coreExited(status: status, log: log) }
+        try await core.start(config: path) { [weak self, weak core] status, log in
+            Task { @MainActor in
+                guard let self, let core, self.core === core else { return }
+                self.coreExited(status: status, log: log)
+            }
         }
         reached(.processStarted)
         return (core, hot)
@@ -662,6 +746,10 @@ final class ProxyStore {
 
     /// Stops the core and everything watching it; the system proxy and saved state stay.
     private func tearDownCore() {
+        resetDelays()
+        switchingTo = nil
+        profileAfterStartup = nil
+        committedProfileID = nil
         trafficTask?.cancel()
         logTask?.cancel()
         connectionsTask?.cancel()
@@ -689,6 +777,9 @@ final class ProxyStore {
 
     private func coreExited(status: Int32, log: [String]) {
         guard core != nil else { return }
+        resetDelays()
+        switchingTo = nil
+        committedProfileID = nil
         if systemProxyOn { restoreSystemProxy() }
         trafficTask?.cancel()
         logTask?.cancel()
@@ -718,45 +809,36 @@ final class ProxyStore {
 
     func refresh() async {
         guard let controller else { return }
+        let ticket = generation
         do {
             let proxies = try await controller.proxies()
+            guard ticket == generation else { return }
             // GLOBAL lists every policy in config order; the dictionary has none.
             let order = proxies["GLOBAL"]?.all ?? proxies.keys.sorted()
             groups = order.compactMap { proxies[$0] }.filter { $0.isGroup && $0.hidden != true }.map { group in
                 Group(name: group.name, type: group.type, now: group.now, members: (group.all ?? []).map { name in
                     // A policy that blocks can't answer a delay test, and isn't timing out.
-                    Group.Member(name: name, delay: ["REJECT", "REJECT-DROP", "PASS"].contains(name) ? nil : proxies[name]?.lastDelay,
-                                 isGroup: proxies[name]?.isGroup == true)
+                    let blocks = Self.untestable.contains(name)
+                    return Group.Member(name: name, delay: blocks ? nil : proxies[name]?.lastDelay,
+                                        isGroup: proxies[name]?.isGroup == true, state: blocks ? .untested : delays[name])
                 })
             }
-            if let mode = Mode(rawValue: try await controller.mode().lowercased()) { self.mode = mode }
+            let mode = Mode(rawValue: try await controller.mode().lowercased())
+            if ticket == generation, let mode { self.mode = mode }
         } catch {
-            notice = message(for: error)
+            if ticket == generation { notice = message(for: error) }
         }
     }
 
+    /// The user picking a node: the same path as the Agent's (`choose`), so both are one runtime
+    /// call with no reload, confirmed by reading the group back.
     func select(_ member: String, in group: String) {
-        guard let controller else { return }
+        guard isRunning else { return }
         Task {
-            do {
-                try await controller.select(member, in: group)
-                await closeConnections(through: group)
-            } catch { notice = message(for: error) }
-            await refresh()
-            checkExit(after: .milliseconds(500))
-        }
-    }
-
-    func testDelay(_ group: String) {
-        guard let controller, !testingGroups.contains(group) else { return }
-        testingGroups.insert(group)
-        Task {
-            do { _ = try await controller.testDelay(group: group) } catch {
-                notice = String(localized: "“\(group)”测速失败：\(message(for: error))")
+            do { try await choose(member, in: group) } catch {
+                notice = message(for: error)
+                await refresh()
             }
-            testingGroups.remove(group)
-            await refresh()
-            checkTestedNodes()
         }
     }
 
@@ -917,45 +999,61 @@ final class ProxyStore {
         return nil
     }
 
-    /// Loads the active profile into the running core without restarting it.
-    /// Loads the active profile into the running core without restarting it. With
-    /// `closingConnections` (a new profile or new rules), open connections are closed: the core
-    /// keeps routing them the old way until they reconnect.
-    func reloadRunningCore(closingConnections: Bool = false) async {
-        guard isRunning, let controller, let access = controllerAccess, let profile = activeProfile else { return }
-        do {
-            var running = settings
-            running.mixedPort = proxyPort
-            let text = try await effectiveTextInBackground(of: profile.id)
-            let path = paths.runtimeConfig, port = access.port, secret = access.secret, built = running, tun = tunActive
-            // The config now holds every route, so the hot rule sets start over empty.
-            let hot = await HotRuleSets.prepared(for: text, writer: hotWriter(tun: tun))
-            let yaml = try await Task.detached(priority: .userInitiated) { () -> String in
-                let yaml = try RuntimeConfig.build(profile: text, settings: built, controllerPort: port, secret: secret, hot: hot)
-                try Data(yaml.utf8).write(to: path, options: .atomic)
-                return yaml
-            }.value
-            try await controller.apply(yaml, mode: .config)
-            hotSets = hot
-            hotLines = [:]
-            if closingConnections && reconnectAfterChanges { try? await controller.closeAllConnections() }
-            await refresh()
-        } catch {
-            notice = message(for: error)
-        }
+    /// Loads the active profile into the running core without restarting it. Open connections keep
+    /// the route they opened with; those `reconnect` names as moved by the change are closed so they
+    /// take the new one, and nothing else (`ReconnectPolicy`).
+    func reloadRunningCore(reconnect: ReconnectPolicy.Change = .unknown) async {
+        await coreConfigWork.add { [self] in
+            guard let id = activeProfileID, switchingTo == nil else { return }
+            do {
+                _ = try await reloadRunningCoreNow(profile: id, reconnect: reconnect)
+            } catch {
+                if activeProfileID == id, switchingTo == nil { notice = message(for: error) }
+            }
+        }.value
     }
 
-    /// One delay test of every node after the core starts, so the Proxies page and "fastest"
-    /// choices have numbers at once. GLOBAL lists every node and group.
-    private func testEverythingOnce() {
-        guard let controller else { return }
-        testingGroups.insert("GLOBAL")
-        Task {
-            _ = try? await controller.testDelay(group: "GLOBAL")
-            testingGroups.remove("GLOBAL")
-            await refresh()
-            checkTestedNodes()
+    /// Runs inside `coreConfigWork`. False if the requested profile was skipped or the core stopped.
+    func reloadRunningCoreNow(profile id: UUID, reconnect: ReconnectPolicy.Change = .unknown) async throws -> Bool {
+        guard isRunning, activeProfileID == id, let controller, let access = controllerAccess else { return false }
+        let ticket = generation
+        let timeline = ChangeTimeline(kind: "reload")
+        defer { timeline.finish() }
+        var running = settings
+        running.mixedPort = proxyPort
+        running.tun = tunActive
+        let text = try await effectiveTextInBackground(of: id)
+        guard controllerAccess?.secret == access.secret else { return false }
+        let writer = hotWriter(tun: tunActive)
+        // The config now holds every route, so the hot rule sets start over empty.
+        let hot = await HotRuleSets.prepared(for: text, writer: writer)
+        timeline.mark("effective")
+        let built = running
+        let yaml: String
+        do {
+            yaml = try await Task.detached(priority: .userInitiated) {
+                try RuntimeConfig.build(profile: text, settings: built, controllerPort: access.port, secret: access.secret, hot: hot)
+            }.value
+            guard controllerAccess?.secret == access.secret else { return false }
+            timeline.mark("yaml")
+            try await controller.apply(yaml, mode: .config)
+        } catch {
+            await restoreHotFiles(using: writer)
+            throw error
         }
+        timeline.mark("putConfigs")
+        // The accepted config is the only one persisted as the runtime copy. If a switch is queued
+        // it will replace this copy next, and can roll back using the previous profile's source.
+        guard controllerAccess?.secret == access.secret else { return false }
+        hotSets = hot
+        hotLines = [:]
+        let path = paths.runtimeConfig
+        try await Task.detached(priority: .userInitiated) { try Data(yaml.utf8).write(to: path, options: .atomic) }.value
+        guard ticket == generation else { return true }
+        await self.reconnect(after: reconnect)
+        timeline.mark("reconnect")
+        if ticket == generation, switchingTo == nil { await refresh() }
+        return controllerAccess?.secret == access.secret
     }
 
     // MARK: Connections and logs
@@ -1061,7 +1159,7 @@ final class ProxyStore {
     static let suggestionLimit = 5
 
     /// After a delay test: a select group whose node timed out twice in a row.
-    private func checkTestedNodes() {
+    func checkTestedNodes() {
         for group in groups where group.isSelectable {
             guard let now = group.now, let member = group.members.first(where: { $0.name == now }), !member.isGroup else { continue }
             suggest(detector.tested(node: now, in: group.name, delay: member.delay))
@@ -1084,11 +1182,20 @@ final class ProxyStore {
         return try await controller.dnsQuery(name, type: type)
     }
 
-    /// After a node switch: connections that went through `group` keep their old node until they
-    /// reconnect, so they are closed.
-    func closeConnections(through group: String) async {
-        guard reconnectAfterChanges, let controller, let list = try? await controller.connections() else { return }
-        for connection in list where connection.chains.contains(group) { try? await controller.closeConnection(connection.id) }
+    /// Closes the open connections `change` moves to another route, so they take it now; the rest,
+    /// and those `ReconnectPolicy` keeps (remote shells, coding agents, large transfers), stay.
+    /// Returns how many were closed.
+    @discardableResult func reconnect(after change: ReconnectPolicy.Change) async -> Int {
+        let ticket = generation
+        guard reconnectAfterChanges, change != .unknown, let controller, let list = try? await controller.connections() else { return 0 }
+        let plan = ReconnectPolicy.plan(change, connections: list)
+        var closed = 0
+        for id in plan.close {
+            guard ticket == generation else { return closed }
+            if (try? await controller.closeConnection(id)) != nil { closed += 1 }
+        }
+        if plan.kept > 0 { logStartup("Reconnect: \(closed) closed, \(plan.kept) kept on their old route") }
+        return closed
     }
 
     func closeConnection(_ id: String) {
@@ -1180,7 +1287,7 @@ final class ProxyStore {
 
     // MARK: Agent actions on the running core
 
-    private func runningController() throws -> MihomoController {
+    func runningController() throws -> MihomoController {
         guard isRunning, let controller else { throw EditorError(String(localized: "内核没有运行，先启动内核。")) }
         return controller
     }
@@ -1195,25 +1302,33 @@ final class ProxyStore {
         return group
     }
 
-    /// Selects `node` in a select group; returns the node it replaced.
+    /// The group as last read, or as the core reports it when Veer has not read it.
+    func knownGroup(_ name: String) async throws -> Group {
+        if let group = groups.first(where: { $0.name == name }) { return group }
+        return try await liveGroup(name)
+    }
+
+    /// Selects `node` in a select group with one runtime call (`PUT /proxies/{group}`), no reload,
+    /// and reads the group back to confirm the core took it; returns the node it replaced. The
+    /// manual switch, the menu bar and the Agent all come through here.
     @discardableResult func choose(_ node: String, in name: String) async throws -> String? {
         let controller = try runningController()
-        let group = try await liveGroup(name)
+        let started = generation
+        let group = try await knownGroup(name)
+        guard switchingTo == nil, started == generation else { throw EditorError(String(localized: "配置已经切换，没有改动节点。")) }
         guard group.isSelectable else { throw EditorError(String(localized: "“\(name)”按延迟自动选择，不能手动切换节点。")) }
         let previous = group.now
         try await controller.select(node, in: name)
-        await closeConnections(through: name)
-        await refresh()
-        checkExit(after: .milliseconds(500))
+        guard started == generation else { throw EditorError(String(localized: "配置已经切换，没有改动节点。")) }
+        let now = try await controller.selection(of: name)
+        guard started == generation else { throw EditorError(String(localized: "配置已经切换，没有改动节点。")) }
+        guard now == node else {
+            throw EditorError(String(localized: "内核没有切换到 \(node)，“\(name)”仍在使用 \(now ?? "—")。"))
+        }
+        groups = groups.map { $0.name == name ? Group(name: $0.name, type: $0.type, now: node, members: $0.members) : $0 }
+        await reconnect(after: .selection(group: name))
+        if started == generation { checkExit(after: .milliseconds(500)) }
         return previous
-    }
-
-    /// Tests every member's delay; 0 means it timed out.
-    func testNow(_ name: String) async throws -> [String: Int] {
-        let controller = try runningController()
-        let result = try await controller.testDelay(group: name)
-        await refresh()
-        return result
     }
 
     /// Switches the mode; returns the one it replaced.
@@ -1286,22 +1401,28 @@ final class ProxyStore {
     /// The same, built off the main thread: parsing and replaying a large subscription takes long
     /// enough to stall the window.
     func effectiveTextInBackground(of id: UUID) async throws -> String {
-        if let cached = effectiveCache[id] { return cached.text }
         let routingStore = routingStore, profileStore = profileStore, effectiveStore = effectiveStore
-        let result = try await Task.detached(priority: .userInitiated) {
-            try effectiveStore.effective(of: id, profiles: profileStore, routing: routingStore)
-        }.value
-        remember(result, for: id)
-        return result.text
+        while true {
+            if let cached = effectiveCache[id] { return cached.text }
+            let revision = effectiveRevisions[id, default: 0]
+            let result = try await Task.detached(priority: .userInitiated) {
+                try effectiveStore.effective(of: id, profiles: profileStore, routing: routingStore)
+            }.value
+            if effectiveRevisions[id, default: 0] == revision {
+                remember(result, for: id)
+                return result.text
+            }
+        }
     }
 
-    private func remember(_ result: EffectiveConfig, for id: UUID) {
+    func remember(_ result: EffectiveConfig, for id: UUID) {
         effectiveCache[id] = result
         if id == activeProfileID { effective = result }
     }
 
     /// The profile's text or layer changed: its effective config has to be built again.
-    private func forgetEffective(_ id: UUID) {
+    func forgetEffective(_ id: UUID) {
+        effectiveRevisions[id, default: 0] += 1
         effectiveCache[id] = nil
         if id == activeProfileID { effective = nil }
     }
@@ -1325,26 +1446,29 @@ final class ProxyStore {
     @discardableResult func addEdit(_ edit: RoutingLayer.Edit, to id: UUID) -> Bool {
         var layer = routingStore.load(id)
         layer.edits.append(edit)
-        // Routes alone go into the running core's hot rule sets: no reload, other connections kept.
-        if id == activeProfileID, isRunning, let entries = hotEntries(for: edit) {
-            do { try routingStore.save(layer, for: id) } catch {
-                notice = message(for: error)
-                return false
-            }
-            forgetEffective(id)
-            Task { await applyHot(entries, profile: id) }
-            return true
-        }
-        return saveLayer(layer, for: id)
+        return saveLayer(layer, for: id, reconnect: Self.reconnectChange(for: edit), hotEdit: edit)
     }
 
-    /// False when the change has gone.
+    /// The open connections an edit's routes move: hosts and addresses its accepted route rules
+    /// match. Rule sets, groups and removals can't be told apart this way, so they move none.
+    static func reconnectChange(for edit: RoutingLayer.Edit) -> ReconnectPolicy.Change {
+        let routes = edit.items.filter { edit.accepted.contains($0.id) && $0.kind == .route }
+        let lines = routes.compactMap { item -> String? in
+            ["DOMAIN", "DOMAIN-SUFFIX", "DOMAIN-KEYWORD", "IP-CIDR", "IP-CIDR6"].contains(item.matchType) ? "\(item.matchType),\(item.match)" : nil
+        }
+        guard !lines.isEmpty else { return .unknown }
+        let targets = Set(routes.compactMap(\.targetName))
+        return .rules(lines, target: targets.count == 1 ? targets.first : nil)
+    }
+
+    /// False when the change has gone or could not be saved.
     @discardableResult func setEdit(_ editID: UUID, enabled: Bool, in id: UUID) -> Bool {
         var layer = routingStore.load(id)
         guard let index = layer.edits.firstIndex(where: { $0.id == editID }) else { return false }
         layer.edits[index].enabled = enabled
-        saveLayer(layer, for: id)
-        return true
+        // Undone or redone, its routes move the same connections, back or forth.
+        let reconnect = Self.reconnectChange(for: layer.edits[index])
+        return saveLayer(layer, for: id, reconnect: reconnect.withoutTarget)
     }
 
     /// Uses a built-in rule template for a profile, or with nil goes back to its own rules.
@@ -1362,14 +1486,26 @@ final class ProxyStore {
         editsRemoved?([editID])
     }
 
-    @discardableResult private func saveLayer(_ layer: RoutingLayer, for id: UUID) -> Bool {
+    @discardableResult private func saveLayer(_ layer: RoutingLayer, for id: UUID, reconnect: ReconnectPolicy.Change = .unknown,
+                                              hotEdit: RoutingLayer.Edit? = nil) -> Bool {
+        guard profiles.contains(where: { $0.id == id }) else { return false }
         do {
             try routingStore.save(layer, for: id)
             forgetEffective(id)
-            if id == activeProfileID {
-                Task {
-                    _ = try? await effectiveTextInBackground(of: id)
-                    if isRunning { await reloadRunningCore(closingConnections: true) }
+            if id == activeProfileID || id == committedProfileID {
+                layerApply = coreConfigWork.add { [self] in
+                    guard isRunning, id == activeProfileID, switchingTo == nil else { return .saved }
+                    do {
+                        if let hotEdit, let entries = hotEntries(for: hotEdit),
+                           routingStore.load(id).edits.contains(where: { $0.id == hotEdit.id && $0.enabled }) {
+                            return try await applyHotNow(entries, profile: id) ? .running : .saved
+                        }
+                        return try await reloadRunningCoreNow(profile: id, reconnect: reconnect) ? .running : .saved
+                    } catch {
+                        let reason = message(for: error)
+                        if id == activeProfileID, switchingTo == nil { notice = reason }
+                        return .refused(reason)
+                    }
                 }
             }
             return true
@@ -1384,166 +1520,6 @@ final class ProxyStore {
     func exportText(of id: UUID, withOverrides: Bool) throws -> String {
         let text = try routingStore.load(id).apply(to: try profileStore.text(of: id)).text
         return withOverrides ? try RuntimeConfig.export(profile: text, settings: settings) : text
-    }
-
-    // MARK: Profiles
-
-    func activate(_ id: UUID) {
-        guard id != activeProfileID else { return }
-        activeProfileID = id
-        effective = effectiveCache[id]
-        ipRegions = [:]
-        locateServersByIP()
-        if isRunning {
-            Task {
-                await reloadRunningCore(closingConnections: true)
-                // New nodes: measure them, and the exit may have moved.
-                testEverythingOnce()
-                checkExit()
-            }
-        } else if case .failed = phase { start() }
-    }
-
-    func delete(_ id: UUID) {
-        if id == activeProfileID {
-            stop()
-            activeProfileID = profiles.first { $0.id != id }?.id
-        }
-        let edits = routingStore.load(id).edits.map(\.id)
-        profileStore.delete(id)
-        routingStore.delete(id)
-        effectiveStore.remove(id)
-        forgetEffective(id)
-        editsRemoved?(edits)
-        profiles = profileStore.loadAll()
-        if profiles.isEmpty { onboarding = .addProfile }
-    }
-
-    func openImport(prefill: String = "") {
-        importText = prefill
-        importError = nil
-        showingImport = true
-    }
-
-    /// A subscription link, or pasted config / share links.
-    func importFromText() {
-        let input = importText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !input.isEmpty, !importing else { return }
-        importing = true
-        importError = nil
-        Task {
-            defer { importing = false }
-            do {
-                if SubscriptionFetcher.looksLikeLink(input) {
-                    let url = try SubscriptionFetcher.validate(input)
-                    let response = try await fetchSubscription(url)
-                    let result = try ConfigImporter.normalize(response.text)
-                    var profile = Profile(name: response.title ?? url.host() ?? String(localized: "订阅"), isSubscription: true, nodeCount: result.nodeCount, usage: response.usage)
-                    profile.updateIntervalHours = response.updateIntervalHours
-                    try profileStore.save(profile, text: result.text)
-                    try profileStore.setSubscriptionURL(url, for: profile.id)
-                    added(profile)
-                } else {
-                    let result = try ConfigImporter.normalize(input)
-                    let profile = Profile(name: String(localized: "粘贴的配置"), isSubscription: false, nodeCount: result.nodeCount)
-                    try profileStore.save(profile, text: result.text)
-                    added(profile)
-                }
-                showingImport = false
-            } catch {
-                importError = message(for: error)
-            }
-        }
-    }
-
-    func importFile(_ url: URL) {
-        importError = nil
-        do {
-            let access = url.startAccessingSecurityScopedResource()
-            defer { if access { url.stopAccessingSecurityScopedResource() } }
-            let text = try String(contentsOf: url, encoding: .utf8)
-            let result = try ConfigImporter.normalize(text)
-            let profile = Profile(name: url.deletingPathExtension().lastPathComponent, isSubscription: false, nodeCount: result.nodeCount)
-            try profileStore.save(profile, text: result.text)
-            added(profile)
-            showingImport = false
-        } catch {
-            importError = message(for: error)
-        }
-    }
-
-    private func added(_ profile: Profile) {
-        profiles = profileStore.loadAll()
-        if activeProfileID == nil { activeProfileID = profile.id }
-        if onboarding == .addProfile { onboarding = .routing }
-    }
-
-    /// Downloads a subscription again. A manual update reports a failure as a notice; an
-    /// automatic one records it on the profile and stays quiet.
-    func update(_ id: UUID, automatic: Bool = false) {
-        guard let url = profileStore.subscriptionURL(of: id), var profile = profiles.first(where: { $0.id == id }), !updatingProfiles.contains(id) else { return }
-        updatingProfiles.insert(id)
-        if !automatic { notice = nil }
-        Task {
-            defer { updatingProfiles.remove(id) }
-            do {
-                let response = try await fetchSubscription(url)
-                let result = try ConfigImporter.normalize(response.text)
-                profile.nodeCount = result.nodeCount
-                profile.updatedAt = .now
-                profile.usage = response.usage ?? profile.usage
-                profile.updateIntervalHours = response.updateIntervalHours ?? profile.updateIntervalHours
-                profile.updateError = nil
-                try profileStore.save(profile, text: result.text)
-                forgetEffective(id)
-                profiles = profileStore.loadAll()
-                alertAboutUsage(of: profile)
-                if id == activeProfileID {
-                    await reloadRunningCore(closingConnections: true)
-                    locateServersByIP()
-                }
-            } catch {
-                if automatic {
-                    profile.updateError = message(for: error)
-                    try? profileStore.saveInfo(profile)
-                    profiles = profileStore.loadAll()
-                } else {
-                    notice = String(localized: "“\(profile.name)”更新失败：\(message(for: error))")
-                }
-            }
-        }
-    }
-
-    /// Straight out first, so a broken node cannot stop an update; through the running core
-    /// when that fails, for subscriptions blocked on the local network.
-    private func fetchSubscription(_ url: URL) async throws -> SubscriptionResponse {
-        do {
-            return try await SubscriptionFetcher(route: .direct).fetch(url)
-        } catch {
-            guard isRunning else { throw error }
-            return try await SubscriptionFetcher(route: .proxy(port: proxyPort)).fetch(url)
-        }
-    }
-
-    /// Every ten minutes, updates the subscriptions that are due. One that just failed waits
-    /// an hour before the next try.
-    private func scheduleSubscriptionUpdates() {
-        updateSchedule?.cancel()
-        updateSchedule = Task {
-            try? await Task.sleep(for: .seconds(30))
-            while !Task.isCancelled {
-                updateDueSubscriptions()
-                try? await Task.sleep(for: .seconds(600))
-            }
-        }
-    }
-
-    func updateDueSubscriptions(now: Date = .now) {
-        for profile in profiles where profile.isSubscription && profile.nextUpdate <= now {
-            if let tried = lastAutomaticUpdate[profile.id], now.timeIntervalSince(tried) < 3600 { continue }
-            lastAutomaticUpdate[profile.id] = now
-            update(profile.id, automatic: true)
-        }
     }
 
     /// The files of a diagnostics bundle, built off the main thread.

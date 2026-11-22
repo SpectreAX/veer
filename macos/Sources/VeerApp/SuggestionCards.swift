@@ -102,7 +102,7 @@ struct SuggestionCards: View {
     }
 
     private func askButton(_ suggestion: Suggestion, prompt: String) -> some View {
-        Button(String(localized: "问 AI")) {
+        Button(String(localized: "问 Agent")) {
             store.dismiss(suggestion)
             agent.open(asking: prompt, fresh: true)
         }

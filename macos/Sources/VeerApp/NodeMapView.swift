@@ -2,7 +2,7 @@ import SwiftUI
 import VeerCore
 import VeerProxy
 
-/// Nodes on a world map, with the regions below it and the chosen region's nodes below those.
+/// Nodes on a world map, the chosen region's nodes right below it, and every region below those.
 /// The map's greens say how many nodes each region has; choosing a region, on the map or below it,
 /// brings the map in on it and shows its nodes and delays. Choosing a node uses it in the main group
 /// when that group has it.
@@ -10,24 +10,31 @@ struct NodeMapView: View {
     @Environment(ProxyStore.self) private var store
     /// The toolbar's search: nodes whose name or region contains it.
     var query = ""
+    /// Empties the search; offered when it matches nothing.
+    var clearSearch: (() -> Void)?
     /// A region code or `unknownRegion`; until the user chooses, the region of the node in use.
     @State private var chosen: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     static let unknownRegion = "unknown"
 
     /// Every real node in the running config with its best known delay, by region code; nodes
     /// whose region is unknown are under nil.
-    private var regions: [String?: [MapNode]] {
-        var best: [String: Int?] = [:]
+    static func regions(in store: ProxyStore, matching query: String) -> [String?: [MapNode]] {
+        var best: [String: Int?] = [:], states: [String: NodeDelay] = [:]
         for group in store.groups {
             // Subscriptions list their traffic and expiry as fake nodes; they exit nowhere.
             for member in group.members where !member.isGroup && !Self.builtins.contains(member.name) && !NodeCleanup.isInfoNode(member.name) {
+                let latest = store.delays[member.name]
                 let known = best[member.name] ?? nil
-                best[member.name] = Self.better(known, member.delay)
+                best[member.name] = Self.better(known, latest?.legacyDelay ?? member.delay)
+                // The same node in every group has one state: Veer tests nodes, not group members.
+                states[member.name] = latest ?? member.state
             }
         }
         let text = query.trimmingCharacters(in: .whitespaces).lowercased()
-        let all = Dictionary(grouping: best.map { MapNode(name: $0.key, delay: $0.value) }.sorted { $0.name < $1.name }) {
+        let nodes = best.map { MapNode(name: $0.key, delay: $0.value, state: states[$0.key] ?? NodeDelay(history: $0.value)) }
+        let all = Dictionary(grouping: nodes.sorted { $0.name < $1.name }) {
             store.region(of: $0.name)
         }
         guard !text.isEmpty else { return all }
@@ -54,37 +61,72 @@ struct NodeMapView: View {
     }
 
     var body: some View {
-        let regions = regions
-        let selected = selection(in: regions)
+        let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let regions = Self.regions(in: store, matching: text)
+        let current = store.mainGroup?.now.flatMap(store.region(of:))
+        let selected = Self.selection(chosen: chosen, current: current, in: regions, filtering: !text.isEmpty)
         // The same scroll view whatever the search finds: taking it away for an empty state would
         // take the keyboard focus out of the search field, in the middle of typing.
-        ScrollView {
-            VStack(alignment: .leading, spacing: Spacing.lg) {
-                // Brought in on a region only once the person has chosen one: the region of the node in
-                // use is marked, with the whole map in view.
-                MapCard(regions: regions, selected: selected, focus: chosen == selected ? chosen : nil) { chosen = $0 }
-                if regions.isEmpty {
-                    Text(String(localized: "没有匹配“\(query)”的节点")).font(.callout).foregroundStyle(.secondary)
-                } else {
-                    RegionGrid(regions: regions, selected: selected) { chosen = $0 }
-                    if let selected {
-                        RegionNodes(code: selected, nodes: nodes(of: selected, in: regions))
+        ScrollViewReader { reader in
+            ScrollView {
+                VStack(alignment: .leading, spacing: Spacing.lg) {
+                    // A search that finds nothing says so in the map's place: an empty map, its
+                    // zero counts and legend only pushed the answer, and the way back, out of sight.
+                    if Self.searchFoundNothing(regions, query: text) {
+                        StateView(symbol: "magnifyingglass", title: String(localized: "没有匹配“\(text)”的节点或地区"),
+                                  actionTitle: clearSearch == nil ? nil : String(localized: "清除搜索"), action: clearSearch)
+                            .frame(minHeight: 320)
                     } else {
-                        Text("选择一个地区查看节点").font(.callout).foregroundStyle(.secondary)
+                        // The map zooms only on an explicit choice, including when search shows one region.
+                        MapCard(regions: regions, selected: selected, focus: chosen == selected ? chosen : nil) { chosen = $0 }
+                    }
+                    if regions.isEmpty {
+                        if text.isEmpty { Text(String(localized: "没有可显示在地图上的节点。")).font(.callout) }
+                    } else {
+                        // The scroll target exists even before a region has been selected.
+                        VStack(alignment: .leading) {
+                            if let selected {
+                                RegionNodes(code: selected, nodes: Self.nodes(of: selected, in: regions))
+                            } else {
+                                Text("选择一个地区查看节点").font(.callout).foregroundStyle(.secondary)
+                            }
+                        }
+                        .id("SelectedRegionNodes")
+                        RegionGrid(regions: regions, selected: selected) {
+                            chosen = $0
+                            withAnimation(reduceMotion ? nil : Motion.panel) {
+                                reader.scrollTo("SelectedRegionNodes", anchor: .top)
+                            }
+                        }
                     }
                 }
+                .padding(Spacing.xl)
             }
-            .padding(Spacing.xl)
         }
     }
 
-    /// What the user chose, else the region of the node in use, if it is still listed.
-    private func selection(in regions: [String?: [MapNode]]) -> String? {
-        let main = store.mainGroup?.now.flatMap(store.region(of:))
-        return [chosen, main].compactMap { $0 }.first { !nodes(of: $0, in: regions).isEmpty }
+    /// A region as VoiceOver reads it, on the map and on its card: its name, its node count and its best
+    /// delay. No flag: VoiceOver reads a flag as the country's name a second time.
+    static func regionSummary(_ code: String, nodes: [MapNode]) -> String {
+        // A word where the page shows a dash, which VoiceOver reads as nothing or as "dash".
+        let best = MapNode.bestDelay(in: nodes).map { Format.delay($0) } ?? String(localized: "未测速")
+        let name = NodeLocator.place(code)?.name ?? String(localized: "未识别")
+        return String(localized: "\(name)，\(String(nodes.count)) 个节点，最低延迟 \(best)")
     }
 
-    private func nodes(of code: String, in regions: [String?: [MapNode]]) -> [MapNode] {
+    /// A search is in and no node's name or region contains it.
+    static func searchFoundNothing(_ regions: [String?: [MapNode]], query: String) -> Bool {
+        regions.isEmpty && !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// What the user chose, else the region of the node in use, if it is still listed.
+    static func selection(chosen: String?, current: String?, in regions: [String?: [MapNode]], filtering: Bool) -> String? {
+        let available = [chosen, current].compactMap { $0 }.first { !nodes(of: $0, in: regions).isEmpty }
+        guard available == nil, filtering, regions.count == 1, let only = regions.keys.first else { return available }
+        return only ?? unknownRegion
+    }
+
+    private static func nodes(of code: String, in regions: [String?: [MapNode]]) -> [MapNode] {
         (code == Self.unknownRegion ? regions[nil] : regions[code]) ?? []
     }
 }
@@ -92,7 +134,12 @@ struct NodeMapView: View {
 struct MapNode: Identifiable, Hashable {
     let name: String
     let delay: Int?
+    var state: NodeDelay = .untested
     var id: String { name }
+
+    static func bestDelay(in nodes: [Self]) -> Int? {
+        nodes.compactMap(\.delay).filter { $0 > 0 }.min()
+    }
 }
 
 /// The title, the map at the card's full width, and what the colors mean.
@@ -115,12 +162,10 @@ private struct MapCard: View {
             HStack(spacing: Spacing.sm) {
                 Image(systemName: "globe").foregroundStyle(.secondary)
                 Text("节点分布").font(.headline)
-                Text(verbatim: summary).font(.callout).foregroundStyle(.secondary)
+                Text(verbatim: summary).font(.callout)
             }
             WorldMap(regions: regions, selected: selected, focus: focus, choose: choose)
-            legend
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            legend.font(.caption)
         }
         .panel()
     }
@@ -207,7 +252,7 @@ private struct WorldMap: View {
         .clipShape(RoundedRectangle(cornerRadius: Radius.medium, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(String(localized: "节点分布地图"))
-        .accessibilityValue(callout?.text ?? String(localized: "没有选中地区；地区在下面的列表里"))
+        .accessibilityValue(selectionDescription ?? String(localized: "没有选中地区；地区在下面的列表里"))
         // In on the region chosen, or back out.
         .onChange(of: focus, initial: true) { _, focus in show(focus.flatMap(Self.viewport(for:)) ?? .world) }
     }
@@ -222,12 +267,15 @@ private struct WorldMap: View {
         return counts
     }
 
-    /// The chosen region's name, nodes and best delay, and where it is on the map.
+    /// A short label on the map. The region's details sit in the card directly below.
     private var callout: MapSurface.Callout? {
-        guard let selected, let place = NodeLocator.place(selected), let nodes = regions[selected] else { return nil }
-        let best = nodes.map(\.delay).reduce(nil, NodeMapView.better)
-        return MapSurface.Callout(text: String(localized: "\(place.flag) \(place.name)：\(String(nodes.count)) 个节点，最低延迟 \(Format.delay(best))"),
-                                  anchor: Self.anchor(of: selected))
+        guard let selected, let place = NodeLocator.place(selected) else { return nil }
+        return MapSurface.Callout(text: "\(place.flag) \(place.name)", anchor: Self.anchor(of: selected))
+    }
+
+    private var selectionDescription: String? {
+        guard let selected, let nodes = regions[selected == NodeMapView.unknownRegion ? nil : selected] else { return nil }
+        return NodeMapView.regionSummary(selected, nodes: nodes)
     }
 
     /// The listed region at a point of the view: a small region's mark when the point is near one,
@@ -337,7 +385,9 @@ private struct MapSurface: View, Animatable {
             Canvas { context, size in draw(&context, size: size) }
                 .accessibilityHidden(true)
             if let callout, let anchor = callout.anchor {
-                label(callout.text, at: viewport.point(anchor, in: size), in: size)
+                // While zoomed in, Show Whole Map sits in the top trailing corner; the label keeps clear of it.
+                label(callout.text, at: viewport.point(anchor, in: size),
+                      avoiding: viewport.scale > 1 ? MapCalloutLayout.buttonArea(in: size) : nil)
             }
         }
     }
@@ -368,20 +418,78 @@ private struct MapSurface: View, Animatable {
     }
 
     /// Above the region, kept inside the map; below it for regions at the map's top edge.
-    private func label(_ text: String, at point: CGPoint, in size: CGSize) -> some View {
-        let margin: CGFloat = 130, offset: CGFloat = 26
-        return Text(verbatim: text)
-            .font(.callout)
-            .lineLimit(1)
-            .fixedSize()
-            .padding(.horizontal, Spacing.md)
-            .padding(.vertical, Spacing.xs)
-            .background(.regularMaterial, in: Capsule())
-            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.1)))
-            .position(x: min(max(point.x, margin), max(margin, size.width - margin)),
-                      y: point.y > offset + Spacing.lg ? point.y - offset : point.y + offset)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
+    private func label(_ text: String, at point: CGPoint, avoiding: CGRect?) -> some View {
+        MapCalloutLayout(point: point, avoiding: avoiding) {
+            Text(verbatim: text)
+                .font(.callout)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, Spacing.md)
+                .padding(.vertical, Spacing.xs)
+                .background(.regularMaterial, in: Capsule())
+                .overlay(Capsule().strokeBorder(Color.primary.opacity(0.1)))
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Places the map's region label by its rendered size, so a short label can sit next to a region at
+/// the map's edge instead of being kept as far in as the widest label would need.
+struct MapCalloutLayout: Layout {
+    let point: CGPoint
+    /// A part of the map the label must not cover: the Show Whole Map button, while it is shown.
+    var avoiding: CGRect?
+    /// From the region's point to the label's center, above it or below it.
+    static let offset: CGFloat = 32
+    static let inset = Spacing.xs
+    static let maxWidth: CGFloat = 300
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        proposal.replacingUnspecifiedDimensions()
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard let label = subviews.first else { return }
+        let width = max(0, min(Self.maxWidth, bounds.width - 2 * Self.inset))
+        let size = label.sizeThatFits(ProposedViewSize(width: width, height: nil))
+        let center = Self.center(for: point, label: size, in: bounds.size, avoiding: avoiding)
+        label.place(at: CGPoint(x: bounds.minX + center.x, y: bounds.minY + center.y), anchor: .center,
+                    proposal: ProposedViewSize(width: size.width, height: size.height))
+    }
+
+    /// The label's center: over the point where its width allows, held inside the map by its own
+    /// half width; above the point unless that would leave the top.
+    static func center(for point: CGPoint, label: CGSize, in map: CGSize, avoiding: CGRect? = nil) -> CGPoint {
+        let margin = label.width / 2 + inset
+        let x = 2 * margin > map.width ? map.width / 2 : min(max(point.x, margin), map.width - margin)
+        var y = point.y > offset + Spacing.lg ? point.y - offset : point.y + offset
+        // Inside the map top to bottom too, when it is tall enough: in the narrow map the label below a
+        // region near the bottom edge was cut off.
+        let half = label.height / 2 + inset
+        if map.height >= 2 * half { y = min(max(y, half), map.height - half) }
+        let placed = CGPoint(x: x, y: y)
+        guard let avoiding, frame(placed, label).intersects(avoiding) else { return placed }
+        // The other side of the region, if that stays inside the map and clear of the area.
+        let other = CGPoint(x: x, y: y < point.y ? point.y + offset : point.y - offset)
+        let otherFrame = frame(other, label)
+        if otherFrame.minY >= 0, otherFrame.maxY <= map.height, !otherFrame.intersects(avoiding) { return other }
+        // A region in the area's band: just below the area, still over the region, not over a neighbor.
+        let below = CGPoint(x: x, y: avoiding.maxY + inset + label.height / 2)
+        if point.y < avoiding.maxY, frame(below, label).maxY <= map.height { return below }
+        // Else beside the area, toward the map's leading side, when the map is wide enough for that.
+        let beside = avoiding.minX - inset - label.width / 2
+        return beside - label.width / 2 >= inset ? CGPoint(x: beside, y: y) : placed
+    }
+
+    /// Where Show Whole Map sits: the map's top trailing corner, a small button, its padding and a gap.
+    static func buttonArea(in map: CGSize) -> CGRect {
+        CGRect(x: map.width - 40, y: 0, width: 40, height: 32)
+    }
+
+    private static func frame(_ center: CGPoint, _ label: CGSize) -> CGRect {
+        CGRect(x: center.x - label.width / 2, y: center.y - label.height / 2, width: label.width, height: label.height)
     }
 }
 
@@ -409,13 +517,13 @@ private struct RegionGrid: View {
     }
 
     private func card(code: String, title: String, nodes: [MapNode]) -> some View {
-        let best = nodes.map(\.delay).reduce(nil, NodeMapView.better)
+        let best = MapNode.bestDelay(in: nodes)
         let isSelected = selected == code
         return Button { choose(code) } label: {
             HStack(spacing: Spacing.sm) {
                 Text(verbatim: title).lineLimit(1).truncationMode(.tail)
                 Spacer(minLength: Spacing.xs)
-                Text(verbatim: "\(nodes.count)").foregroundStyle(.secondary).monospacedDigit()
+                Text(verbatim: "\(nodes.count)").monospacedDigit()
                 Text(Format.delay(best)).font(.caption.monospacedDigit()).foregroundStyle(Format.delayKind(best).color)
                     .lineLimit(1).fixedSize()
             }
@@ -427,6 +535,9 @@ private struct RegionGrid: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        // Read as one name rather than its parts ("Japan, 2, 92 ms" left the 2 and the delay unexplained).
+        .accessibilityLabel(NodeMapView.regionSummary(code, nodes: nodes))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -436,15 +547,30 @@ private struct RegionNodes: View {
     let code: String
     let nodes: [MapNode]
 
+    /// The scope its test runs under, so it neither waits for nor stops another group's.
+    private var scope: LatencyScope { .region(code) }
+    private var place: NodeLocator.Place? { NodeLocator.place(code) }
+    private var name: String { place?.name ?? String(localized: "未识别") }
+
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.md) {
-            HStack(spacing: Spacing.sm) {
-                if let place = NodeLocator.place(code) {
-                    Text(verbatim: "\(place.flag) \(place.name)").font(.headline)
-                } else {
-                    Text("未识别").font(.headline)
+            BlendedHeader(spacing: Spacing.sm, rowSpacing: Spacing.xs) {
+                Text(verbatim: place.map { "\($0.flag) \($0.name)" } ?? name).font(.headline).lineLimit(1)
+                Text("\(String(nodes.count)) 个节点").font(.callout).lineLimit(1)
+                let best = MapNode.bestDelay(in: nodes)
+                Text(String(localized: "最低延迟 \(Format.delay(best))")).font(.callout).lineLimit(1)
+                // Spinner and button share one place, so the header does not move.
+                ZStack(alignment: .trailing) {
+                    Button("测速") { store.testNodes(nodes.map(\.name), scope: scope) }
+                        .secondaryAction()
+                        .fixedSize()
+                        .opacity(testing ? 0 : 1)
+                        .disabled(testing || !store.isRunning || store.switchingTo != nil)
+                        .accessibilityLabel(String(localized: "为“\(name)”测速"))
+                        .accessibilityHidden(testing)
+                        .help(String(localized: "只测试这个地区的 \(String(nodes.count)) 个节点，不改变任何策略组的选择"))
+                    if testing { ProgressView().controlSize(.small).accessibilityLabel(String(localized: "正在测速")) }
                 }
-                Text("\(String(nodes.count)) 个节点").font(.callout).foregroundStyle(.secondary)
             }
             if code == NodeMapView.unknownRegion {
                 Text("在代理页的节点上右键，可以手动标记地区。").font(.caption).foregroundStyle(.secondary)
@@ -455,6 +581,8 @@ private struct RegionNodes: View {
         }
         .panel()
     }
+
+    private var testing: Bool { store.testingScopes.contains(scope) }
 
     private func card(_ node: MapNode) -> some View {
         let main = store.mainGroup
@@ -472,7 +600,8 @@ private struct RegionNodes: View {
                         .help(String(localized: "按服务器 IP 推断的地区；中转节点的入口和出口可能不在同一个地方，可以右键手动标记。"))
                 }
                 Spacer(minLength: Spacing.xs)
-                Text(Format.delay(node.delay)).font(.caption.monospacedDigit()).foregroundStyle(Format.delayKind(node.delay).color)
+                let color = node.state == .testing || node.state == .coreNotReady ? Color.primary : Format.delayKind(node.state).color
+                Text(Format.delay(node.state)).font(.caption.monospacedDigit()).foregroundStyle(color)
                     .lineLimit(1).fixedSize()
             }
             .padding(.horizontal, Spacing.md)
@@ -482,7 +611,9 @@ private struct RegionNodes: View {
         }
         .buttonStyle(.plain)
         .disabled(!usable)
+        .accessibilityAddTraits(inUse ? .isSelected : [])
         .help(usable ? String(localized: "在“\(main?.name ?? "")”中使用这个节点") : node.name)
+        .contextMenu { Menu("标记地区") { RegionMarkItems(node: node.name) } }
     }
 }
 

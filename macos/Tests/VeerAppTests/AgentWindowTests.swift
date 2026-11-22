@@ -244,12 +244,14 @@ import VeerProxy
 }
 
 /// An AI service that starts answering, then holds the rest until released, as a slow stream does.
-private actor GatedTransport: AITransport {
+actor GatedTransport: AITransport {
     private(set) var requests = 0
     private var waiting: [CheckedContinuation<Void, Never>] = []
     private var released = false
 
-    private static let answer = #"{"choices":[{"finish_reason":"stop","message":{"content":"{\"clarification\":\"哪个地区？\"}"}}]}"#
+    private let answer: String
+
+    init(answer: String = #"{"clarification":"哪个地区？"}"#) { self.answer = answer }
 
     func release() {
         released = true
@@ -265,13 +267,15 @@ private actor GatedTransport: AITransport {
 
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         await gate()
-        return (Data(Self.answer.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        let data = try JSONSerialization.data(withJSONObject: ["choices": [["finish_reason": "stop", "message": ["content": answer]]]])
+        return (data, HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
     }
 
     func lines(_ request: URLRequest) async throws -> (HTTPURLResponse, AsyncThrowingStream<String, Error>) {
         await gate()
-        let chunk = #"data: {"choices":[{"delta":{"content":"{\"clarification\":\"哪个地区？\"}"},"finish_reason":"stop"}]}"#
-        let lines = [chunk, "", "data: [DONE]", ""]
+        let chunk = try JSONSerialization.data(withJSONObject: ["choices": [["delta": ["content": answer], "finish_reason": "stop"]]])
+        let json = try #require(String(bytes: chunk, encoding: .utf8))
+        let lines = ["data: \(json)", "", "data: [DONE]", ""]
         return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, AsyncThrowingStream { continuation in
             for line in lines { continuation.yield(line) }
             continuation.finish()

@@ -1,4 +1,5 @@
 import SwiftUI
+import VeerUI
 
 /// NavigationSplitView can lay out its detail at the destination width while AppKit is still
 /// moving the column. Keep the page's right edge inside the split at every intermediate position.
@@ -65,5 +66,34 @@ struct PageClip: Shape {
     nonisolated func path(in rect: CGRect) -> Path {
         let above: CGFloat = Self.softensAbove ? MainView.topRowHeight : 0
         return Path(CGRect(x: rect.minX, y: rect.minY - above, width: rect.width, height: rect.height + above))
+    }
+}
+
+/// While the sidebar moves, the page is told so as it is told about the Agent panel (`PanelMotion`):
+/// its responsive arrangements (Overview's cards, group headers, small grids) go from one to the
+/// other with the width, frame by frame, and its large grids hold their column count. Without it
+/// the page took the sidebar's motion for a resize at rest, and crossing a breakpoint swapped the
+/// whole arrangement between two frames (Overview at 860 pt: three columns to stacked rows).
+/// A motion of the sidebar wins over one of the panel; the two together are not distinguished.
+struct SidebarMotion: ViewModifier {
+    @Environment(\.panelMotion) private var outer
+    let motion: PanelMotion?
+
+    /// The page's width change from the sidebar's motion under way, set when it is asked for and
+    /// so before the divider moves; nil at rest. A reversal is a new motion (a new id) between the
+    /// same two ends, which the layouts keep.
+    static func motion(of animator: SidebarAnimator) -> PanelMotion? {
+        motion(animating: animator.isAnimating, hiding: animator.isHidden, width: animator.width, request: animator.request)
+    }
+
+    /// `hiding`: the sidebar is on its way out, so the page widens by its `width`.
+    nonisolated static func motion(animating: Bool, hiding: Bool, width: CGFloat, request: Int) -> PanelMotion? {
+        guard animating else { return nil }
+        // Negative ids, so one never equals the panel's.
+        return PanelMotion(id: -request, widthChange: hiding ? width : -width)
+    }
+
+    func body(content: Content) -> some View {
+        content.environment(\.panelMotion, motion ?? outer)
     }
 }

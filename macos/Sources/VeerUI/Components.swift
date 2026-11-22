@@ -179,28 +179,47 @@ public extension LabelStyle where Self == AdaptiveLabelStyle {
 
 /// Centered empty / error / informational state with an optional action.
 public struct StateView: View {
-    public init(symbol: String, title: String, message: String? = nil, actionTitle: String? = nil, action: (() -> Void)? = nil) {
+    public init(symbol: String, title: String, message: String? = nil, actionNotice: String? = nil,
+                actionTitle: String? = nil, action: (() -> Void)? = nil) {
         self.symbol = symbol
         self.title = title
         self.message = message
+        self.actionNotice = actionNotice
         self.actionTitle = actionTitle
         self.action = action
     }
 
+    /// Work under way: a spinner over `title`, read by VoiceOver as the title.
+    public init(loading title: String) {
+        symbol = ""
+        self.title = title
+        isLoading = true
+    }
+
     public let symbol: String
+    var isLoading = false
     public let title: String
     public var message: String?
+    private var actionNotice: String?
     public var actionTitle: String?
     public var action: (() -> Void)?
 
     public var body: some View {
         VStack(spacing: Spacing.md) {
-            Image(systemName: symbol).font(.title).foregroundStyle(.tertiary)
-            Text(title).font(.headline)
+            if isLoading {
+                ProgressView().controlSize(.regular).accessibilityHidden(true)
+            } else {
+                Image(systemName: symbol).font(.title).foregroundStyle(.tertiary).accessibilityHidden(true)
+            }
+            // Centred like the message: a long title (a search, a name) wraps in a narrow column.
+            Text(title).font(.headline).multilineTextAlignment(.center).accessibilityAddTraits(.isHeader)
             if let message {
                 Text(message).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
             if let actionTitle, let action {
+                if let actionNotice {
+                    Text(actionNotice).font(.callout).foregroundStyle(.primary).multilineTextAlignment(.center)
+                }
                 Button(actionTitle, action: action).secondaryAction()
             }
         }

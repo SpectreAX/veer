@@ -356,7 +356,7 @@ struct ComposerTextView: NSViewRepresentable {
         textView.onMarkedTextChange = { [weak coordinator] composing in coordinator?.setComposing(composing) }
         textView.onPasteFiles = { [weak coordinator] in coordinator?.parent.onPasteFiles($0) }
         textView.onPasteImage = { [weak coordinator] in coordinator?.parent.onPasteImage($0) }
-        // A draft put in before the field had its width (an example, "Ask AI") was measured at
+        // A draft put in before the field had its width (an example, "Ask Agent") was measured at
         // width zero and stayed one line tall with its first line cut off; so was any draft when
         // the panel was resized.
         textView.onWidthChange = { [weak coordinator, weak textView] in

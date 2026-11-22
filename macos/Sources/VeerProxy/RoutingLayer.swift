@@ -49,12 +49,16 @@ public struct RoutingLayer: Codable, Sendable, Equatable {
     public var template: String?
     /// Regions the user set by hand for nodes whose names say nothing (ISO codes, by node name).
     public var regionMarks: [String: String]
+    /// Where chosen apps' traffic goes, in priority order; written ahead of every other rule.
+    public var appRules: [AppRule]
 
-    public init(edits: [Edit] = [], excludedNodes: Set<String> = [], template: String? = nil, regionMarks: [String: String] = [:]) {
+    public init(edits: [Edit] = [], excludedNodes: Set<String> = [], template: String? = nil, regionMarks: [String: String] = [:],
+                appRules: [AppRule] = []) {
         self.edits = edits
         self.excludedNodes = excludedNodes
         self.template = template
         self.regionMarks = regionMarks
+        self.appRules = appRules
     }
 
     /// Layers saved before a field existed decode with it empty.
@@ -64,9 +68,10 @@ public struct RoutingLayer: Codable, Sendable, Equatable {
         excludedNodes = try container.decodeIfPresent(Set<String>.self, forKey: .excludedNodes) ?? []
         template = try container.decodeIfPresent(String.self, forKey: .template)
         regionMarks = try container.decodeIfPresent([String: String].self, forKey: .regionMarks) ?? [:]
+        appRules = try container.decodeIfPresent([AppRule].self, forKey: .appRules) ?? []
     }
 
-    public var isEmpty: Bool { edits.isEmpty && excludedNodes.isEmpty && template == nil && regionMarks.isEmpty }
+    public var isEmpty: Bool { edits.isEmpty && excludedNodes.isEmpty && template == nil && regionMarks.isEmpty && appRules.isEmpty }
 
     /// Where a node exits: the user's mark, else what its name says.
     public func region(of node: String) -> String? { regionMarks[node] ?? NodeLocator.locate(node) }
@@ -84,23 +89,40 @@ public struct EffectiveConfig: Sendable, Equatable, Codable {
     public let emptiedGroups: [String]
     /// Excluded nodes kept because a rule sends traffic to them by name.
     public let keptNodes: [String]
+    /// The app rules written ahead of the others, and what became of each; nil without any.
+    public var appRouting: AppRuleBuilder.Report?
+
+    public init(text: String, replay: EditReplay.Result?, emptiedGroups: [String], keptNodes: [String],
+                appRouting: AppRuleBuilder.Report? = nil) {
+        self.text = text
+        self.replay = replay
+        self.emptiedGroups = emptiedGroups
+        self.keptNodes = keptNodes
+        self.appRouting = appRouting
+    }
 
     public var conflictCount: Int { replay?.conflictCount ?? 0 }
 }
 
 public extension RoutingLayer {
     /// Puts the template's groups and rules in (when one is chosen), replays the enabled edits
-    /// onto that, then takes the excluded nodes out.
+    /// onto that, takes the excluded nodes out, then writes the app rules ahead of every rule.
     func apply(to profile: String) throws -> EffectiveConfig {
         let base = try template.map { try RuleTemplate.apply($0, to: profile, regionMarks: regionMarks) } ?? profile
         let active = edits.filter(\.enabled).map(\.replayable)
         let replay = active.isEmpty ? nil : EditReplay.replay(active, onto: base, regionOverrides: regionOverrides)
         let replayed = replay?.text ?? base
-        guard !excludedNodes.isEmpty else {
-            return EffectiveConfig(text: replayed, replay: replay, emptiedGroups: [], keptNodes: [])
+        var config: EffectiveConfig
+        if excludedNodes.isEmpty {
+            config = EffectiveConfig(text: replayed, replay: replay, emptiedGroups: [], keptNodes: [])
+        } else {
+            let (text, emptied, kept) = try Self.removing(excludedNodes, from: replayed)
+            config = EffectiveConfig(text: text, replay: replay, emptiedGroups: emptied, keptNodes: kept)
         }
-        let (text, emptied, kept) = try Self.removing(excludedNodes, from: replayed)
-        return EffectiveConfig(text: text, replay: replay, emptiedGroups: emptied, keptNodes: kept)
+        guard !appRules.isEmpty else { return config }
+        let (text, report) = try AppRuleBlock.insert(appRules, into: config.text)
+        return EffectiveConfig(text: text, replay: config.replay, emptiedGroups: config.emptiedGroups, keptNodes: config.keptNodes,
+                               appRouting: report)
     }
 
     /// Takes `names` out of `proxies` and every group. A node a rule names stays, since the core
@@ -160,6 +182,20 @@ public final class RoutingStore: @unchecked Sendable {
         lock.withLock {
             guard let data = try? Data(contentsOf: file(id)) else { return RoutingLayer() }
             return (try? Self.decoder.decode(RoutingLayer.self, from: data)) ?? RoutingLayer()
+        }
+    }
+
+    /// A missing layer has no changes. An unreadable layer still protects its profile from merging.
+    public func protectsFromMerge(_ id: UUID) -> Bool {
+        lock.withLock {
+            do {
+                let data = try Data(contentsOf: file(id))
+                return try !Self.decoder.decode(RoutingLayer.self, from: data).isEmpty
+            } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+                return false
+            } catch {
+                return true
+            }
         }
     }
 
