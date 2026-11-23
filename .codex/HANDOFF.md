@@ -1,5 +1,12 @@
 # Veer macOS handoff
 
+## 1.1.0 released (2026-11-23, Claude)
+
+- Published [Veer 1.1.0](https://github.com/SpectreAX/veer/releases/tag/macos-v1.1.0) from tag `macos-v1.1.0` (`ede27cf`) with the prepared `Veer-1.1.0.dmg` and `appcast.xml`, via `gh release create --verify-tag --latest` (not `release.sh --publish`, which would rebuild the checked DMG). Before upload: the tree matched `ede27cf`, all 275 hashes in `source-manifest.txt` matched, `hdiutil verify`, deep strict codesign of the app inside the DMG (1.1.0 / 10, new feed) and the Sparkle signature passed.
+- After upload, anonymous downloads: the latest appcast is byte-identical to `dist/appcast.xml`; the DMG has SHA-256 `449f3f5a…f52a3a`, 26,262,779 bytes; the release is Latest.
+- Old feed (veer-releases) unchanged, still 1.0.7. NOT VERIFIED: a real Sparkle update 1.0.8 → 1.1.0, RELEASE §2 hands-on checks, macOS 14 (waived by the user for this release).
+- Cleanup on the user's request: deleted `.build/out`, `.build/probe/apps` (64 probes), all 40 `dist/builds` deliveries, 36 snapshot batches in `dist/snapshots` that no doc references (kept the referenced ones and the newest), and the local 1.0.0–1.0.7 DMGs (all on GitHub). About 10 GiB freed. Kept `.build/probe/frames`, `traces` and `.codex/local` for a later decision. Rollback: `dist/Veer-1.0.8.dmg`, `.codex/local/release-1.1.0/pre-release.5WBYRl/`.
+
 ## 1.1.0 publication authorized (2026-11-23)
 
 - Delivered the first pass for all ten Phase II areas (Agent workspace through design system).
