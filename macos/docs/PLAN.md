@@ -99,7 +99,7 @@ Claude 已补齐左侧栏的隔离动态验收，并完成订阅提示对比度�
 - 发布后匿名下载：`releases/latest/download/appcast.xml` 与本地文件逐字节相同；按其中地址下载的 DMG 哈希和大小与本地一致；Release 为 Latest。
 - 旧 feed（veer-releases）未改，仍指向 1.0.7：1.0.6 客户端先升到 1.0.7，再从新 feed 升到 1.1.0。
 - 未验证：从 1.0.8 通过 Sparkle 实际升级到 1.1.0；RELEASE 第 2 节实机检查；macOS 14（用户本次免检）。
-- 清理（用户要求）：删除 `.build/out` 编译缓存（1.7 GiB，可重建）、`.build/probe/apps` 64 个探针包（3.9 GiB）、`dist/builds` 40 个被 1.1.0 取代的本地交付构建（2.6 GiB；回退可用 `dist/Veer-1.0.8.dmg` 和 `.codex/local/release-1.1.0/pre-release.5WBYRl/`）、`dist/snapshots` 里 36 个文档未引用的截图批次（约 1.3 GiB，保留被 PLAN/HANDOFF 引用的批次和最新一批），以及 1.0.0–1.0.7 的本地 DMG（均在 GitHub Release 上）。`.build` 13 → 7.3 GiB，`dist` 5.2 → 1.0 GiB。保留 `.build/probe/frames`、`traces` 和 `.codex/local`，待用户逐批决定。
+- 清理（用户要求）：删除 `.build/out` 编译缓存（1.7 GiB，可重建）、`.build/probe/apps` 64 个探针包（3.9 GiB）、`dist/builds` 40 个被 1.1.0 取代的本地交付构建（2.6 GiB；回退可用 `dist/Veer-1.0.8.dmg` 和 `.codex/local/release-1.1.0/pre-release.5WBYRl/`）、`dist/snapshots` 里 36 个文档未引用的截图批次（约 1.3 GiB，保留被 PLAN/HANDOFF 引用的批次和最新一批），以及 1.0.0–1.0.7 的本地 DMG（均在 GitHub Release 上）。`.build` 13 → 7.3 GiB，`dist` 5.2 → 1.0 GiB。第二批（用户确认）：删除 `.build/probe/frames`（5.8 GiB 原始录帧）、`.build/probe/traces` 里的 `.frames`/`.gpu`/`.trace` 录制（保留 `.log` 和 `.txt` 结果）、`.codex/local` 里全部 `.jpg` 录帧（约 5 GiB）和 51 个备份 App 副本（约 3.1 GiB，含各次 `pre-replace.*`）；只保留 1.1.0 的回退副本 `.codex/local/release-1.1.0/pre-release.5WBYRl/Veer.app`（严格验签通过）。截图、日志、脚本和 JSON 都保留；探针脚本目录未动。`.build` 7.3 GiB → 824 MB，`.codex` 9.5 → 1.3 GiB，磁盘可用 58 → 80 GiB。文档中早先提到的 `pre-replace.*` 备份和原始录帧已不存在。
 
 ## 1.0.8 已发布（2026-11-20，Claude）
 
