@@ -186,4 +186,36 @@ import Testing
         let retried = await RuleSetCounter(binary: try #require(Self.mihomo)).count(try Self.loopbackConfig(server), timeout: 15)
         #expect(retried["served"] == .entries(2), "\(retried)")
     }
+
+    @Test func aCoreThatIgnoresTerminationDoesNotHoldUpCounting() async throws {
+        let server = try SetServer()
+        let held = try Holder(port: try #require(Ports.free()))
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let binary = directory.appendingPathComponent("counting-core")
+        // A core that reports a port conflict and won't exit on SIGTERM. It also exits on its
+        // own eventually, so a regression fails instead of hanging the test suite.
+        try """
+        #!/usr/bin/python3
+        import signal
+        import time
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        print("listen tcp 127.0.0.1:\(held.port): bind: address already in use", flush=True)
+        time.sleep(8)
+        """.write(to: binary, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: binary.path)
+        var counter = RuleSetCounter(binary: binary)
+        counter.pickPort = { [port = held.port] in port }
+        let before = Self.countingFolders()
+        let started = ContinuousClock.now
+        let counts = await counter.count(try Self.loopbackConfig(server))
+        #expect(ContinuousClock.now - started < .seconds(5))
+        guard case .failed(let reason) = counts["served"] else {
+            Issue.record("expected a controller port conflict")
+            return
+        }
+        #expect(reason.contains(String(held.port)))
+        #expect(Self.countingFolders() == before && !Self.countingCoreRunning())
+    }
 }

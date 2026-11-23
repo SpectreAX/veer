@@ -1,6 +1,7 @@
 // macOS only: it starts the bundled core as a second process, which iOS apps cannot.
 #if os(macOS)
 import Darwin
+import Dispatch
 import Foundation
 import Yams
 
@@ -74,21 +75,31 @@ public struct RuleSetCounter: Sendable {
         process.standardInput = FileHandle.nullDevice
         let output = MihomoValidator.OutputBuffer()
         pipe.fileHandleForReading.readabilityHandler = { output.append($0.availableData) }
+        let exited = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in exited.signal() }
         try process.run()
-        defer {
-            pipe.fileHandleForReading.readabilityHandler = nil
-            if process.isRunning { process.terminate() }
-            process.waitUntilExit()
-        }
+        defer { pipe.fileHandleForReading.readabilityHandler = nil }
 
         let controller = MihomoController(base: URL(string: "http://127.0.0.1:\(port)")!, secret: secret)
-        let names = definitions.compactMap(\.0.string)
+        let result: Result<[String: Count], Error>
+        do {
+            let names = definitions.compactMap(\.0.string)
+            result = .success(try await Self.poll(names, controller: controller, process: process, output: output, timeout: timeout))
+        } catch {
+            result = .failure(error)
+        }
+        await Self.stop(process, exited: exited)
+        return try result.get()
+    }
+
+    private static func poll(_ names: [String], controller: MihomoController, process: Process,
+                             output: MihomoValidator.OutputBuffer, timeout: TimeInterval) async throws -> [String: Count] {
         var counts: [String: Count] = [:]
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline, process.isRunning {
             // Another program on the controller port: the core runs on without a controller, and
             // waiting would only end in a misleading download timeout. Counts already made stay.
-            if Ports.listenFailed(on: port, in: output.string.split(separator: "\n")) {
+            if let port = controller.base.port, Ports.listenFailed(on: port, in: output.string.split(separator: "\n")) {
                 return Self.failing(names, in: counts, String(localized: "内置 Mihomo 的控制端口 \(String(port)) 被其他程序占用，未能计数。请重试。"))
             }
             // A short limit, because a program holding the port may accept and never answer.
@@ -102,6 +113,22 @@ public struct RuleSetCounter: Sendable {
             try await Task.sleep(for: .milliseconds(200))
         }
         return Self.failing(names, in: counts, process.isRunning ? "超过 \(Int(timeout)) 秒仍未下载完成" : "内置 Mihomo 意外退出")
+    }
+
+    private static func stop(_ process: Process, exited: DispatchSemaphore) async {
+        guard process.isRunning else { return }
+        // waitUntilExit can stall in Foundation's run loop. Use a bounded wait for the
+        // termination notification, off Swift's cooperative executor.
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            DispatchQueue.global(qos: .utility).async {
+                defer { continuation.resume() }
+                process.terminate()
+                if exited.wait(timeout: .now() + .milliseconds(500)) == .timedOut, process.isRunning {
+                    kill(process.processIdentifier, SIGKILL)
+                    _ = exited.wait(timeout: .now() + .milliseconds(500))
+                }
+            }
+        }
     }
 
     /// `counts` with every name not yet counted failed for `reason`.
