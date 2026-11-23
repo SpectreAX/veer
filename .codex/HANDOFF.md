@@ -7,6 +7,7 @@
 - Old feed (veer-releases) unchanged, still 1.0.7. NOT VERIFIED: a real Sparkle update 1.0.8 → 1.1.0, RELEASE §2 hands-on checks, macOS 14 (waived by the user for this release).
 - Cleanup on the user's request: deleted `.build/out`, `.build/probe/apps` (64 probes), all 40 `dist/builds` deliveries, 36 snapshot batches in `dist/snapshots` that no doc references (kept the referenced ones and the newest), and the local 1.0.0–1.0.7 DMGs (all on GitHub). About 10 GiB freed. Rollback: `dist/Veer-1.0.8.dmg`, `.codex/local/release-1.1.0/pre-release.5WBYRl/Veer.app`.
 - Second cleanup batch (user confirmed): deleted `.build/probe/frames`, the `.frames`/`.gpu`/`.trace` recordings in `.build/probe/traces` (kept `.log`/`.txt`), every `.jpg` frame in `.codex/local` and 51 backup app copies there (all earlier `pre-replace.*` apps). Only the 1.1.0 rollback app above remains (strict codesign passes). Screenshots, logs, scripts and JSON kept; probe script folders untouched. `.build` 7.3 GiB → 824 MB, `.codex` 9.5 → 1.3 GiB, free disk 58 → 80 GiB. Older entries below that cite `pre-replace.*` apps or raw frames now point to deleted files.
+- Git LFS cache (user confirmed): deleted the four local copies of the deprecated Android core (`libveer_core*.aar`, 156 MB each) from `.git/lfs/objects` after GitHub's LFS API confirmed it holds all four. The checkout only had pointer files, so nothing in the tree changed; `git lfs pull` fetches them again if Android resumes. `.git` 700 → 106 MB; `git fsck --connectivity-only` passes.
 
 ## 1.1.0 publication authorized (2026-11-23)
 
