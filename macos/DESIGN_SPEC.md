@@ -56,7 +56,10 @@ Brand expression must not damage native usability.
   glass and all, the same way in and out; one that stays springs to its new width.
 - The profile's name under the title is the profile menu, as the HIG places a document menu.
 - A toggle in the toolbar fills when on, and says its state to VoiceOver.
-- Search is `⌘F`; Esc clears it and leaves the field.
+- Search is `⌘F`, the system's Edit › Find › Find…: the Edit menu keeps the system's text editing
+  group (`TextEditingCommands`: Find, Spelling and Grammar, Substitutions, Transformations, Speech),
+  and Find… reaches the page's search field through the responder chain when no text view takes it.
+  Esc clears the search and leaves the field.
 
 ## Typography
 
@@ -90,6 +93,11 @@ System fonts and semantic text styles. Code and logs use `Typography.code` and `
   the button back to the newest turn floats over the conversation rather than in the composer's bar,
   and the Agent page, whose composer stops at the reading width, keeps a plain inset over a fade of the
   page's own color, which is its background, so the fade has no edge.
+- The composer's buttons are system buttons: its option controls (execution mode, model, files, web
+  search) and Stop are `secondaryAction()` circles, Send is `primaryAction()`, and web search is a
+  `Toggle` in the button style, which shows its own on state and reads as a switch to VoiceOver. On,
+  it fills with `accentFill`, as the toolbar's toggles do, not the system accent (blue by default). Only
+  full access colors its symbol (warning); each mode has its own symbol as well (2026-11-22).
 - The composer is its own regular glass shape, in the panel and on the Agent page, covering the field,
   its controls and padding. In the panel from macOS 26 it sits in a bottom `safeAreaBar` of the
   conversation, which scrolls on beneath it with the system's soft bottom edge, so text passing behind
@@ -115,11 +123,19 @@ System fonts and semantic text styles. Code and logs use `Typography.code` and `
 ## Motion
 
 `Motion.quick` and `Motion.standard`, or a documented spring. With Reduce Motion on, only fade.
+Every curve is a `Motion` token (`quick`, `standard`, `panel`, `toolbar`, `ripple`, `step`); the
+`no_literal_animation` lint rule keeps curves out of page code. What moves, resizes or scrolls uses
+`Motion.unlessReduced(_:_:)`, which switches at once under Reduce Motion: the undo toasts appear
+without rising, the conversation jumps to its newest turn, and the onboarding step mark
+changes width at once (2026-11-22).
 `CoreStateRing` around the Overview's start button turns once in 1.1 s while the core starts, and its
 ripple takes 0.6 s: state feedback, not a transition, with a steady ring and no ripple under Reduce Motion.
 
 ## Components and interaction
 
+- The Overview's big start button is the page's primary action (prominent) while the core is
+  stopped or has failed; while it runs, Stop is a secondary action, as the toolbar's is, since it cuts
+  every connection (2026-11-22).
 - Prefer `Button`, `Toggle`, `Picker`, `List`, `Table`, sheets, alerts and context menus.
 - One primary action per page.
 - Runtime actions run at once and can be undone. Config changes need an Apply click on a diff card.

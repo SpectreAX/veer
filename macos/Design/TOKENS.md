@@ -14,14 +14,18 @@ Do not force native controls into matching sizes.
 
 ## Layout
 
-`Metrics`: `readingWidth` 760, `sidebarWidth` 240, `inspectorWidth` 360, `minWindow` 860 × 560,
+`Metrics`: `iconTarget` 28 (an icon-only button's click target, via `.labelStyle(.iconTarget)`, which puts the frame inside the label), `readingWidth` 760, `sidebarWidth` 240, `inspectorWidth` 360, `minWindow` 860 × 560,
 `defaultWindow` 1080 × 720, `compactBreakpoint` 1100, `roomyTitleWidth` 960, `attachmentWidth` 220.
 
 ## Motion
 
 `Motion.quick` (ease out, 0.15 s) and `Motion.standard` (ease in-out, 0.22 s). `Motion.panel` is the
 Agent panel's spring (response 0.36, damping 0.9). The panel's work after the motion waits for the
-spring's own completion, not a fixed time. With Reduce Motion on, only fade.
+spring's own completion, not a fixed time. `Motion.toolbar` is the top row's glass groups on a page
+switch (spring 0.38 s, bounce 0.14). `Motion.ripple` (ease out, 0.6 s) and `Motion.step` (a 0.01 s step
+that lands at once) are the Overview's ripple. With Reduce Motion on, only fade:
+`Motion.unlessReduced(_:_:)` drops an animation that moves, resizes or scrolls. Page code uses these
+tokens only (`no_literal_animation`).
 
 ## Color
 

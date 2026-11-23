@@ -26,6 +26,7 @@ struct OnboardingView: View {
 
 private struct StepIndicator: View {
     let current: OnboardingStep
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: Spacing.sm) {
@@ -35,7 +36,8 @@ private struct StepIndicator: View {
                     .frame(width: step == current ? 28 : 12, height: 6)
             }
         }
-        .animation(Motion.standard, value: current)
+        // The current step's mark widens; with Reduce Motion it changes at once.
+        .animation(Motion.unlessReduced(Motion.standard, reduceMotion), value: current)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(String(localized: "第 \(current.rawValue + 1) 步，共 \(OnboardingStep.allCases.count) 步"))
     }

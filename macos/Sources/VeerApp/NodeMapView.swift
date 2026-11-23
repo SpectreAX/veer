@@ -565,7 +565,7 @@ private struct RegionNodes: View {
                         .secondaryAction()
                         .fixedSize()
                         .opacity(testing ? 0 : 1)
-                        .disabled(testing || !store.isRunning || store.switchingTo != nil)
+                        .disabled(!store.canStartLatencyTest(scope))
                         .accessibilityLabel(String(localized: "为“\(name)”测速"))
                         .accessibilityHidden(testing)
                         .help(String(localized: "只测试这个地区的 \(String(nodes.count)) 个节点，不改变任何策略组的选择"))

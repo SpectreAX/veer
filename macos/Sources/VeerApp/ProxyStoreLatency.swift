@@ -22,6 +22,13 @@ extension ProxyStore {
         group.members.map(\.name).filter { !Self.untestable.contains($0) }
     }
 
+    /// Whether a test under `scope` can start now: the core runs, no profile switch is under way (its
+    /// results would belong to the profile being replaced) and the scope is not already testing.
+    /// The buttons that start one are disabled otherwise, rather than doing nothing.
+    func canStartLatencyTest(_ scope: LatencyScope) -> Bool {
+        isRunning && switchingTo == nil && latencyRuns[scope] == nil && !testingScopes.contains(scope)
+    }
+
     /// Tests a group's members, its button showing the run.
     func testDelay(_ group: String) {
         guard let found = groups.first(where: { $0.name == group }) else { return }
@@ -44,7 +51,7 @@ extension ProxyStore {
     /// way for the scope goes on; one for another scope runs beside it. Each result lands only if
     /// the profile it was measured in is still the one running.
     func testNodes(_ names: [String], scope: LatencyScope) {
-        guard isRunning, switchingTo == nil, let controller, !names.isEmpty, latencyRuns[scope] == nil else { return }
+        guard canStartLatencyTest(scope), let controller, !names.isEmpty else { return }
         let started = generation
         testingScopes.insert(scope)
         for name in names where delays[name] != .testing { delays[name] = .testing }

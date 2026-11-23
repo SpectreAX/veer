@@ -176,7 +176,7 @@ struct DNSView: View {
             .labelsHidden().fixedSize().neutralControl()
             .help("记录类型")
         if asking {
-            Button("取消") { task?.cancel() }.secondaryAction()
+            Button("取消") { task?.cancel() }.secondaryAction().keyboardShortcut(.cancelAction)
         } else {
             Button("查询", action: ask).primaryAction(.regular).keyboardShortcut(.defaultAction)
                 .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)

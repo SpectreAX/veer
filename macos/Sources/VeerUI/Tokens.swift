@@ -23,6 +23,8 @@ nonisolated public enum Radius {
 
 nonisolated public enum Metrics {
     public static let readingWidth: CGFloat = 760
+    /// An icon-only button's target: the HIG's default control size on macOS (28 × 28 pt).
+    public static let iconTarget: CGFloat = 28
     public static let sidebarWidth: CGFloat = 240
     public static let inspectorWidth: CGFloat = 360
     public static let minWindow = CGSize(width: 860, height: 560)
@@ -40,6 +42,19 @@ nonisolated public enum Motion {
     /// The Agent panel and the page beside it: one spring for both, near critically damped so it
     /// settles without a visible bounce.
     public static let panel = Animation.spring(response: 0.36, dampingFraction: 0.9)
+    /// The top row's glass groups on a page switch: one that stays springs to its new width with a
+    /// slight bounce, as the system's glass does.
+    public static let toolbar = Animation.spring(duration: 0.38, bounce: 0.14)
+    /// The Overview's ripple when the core has started or stopped: state feedback (DESIGN_SPEC, Motion).
+    public static let ripple = Animation.easeOut(duration: 0.6)
+    /// A keyframe step that should land at once, between the steps of a phase animation.
+    public static let step = Animation.linear(duration: 0.01)
+
+    /// `animation`, or none when Reduce Motion is on: what moves or resizes then switches at once.
+    /// (A fade may stay; see DESIGN_SPEC, Motion.)
+    public static func unlessReduced(_ animation: Animation, _ reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : animation
+    }
 }
 
 private func rgb(_ red: CGFloat, _ green: CGFloat, _ blue: CGFloat) -> NSColor {

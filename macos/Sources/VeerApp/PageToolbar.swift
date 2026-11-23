@@ -79,8 +79,8 @@ struct ToolbarCapsule: View {
             .labelStyle(.iconOnly)
             .labelsHidden()
         }
-        .animation(reduceMotion ? nil : .spring(duration: 0.38, bounce: 0.14), value: content?.page)
-        .animation(reduceMotion ? nil : .spring(duration: 0.38, bounce: 0.14), value: store.page)
+        .animation(Motion.unlessReduced(Motion.toolbar, reduceMotion), value: content?.page)
+        .animation(Motion.unlessReduced(Motion.toolbar, reduceMotion), value: store.page)
     }
 
     /// The glass stays while its page's controls change, so only they blur; the glass comes and goes
@@ -139,6 +139,7 @@ struct ToolbarToggle: View {
 struct ToolbarCapsuleButtonStyle: ButtonStyle {
     var isOn = false
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hovering = false
 
     func makeBody(configuration: Configuration) -> some View {
@@ -150,7 +151,8 @@ struct ToolbarCapsuleButtonStyle: ButtonStyle {
             .background(background(pressed: configuration.isPressed), in: Circle())
             .contentShape(Circle())
             .onHover { hovering = $0 && isEnabled }
-            .scaleEffect(configuration.isPressed ? 0.92 : 1)
+            // A press shrinks it slightly; with Reduce Motion the highlight alone says it.
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.92 : 1)
             .animation(Motion.quick, value: configuration.isPressed)
             .animation(Motion.quick, value: hovering)
             .animation(Motion.quick, value: isOn)

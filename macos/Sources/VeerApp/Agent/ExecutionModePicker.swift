@@ -1,8 +1,9 @@
 import SwiftUI
 import VeerCore
 
-/// Composer pill for how much the conversation may do without asking, with a menu like Claude's
-/// mode menu. 完整权限 is tinted, as Codex marks full access.
+/// Composer button for how much the conversation may do without asking, with a menu like Claude's
+/// mode menu: a system button like the composer's others. 完整权限's symbol is in the warning color,
+/// as Codex marks full access; each mode also has a symbol of its own, so color is not the only sign.
 struct ExecutionModePicker: View {
     @Environment(AgentStore.self) private var store
 
@@ -10,9 +11,12 @@ struct ExecutionModePicker: View {
         @Bindable var store = store
         let mode = store.executionMode
         let tint: Color? = mode == .full ? .statusWarning : nil
-        Button { store.showingExecutionModePicker.toggle() } label: { Image(systemName: mode.symbol) }
-        .buttonStyle(PillButtonStyle(tint: tint))
-        .fixedSize()
+        Button { store.showingExecutionModePicker.toggle() } label: {
+            // Only full access is colored; otherwise the symbol keeps the system's label color, which
+            // follows the window's state like the composer's other buttons.
+            if let tint { Image(systemName: mode.symbol).foregroundStyle(tint) } else { Image(systemName: mode.symbol) }
+        }
+        .composerOption()
         .help(String(localized: "执行模式：\(mode.title)。\(mode.detail)"))
         .accessibilityLabel(String(localized: "执行模式：\(mode.title)"))
         .popover(isPresented: $store.showingExecutionModePicker, arrowEdge: .top) {

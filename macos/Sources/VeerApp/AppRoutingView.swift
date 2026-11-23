@@ -710,10 +710,25 @@ struct DomainRouteSheet: View {
     let targets: (groups: [String], nodes: [String])
     let add: (AppRule.DomainRoute) -> Void
     @State private var matchType = "DOMAIN-SUFFIX"
-    @State private var value = ""
+    @State private var value: String
     @State private var target = AppRule.Target.direct
 
+    init(app: AppIdentity, targets: (groups: [String], nodes: [String]), value: String = "", add: @escaping (AppRule.DomainRoute) -> Void) {
+        self.app = app
+        self.targets = targets
+        self.add = add
+        _value = State(initialValue: value)
+    }
+
     private var route: AppRule.DomainRoute { .init(matchType: matchType, value: value, target: target) }
+
+    /// Why `value` can't be a domain in a rule, or nil when it can or is still empty. Add is disabled
+    /// in the same cases, and a pasted address with https:// or a path is the usual one.
+    static func problem(_ value: String) -> String? {
+        guard !value.trimmingCharacters(in: .whitespaces).isEmpty,
+              !AppRule.DomainRoute(matchType: "DOMAIN", value: value, target: .direct).isValid else { return nil }
+        return String(localized: "只填域名，例如 example.com，不带 https://、路径、空格、逗号、括号、* 或 ?。")
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.lg) {
@@ -727,6 +742,9 @@ struct DomainRouteSheet: View {
                 }
                 .neutralControl()
                 TextField("域名", text: $value, prompt: Text(verbatim: "example.com"))
+                if let problem = Self.problem(value) {
+                    StatusBadge(kind: .warning, text: problem).fixedSize(horizontal: false, vertical: true)
+                }
                 AppTargetPicker(title: String(localized: "出口"), target: $target, targets: targets, allowsFollowProfile: false)
             }
             .formStyle(.grouped)

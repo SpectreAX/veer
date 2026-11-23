@@ -388,15 +388,28 @@ private struct StatusCard: View {
             Image(systemName: store.isRunning ? "stop.fill" : "play.fill")
                 .font(.title.weight(.semibold))
                 .frame(width: 64, height: 64)
-                .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
-                .animation(reduceMotion ? nil : Motion.standard, value: store.isRunning)
         }
         .buttonBorderShape(.circle)
-        .primaryAction()
+        // Prominent for the likely action, starting; once the core runs, Stop is a secondary action,
+        // as in the toolbar, since it cuts every connection. Both keep the same size and place. The
+        // two system styles are two buttons to SwiftUI, so the change is a crossfade of the whole
+        // button (a fade, which Reduce Motion keeps), not a symbol replacing itself in place.
+        .modifier(StartStopStyle(prominent: !store.isRunning))
+        .animation(Motion.quick, value: store.isRunning)
         .overlay { CoreStateRing(phase: store.phase) }
         .disabled(store.phase == .starting || store.activeProfile == nil)
         .help(store.isRunning ? String(localized: "停止内核（⌘R）") : String(localized: "启动内核（⌘R）"))
         .accessibilityLabel(store.phase == .starting ? String(localized: "正在启动") : store.isRunning ? String(localized: "停止") : String(localized: "启动"))
+    }
+}
+
+/// The big button's style: the page's primary action while the core can be started, a secondary one
+/// while it runs.
+private struct StartStopStyle: ViewModifier {
+    let prominent: Bool
+
+    func body(content: Content) -> some View {
+        if prominent { content.primaryAction() } else { content.secondaryAction().controlSize(.large) }
     }
 }
 
@@ -428,7 +441,7 @@ private struct CoreStateRing: View {
                     .phaseAnimator(Ripple.allCases, trigger: ripples) { circle, ripple in
                         circle.scaleEffect(ripple.scale).opacity(ripple.opacity)
                     } animation: { ripple in
-                        ripple == .gone ? .easeOut(duration: 0.6) : .linear(duration: 0.01)
+                        ripple == .gone ? Motion.ripple : Motion.step
                     }
             }
         }

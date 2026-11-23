@@ -12,7 +12,7 @@ struct ToolsView: View {
             Section(String(localized: "诊断")) {
                 ToolRow(title: Page.requests.title, detail: String(localized: "最近结束的连接，可以搜索和添加规则"),
                         symbol: Page.requests.symbol, opensPage: true) { store.page = .requests }
-                ToolRow(title: String(localized: "DNS 查询"), detail: String(localized: "用内核的 DNS 设置解析域名"),
+                ToolRow(title: Page.dns.title, detail: String(localized: "用内核的 DNS 设置解析域名"),
                         symbol: Page.dns.symbol, opensPage: true) { store.page = .dns }
                 ToolRow(title: Page.route.title, detail: String(localized: "看一个域名或 IP 会命中哪条规则、走哪个出口"),
                         symbol: Page.route.symbol, opensPage: true) { store.page = .route }

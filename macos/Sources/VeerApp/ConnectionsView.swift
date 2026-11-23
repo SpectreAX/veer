@@ -3,6 +3,25 @@ import SwiftUI
 import VeerCore
 import VeerProxy
 
+/// The Connections page's filters: a process, an app (bundle or tool path, or `unidentifiedApps`)
+/// and a policy group; nil for each means all.
+struct ConnectionFilters: Equatable {
+    var process: String?
+    var app: String?
+    var policy: String?
+
+    var count: Int { [process, app, policy].compactMap(\.self).count }
+    var isEmpty: Bool { process == nil && app == nil && policy == nil }
+
+    /// A picker's choices: the live values, sorted, and the chosen one even when none of its
+    /// connections is live any more. Without it the picker's title went blank while it still filtered.
+    static func options(live: some Sequence<String>, chosen: String?) -> [String] {
+        var values = Set(live.filter { !$0.isEmpty })
+        if let chosen { values.insert(chosen) }
+        return values.sorted()
+    }
+}
+
 /// Live connections: where each goes, which rule sent it there, and how fast.
 struct ConnectionsView: View {
     @Environment(ProxyStore.self) private var store
@@ -15,6 +34,8 @@ struct ConnectionsView: View {
     /// An app's bundle or tool path, or `unidentifiedApps` for rows Veer cannot tie to an app.
     @State private var app: String?
     @State private var attribution = AppAttribution(apps: [])
+    /// Names of apps chosen in the filter, kept for when their connections have all closed.
+    @State private var appNames: [String: String] = [:]
     @State private var choosingExit: AppIdentity?
     @State private var blocking: AppIdentity?
     @Environment(\.undoManager) private var undoManager
@@ -44,7 +65,16 @@ struct ConnectionsView: View {
             .pageToolbar(.connections) { toolbar } content: {
                 ToolbarSearchField(text: $query, prompt: Text("搜索连接"), help: String(localized: "搜索主机、进程、规则或节点"))
             }
-            .onAppear { store.watchConnections(true) }
+            .onAppear {
+                store.watchConnections(true)
+                if let seed = store.connectionsFilterSeed {
+                    (process, app, policy) = (seed.process, seed.app, seed.policy)
+                    store.connectionsFilterSeed = nil
+                }
+            }
+            .onChange(of: app) { _, root in
+                if let root, let name = liveApps.first(where: { $0.root == root })?.name { appNames[root] = name }
+            }
             .onDisappear { store.watchConnections(false) }
             .sheet(item: $addingRule) { AddRuleSheet(row: $0) }
             .sheet(item: $choosingExit) { app in
@@ -79,7 +109,16 @@ struct ConnectionsView: View {
             VStack(spacing: 0) {
                 filterBar(count: shown.count)
                 Divider()
-                table(shown)
+                if shown.isEmpty {
+                    // Filters or a search that match nothing: say so, and how to see everything again,
+                    // instead of an empty table.
+                    StateView(symbol: "line.3.horizontal.decrease.circle", title: String(localized: "没有符合筛选条件的连接"),
+                              message: String(localized: "现在有 \(String(store.connections.count)) 个连接，都不符合当前的筛选或搜索。"),
+                              actionTitle: String(localized: "显示全部连接"), action: showAll)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    table(shown)
+                }
                 // One selected connection: its route, rule to node, which the far columns also show.
                 if selection.count == 1, let row = shown.first(where: { selection.contains($0.id) }) {
                     Divider()
@@ -91,50 +130,103 @@ struct ConnectionsView: View {
         }
     }
 
-    /// The pickers keep their place at the leading edge whatever the width, each naming what it
-    /// filters in its own title ("全部进程"), so nothing in the bar changes form as the Agent panel
-    /// moves. The count follows the trailing edge, and gives way only when it would meet them.
+    /// The pickers keep their place at the leading edge, each naming what it filters in its own title
+    /// ("全部进程"). The count follows the trailing edge, and gives way first when it would meet them.
+    /// Where the three pickers do not fit even alone (the smallest window with the Agent docked cut the
+    /// last one off), one Filter menu holds them, with the number of filters in use.
+    /// The whole row is measured, so the pickers are tested against the bar's width: measured on their
+    /// own, beside a Spacer, they were offered half of what was left and gave way where they fit.
     private func filterBar(count: Int) -> some View {
-        HStack(spacing: Spacing.sm) {
-            filterPickers
-            Spacer(minLength: 0)
-            ViewThatFits(in: .horizontal) {
-                Text("\(count) 个连接").font(.callout).foregroundStyle(.secondary).monospacedDigit().lineLimit(1).fixedSize()
-                Color.clear.frame(width: 0, height: 0)
-            }
+        let total = Text("\(count) 个连接").font(.callout).foregroundStyle(.secondary).monospacedDigit().lineLimit(1).fixedSize()
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: Spacing.sm) { filterPickers; Spacer(minLength: 0); total }
+            HStack(spacing: Spacing.sm) { filterPickers; Spacer(minLength: 0) }
+            HStack(spacing: Spacing.sm) { filterMenu; Spacer(minLength: 0); total }
         }
         .padding(.horizontal, Spacing.lg)
         .padding(.vertical, Spacing.sm)
     }
 
-    @ViewBuilder private var filterPickers: some View {
+    private var filters: ConnectionFilters { ConnectionFilters(process: process, app: app, policy: policy) }
+
+    /// Every filter and the search cleared.
+    private func showAll() {
+        (process, app, policy) = (nil, nil, nil)
+        query = ""
+    }
+
+    private var liveApps: [AppChoice] {
+        Set(store.connections.compactMap { attribution.app(forProcessPath: $0.processPath) }.map { AppChoice(root: $0.root, name: $0.name) })
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    /// The live apps, and the chosen one even when it has no connection now.
+    private var appOptions: [AppChoice] {
+        var options = liveApps
+        if let app, app != Self.unidentifiedApps, !options.contains(where: { $0.root == app }) {
+            options.append(AppChoice(root: app, name: appNames[app] ?? URL(fileURLWithPath: app).deletingPathExtension().lastPathComponent))
+        }
+        return options
+    }
+
+    private var processPicker: some View {
         Picker("进程", selection: $process) {
             Text("全部进程").tag(String?.none)
-            ForEach(Set(store.connections.compactMap(\.process)).sorted(), id: \.self) { Text($0).tag(Optional($0)) }
+            ForEach(ConnectionFilters.options(live: store.connections.compactMap(\.process), chosen: process), id: \.self) { Text($0).tag(Optional($0)) }
         }
-        .labelsHidden()
-        // Helper processes have long names (`com.google.Chrome.UpdaterPrivilegedHelper`); a menu picker
-        // is as wide as its widest item, so it is held to a width that leaves the others in place.
-        .frame(minWidth: 120, maxWidth: 240)
-        .fixedSize(horizontal: false, vertical: true)
-        .neutralControl()
-        .help("按进程筛选")
+    }
+
+    private var appPicker: some View {
         Picker("按应用筛选", selection: $app) {
             Text("全部应用").tag(String?.none)
-            let apps = Set(store.connections.compactMap { attribution.app(forProcessPath: $0.processPath) }.map { AppChoice(root: $0.root, name: $0.name) })
-            ForEach(apps.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }, id: \.root) { Text($0.name).tag(Optional($0.root)) }
+            ForEach(appOptions, id: \.root) { Text($0.name).tag(Optional($0.root)) }
             Divider()
             Text("未识别的应用").tag(Optional(Self.unidentifiedApps))
         }
+    }
+
+    private var policyPicker: some View {
+        Picker("策略组", selection: $policy) {
+            Text("全部策略组").tag(String?.none)
+            ForEach(ConnectionFilters.options(live: store.connections.map(\.policy), chosen: policy), id: \.self) { Text($0).tag(Optional($0)) }
+        }
+    }
+
+    /// The three filters in one menu, each a submenu; titled with how many are in use.
+    private var filterMenu: some View {
+        Menu {
+            processPicker
+            appPicker
+            policyPicker
+            Divider()
+            Button("显示全部连接", action: showAll).disabled(filters.isEmpty && query.isEmpty)
+        } label: {
+            Label(filters.isEmpty ? String(localized: "筛选") : String(localized: "筛选（\(String(filters.count))）"),
+                  systemImage: "line.3.horizontal.decrease.circle")
+        }
+        .fixedSize()
+        .neutralControl()
+        .help("按进程、应用或策略组筛选")
+    }
+
+    @ViewBuilder private var filterPickers: some View {
+        processPicker
         .labelsHidden()
-        .frame(minWidth: 120, maxWidth: 220)
+        // Helper processes have long names (`com.google.Chrome.UpdaterPrivilegedHelper`); a menu picker
+        // is as wide as its widest item, so it is held to a width that leaves the others in place.
+        // Its ideal width is its least, because `filterBar`'s ViewThatFits measures ideal widths: at the
+        // widest item the pickers gave way to the Filter menu where they fit (default window, Agent docked).
+        .frame(minWidth: 120, idealWidth: 120, maxWidth: 240)
+        .fixedSize(horizontal: false, vertical: true)
+        .neutralControl()
+        .help("按进程筛选")
+        appPicker
+        .labelsHidden()
+        .frame(minWidth: 120, idealWidth: 120, maxWidth: 220)
         .fixedSize(horizontal: false, vertical: true)
         .neutralControl()
         .help("按发起连接的应用筛选；按内核报告的进程路径识别，不按名字猜")
-        Picker("策略组", selection: $policy) {
-            Text("全部策略组").tag(String?.none)
-            ForEach(Set(store.connections.map(\.policy)).filter { !$0.isEmpty }.sorted(), id: \.self) { Text($0).tag(Optional($0)) }
-        }
+        policyPicker
         .labelsHidden()
         .fixedSize()
         .neutralControl()

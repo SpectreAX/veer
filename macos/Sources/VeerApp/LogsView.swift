@@ -9,6 +9,10 @@ struct LogsView: View {
     @State private var level: Level
     @State private var query = ""
     @State private var selection = Set<LogEntry.ID>()
+    /// Whether the list is too narrow for a line's time and level beside its message.
+    @State private var stacked = false
+    @State private var listWidth = LatestWidth()
+    @Environment(\.panelMotion) private var motion
 
     init(level: Level = .all) {
         _level = State(initialValue: level)
@@ -96,13 +100,21 @@ struct LogsView: View {
         Group {
             ScrollViewReader { proxy in
                 List(shown, selection: $selection) { entry in
-                    HStack(alignment: .firstTextBaseline, spacing: Spacing.sm) {
-                        Text(entry.time.formatted(date: .omitted, time: .standard)).foregroundStyle(.secondary)
-                        Text(verbatim: entry.level.uppercased()).foregroundStyle(color(entry.level)).frame(width: 56, alignment: .leading)
-                        Text(entry.message).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
-                    }
-                    .font(Typography.codeSmall)
-                    .id(entry.id)
+                    row(entry)
+                        .font(Typography.codeSmall)
+                        .id(entry.id)
+                }
+                // Narrow, as beside the Agent panel in the smallest window, the time and level go above
+                // the message: in one row they left it a third of the width, each line wrapping many times.
+                // As `SteadyChoice`: while the Agent panel or the sidebar moves, the arrangement of the
+                // narrower end holds, chosen before the motion starts, so every row does not reflow at
+                // once partway through it. At rest it follows the width again.
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+                    listWidth.value = width
+                    if motion == nil { stacked = Self.stacks(width: width, motion: nil) }
+                }
+                .onChange(of: motion) { old, new in
+                    if new == nil || old == nil { stacked = Self.stacks(width: listWidth.value, motion: new) }
                 }
                 .contextMenu(forSelectionType: LogEntry.ID.self) { ids in
                     Button("复制") { copy(shown.filter { ids.contains($0.id) }) }
@@ -115,6 +127,32 @@ struct LogsView: View {
                 .onChange(of: store.logs.last?.id) { _, last in
                     if !store.logsPaused, let last { proxy.scrollTo(last, anchor: .bottom) }
                 }
+            }
+        }
+    }
+
+    /// Below this list width a line's time and level sit above its message.
+    nonisolated static let stackedBelow: CGFloat = 480
+
+    /// Whether lines stack at `width`; through a motion, whether they stack at its narrower end.
+    nonisolated static func stacks(width: CGFloat, motion: PanelMotion?) -> Bool {
+        min(width, width + (motion?.widthChange ?? 0)) < stackedBelow
+    }
+
+    @ViewBuilder private func row(_ entry: LogEntry) -> some View {
+        let time = Text(entry.time.formatted(date: .omitted, time: .standard)).foregroundStyle(.secondary)
+        let level = Text(verbatim: entry.level.uppercased()).foregroundStyle(color(entry.level))
+        let message = Text(entry.message).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+        if stacked {
+            VStack(alignment: .leading, spacing: Spacing.xxs) {
+                HStack(spacing: Spacing.sm) { time; level }
+                message
+            }
+        } else {
+            HStack(alignment: .firstTextBaseline, spacing: Spacing.sm) {
+                time
+                level.frame(width: 56, alignment: .leading)
+                message
             }
         }
     }

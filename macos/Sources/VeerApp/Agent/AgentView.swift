@@ -70,6 +70,7 @@ struct AgentConversation: View {
     @Environment(AgentStore.self) private var agent
     @Environment(ProxyStore.self) private var proxy
     @Environment(\.agentCompact) private var compact
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         content
@@ -79,10 +80,13 @@ struct AgentConversation: View {
                     ToastView(toast: toast) { agent.undo() }
                         .padding(.bottom, 120)
                         .padding(.horizontal, compact ? Spacing.md : 0)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        // As the main window's toast: it rises with a fade, or with Reduce Motion simply appears.
+                        .transition(reduceMotion ? AnyTransition.opacity : .move(edge: .bottom).combined(with: .opacity))
                 }
             }
-            .animation(Motion.standard, value: agent.toast)
+            // On the whole conversation, as the main window's is: a turn added with the toast would
+            // otherwise slide in under Reduce Motion.
+            .animation(Motion.unlessReduced(Motion.standard, reduceMotion), value: agent.toast)
     }
 
     @ViewBuilder private var content: some View {

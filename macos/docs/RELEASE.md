@@ -3,8 +3,9 @@
 每次发布按顺序走一遍。只有标着“你”的步骤需要你本人操作（涉及系统代理、TUN、系统设置或账号）。
 
 ## 1. 准备
-下一次正式发布的版本为 **1.1.0**（2026-11-22 用户确认）。进入发布准备时更新版本号并递增构建号。
+下一次正式发布的版本为 **1.1.0**（2026-11-22 用户确认），包含 [Liquid Glass 第二阶段的全部范围](PLAN.md)。进入发布准备时更新版本号并递增构建号。
 
+- [ ] 按开发计划逐项完成 Liquid Glass 第二阶段的实现和验收。
 - [ ] `Resources/Info.plist` 里提高 `CFBundleShortVersionString`（如 1.0.1）和 `CFBundleVersion`（每次加 1；Sparkle 只比较它）。
 - [ ] `swift test` 全部通过（设置 `VEER_MIHOMO_BIN=$PWD/vendor/mihomo`）。
 - [ ] `SnapshotRunner` 截图逐张看过：浅色、深色、中文、英文。

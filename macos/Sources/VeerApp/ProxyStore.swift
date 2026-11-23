@@ -280,6 +280,8 @@ final class ProxyStore {
     /// Live connections, newest first, while the connections page is open.
     var connections: [ConnectionRow] = []
     var connectionsPaused = false
+    /// Filters the Connections page takes once when it appears: snapshot scenes set them.
+    @ObservationIgnored var connectionsFilterSeed: ConnectionFilters?
     /// Here rather than on the page, as the menu bar asks too.
     var confirmingCloseAllConnections = false
     /// Found on this Mac from logs, connections and delay tests; shown on the overview and Agent pages.

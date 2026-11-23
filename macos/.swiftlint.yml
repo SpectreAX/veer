@@ -103,6 +103,13 @@ custom_rules:
     included: 'Sources/'
     message: "NSSplitViewController throws if it changes mid-animation. Use AgentPanelColumn's plain column."
     severity: error
+  no_literal_animation:
+    name: "Literal animation curve"
+    regex: '\.(spring|easeIn|easeOut|easeInOut|linear|interpolatingSpring)\('
+    included: 'Sources/(VeerApp|VeerUI)/'
+    excluded: 'Sources/VeerUI/Tokens.swift'
+    message: "Use a Motion token (DESIGN_SPEC, Motion): a curve of its own goes into Motion with a comment saying what it is for."
+    severity: error
   no_literal_spacing:
     name: "Literal spacing"
     regex: '(\.padding\((\.\w+, *)?[1-9][0-9]*\)|\bspacing: *[1-9][0-9]*\b)'

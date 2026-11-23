@@ -42,10 +42,17 @@ struct GroupEditorSheet: View {
     }
 
     private var nameProblem: String? {
+        Self.nameIssue(name, taken: { name in store.draft?.targets.contains { $0.name == name } == true })?.text
+    }
+
+    /// What is wrong with a new group's name, and whether it keeps Save disabled. A name already in
+    /// use is only a note: saving numbers it. Save follows the same rules the note states, so a name
+    /// over 64 characters can no longer be saved while the note says it may not be.
+    static func nameIssue(_ name: String, taken: (String) -> Bool) -> (text: String, blocksSaving: Bool)? {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
-        if trimmed.isEmpty { return String(localized: "名称不能为空") }
-        if trimmed.contains(",") || trimmed.count > 64 { return String(localized: "名称不能包含逗号，最多 64 个字符") }
-        if store.draft?.targets.contains(where: { $0.name == trimmed }) == true { return String(localized: "已有同名的策略组或节点，保存后会自动加序号") }
+        if trimmed.isEmpty { return (String(localized: "名称不能为空"), true) }
+        if trimmed.contains(",") || trimmed.count > 64 { return (String(localized: "名称不能包含逗号，最多 64 个字符"), true) }
+        if taken(trimmed) { return (String(localized: "已有同名的策略组或节点，保存后会自动加序号"), false) }
         return nil
     }
 
@@ -74,7 +81,9 @@ struct GroupEditorSheet: View {
             }
             if existing == nil { Form {
                 TextField(String(localized: "名称"), text: $name)
-                if let nameProblem { Text(nameProblem).font(.caption).foregroundStyle(Color.statusWarning) }
+                if let nameProblem {
+                    StatusBadge(kind: .warning, text: nameProblem).fixedSize(horizontal: false, vertical: true)
+                }
                 Picker(String(localized: "类型"), selection: $type) {
                     Text(ProfileAnalysis.groupTypeTitle("select")).tag("select")
                     Text(ProfileAnalysis.groupTypeTitle("url-test")).tag("url-test")
@@ -84,7 +93,8 @@ struct GroupEditorSheet: View {
             }
             .formStyle(.grouped)
             .scrollDisabled(true)
-            .frame(height: 118)
+            // As tall as its rows: a fixed 118 pt cut the type picker in half when the name note showed.
+            .fixedSize(horizontal: false, vertical: true)
             }
 
             HStack(alignment: .top, spacing: Spacing.lg) {
@@ -173,7 +183,7 @@ struct GroupEditorSheet: View {
                 .buttonStyle(.borderedProminent)
                 .tint(.accentFill)
                 .disabled(existing == nil
-                    ? members.isEmpty || name.trimmingCharacters(in: .whitespaces).isEmpty || name.contains(",")
+                    ? members.isEmpty || Self.nameIssue(name, taken: { _ in false })?.blocksSaving == true
                     : members == group?.members.uniqued() || (members.isEmpty && group?.members.isEmpty == false))
             }
         }

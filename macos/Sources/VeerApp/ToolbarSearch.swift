@@ -25,15 +25,20 @@ enum ToolbarSearchFocus {
     /// Puts the cursor in the key window's capsule field. By hand: the shortcut lives in the app's
     /// commands, which have no way into the page that made the field.
     static func focus() {
-        guard let window = NSApp.keyWindow, let frame = window.contentView?.superview else { return }
+        guard let window = NSApp.keyWindow, let field = field(in: window) else { return }
+        window.makeFirstResponder(field)
+    }
+
+    /// The search field in `window`'s top row, if it has one: the main window on a page with search.
+    static func field(in window: NSWindow?) -> NSTextField? {
+        guard let window, let frame = window.contentView?.superview else { return nil }
         func fields(_ view: NSView) -> [NSTextField] {
             if let field = view as? NSTextField { return field.isEditable ? [field] : [] }
             return view.subviews.flatMap(fields)
         }
         // In the window's top row: a page's own fields stay out of it. Measured from the window, as
         // in full screen, with no toolbar, the content area reaches the top.
-        let field = fields(frame).first { $0.convert($0.bounds, to: nil).midY > window.frame.height - MainView.topRowHeight }
-        if let field { window.makeFirstResponder(field) }
+        return fields(frame).first { $0.convert($0.bounds, to: nil).midY > window.frame.height - MainView.topRowHeight }
     }
 }
 

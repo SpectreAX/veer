@@ -5,7 +5,8 @@ repo="$(cd "$(dirname "$0")/../.." && pwd)"
 work="$(mktemp -d "${TMPDIR:-/tmp/}veer-codex.XXXXXX")"
 echo "Isolated workspace: $work"
 mkdir -p "$work/macos"
-rsync -a --exclude=.build --exclude=dist --exclude=vendor \
+# Leave out Claude worktrees (about 330 MB of other checkouts per copy).
+rsync -a --exclude=.build --exclude=dist --exclude=vendor --exclude=.claude/worktrees \
   "$repo/macos/" "$work/macos/"
 mkdir -p "$work/macos/vendor"
 core="${VEER_MIHOMO_BIN:-$repo/macos/vendor/mihomo}"

@@ -68,6 +68,8 @@ struct ComposerView: View {
                         onMove: { delta in
                             guard !completions.isEmpty else { return }
                             highlighted = (highlighted + delta + completions.count) % completions.count
+                            // The text view keeps the focus, so VoiceOver hears the new row this way.
+                            AccessibilityNotification.Announcement(completions[highlighted].title).post()
                         },
                         onPick: { pick(completions[min(highlighted, completions.count - 1)]) },
                         onSubmit: { store.send() },
@@ -125,7 +127,8 @@ struct ComposerView: View {
                 if !completions.isEmpty {
                     // Lifted by its own measured height so it floats above the composer; an
                     // alignment guide alone left it drawn downward over the controls.
-                    CompletionList(items: completions, highlighted: min(highlighted, completions.count - 1), pick: pick)
+                    CompletionList(items: completions, highlighted: min(highlighted, completions.count - 1), pick: pick,
+                                   hover: { highlighted = $0 })
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { completionHeight = $0 }
                         .offset(y: -completionHeight - Spacing.sm)
                         .opacity(completionHeight > 0 ? 1 : 0)
@@ -138,6 +141,12 @@ struct ComposerView: View {
             }
         }
         .onChange(of: query?.text) { highlighted = 0 }
+        .onAppear {
+            if let seed = store.completionSeed {
+                query = seed
+                store.completionSeed = nil
+            }
+        }
         .fileImporter(isPresented: $store.choosingAttachments, allowedContentTypes: AttachmentReader.offeredTypes, allowsMultipleSelection: true) { result in
             if case .success(let urls) = result { store.attach(urls) }
         }
@@ -190,13 +199,21 @@ struct ComposerView: View {
             ExecutionModePicker()
             modelMenu
             Button { store.choosingAttachments = true } label: { Image(systemName: "paperclip") }
-                .buttonStyle(PillButtonStyle())
-                .fixedSize()
+                .composerOption()
                 .disabled(!store.effectiveUseAI)
                 .help(store.effectiveUseAI ? String(localized: "添加图片或文件，也可以拖到这里或粘贴")
                                            : String(localized: "图片和文件只在 AI 解析时可用"))
                 .accessibilityLabel(String(localized: "添加图片或文件"))
-            ToggleChip(title: String(localized: "联网搜索"), symbol: "globe", isOn: $store.searchSettings.enabled, compact: true)
+            // A system toggle in the button style: it shows its own on state and tells VoiceOver it is a
+            // switch that is on or off. On, it fills with `accentFill` like the toolbar's toggles, not the
+            // system accent. Only when on: glass takes a tint whatever the toggle's state, so a constant
+            // tint drew an off toggle green in an active window. The tint sits inside `composerOption()`,
+            // whose `secondaryAction()` clears it for the others.
+            Toggle(isOn: $store.searchSettings.enabled) { Label(String(localized: "联网搜索"), systemImage: "globe") }
+                .toggleStyle(.button)
+                .labelStyle(.iconOnly)
+                .tint(store.searchSettings.enabled ? Color.accentFill : nil)
+                .composerOption()
                 .disabled(!store.effectiveUseAI)
                 .help(store.effectiveUseAI
                       ? (store.searchSettings.enabled ? String(localized: "AI 可以联网搜索规则集和官方域名（点按关闭）") : String(localized: "开启后 AI 可以联网搜索规则集和官方域名"))
@@ -222,12 +239,14 @@ struct ComposerView: View {
                     }
                 }
         }
-        .buttonStyle(PillButtonStyle())
-        .fixedSize()
+        .composerOption()
         .help(!ai ? String(localized: "本地解析。点按选择 AI 或本地解析")
               : store.aiConfigured ? String(localized: "AI · \(settings.modelLabel)。点按选择模型、思考强度或改用本地解析")
               : String(localized: "AI 解析：还没有 API Key，会改用本地解析"))
-        .accessibilityLabel(ai ? String(localized: "解析：AI，\(settings.modelLabel)") : String(localized: "解析：本地"))
+        // The dot for a missing key is color only, so the label says it too.
+        .accessibilityLabel(!ai ? String(localized: "解析：本地")
+                            : store.aiConfigured ? String(localized: "解析：AI，\(settings.modelLabel)")
+                            : String(localized: "AI 解析：还没有 API Key，会改用本地解析"))
         .popover(isPresented: $store.showingModelPopover, arrowEdge: .top) {
             ModelPopover {
                 store.showingModelPopover = false
@@ -243,34 +262,48 @@ struct ComposerView: View {
     }
 }
 
+/// The `@` exit and `/` command completion above the composer. Solid, as nothing in the Agent panel
+/// but the composer has glass (regular glass shows the conversation sharp behind it); the highlighted
+/// row in the system's selection color, as in a menu. The text view keeps the keyboard.
 struct CompletionList: View {
     let items: [CompletionItem]
     let highlighted: Int
     let pick: (CompletionItem) -> Void
+    var hover: (Int) -> Void = { _ in }
+
+    /// Wide enough for an exit's name, its region and its kind; narrower where the composer is.
+    static let idealWidth: CGFloat = 340
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                let selected = index == highlighted
                 Button { pick(item) } label: {
                     HStack(spacing: Spacing.sm) {
+                        // Shortened in the middle when the panel is narrow; a short region and the tag stay whole.
                         Text(item.title).lineLimit(1).truncationMode(.middle)
+                            .foregroundStyle(selected ? Color.onAccent : Color.primary)
                         Spacer(minLength: Spacing.md)
-                        Text(item.detail).font(.caption).foregroundStyle(.secondary)
-                        if let tag = item.tag { Tag(text: tag) }
+                        Text(item.detail).font(.caption).lineLimit(1)
+                            .foregroundStyle(selected ? Color.onAccent : Color.secondary)
+                        if let tag = item.tag { Tag(text: tag, tint: selected ? .onAccent : .secondary) }
                     }
                     .padding(.horizontal, Spacing.md)
                     .padding(.vertical, Spacing.xs + Spacing.xxs)
-                    .background(index == highlighted ? Color.veerAccent.opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: Radius.small))
+                    .background(selected ? Color.selectionFill : .clear, in: RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .onHover { if $0 { hover(index) } }
+                .accessibilityAddTraits(selected ? .isSelected : [])
             }
         }
         .padding(Spacing.xs)
-        .frame(width: 340)
-        .background(Color.surfaceRaised, in: RoundedRectangle(cornerRadius: Radius.medium))
-        .overlay(RoundedRectangle(cornerRadius: Radius.medium).strokeBorder(Color.separatorLine))
-        .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
+        // Never wider than the composer it sits on: a 320 pt panel cut the tags off at its edge.
+        .frame(maxWidth: Self.idealWidth, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .background(Color.surfaceRaised, in: RoundedRectangle(cornerRadius: Radius.medium, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Radius.medium, style: .continuous).strokeBorder(Color.separatorLine))
     }
 }
 
@@ -587,5 +620,14 @@ final class ComposerNSTextView: NSTextView {
     override func insertText(_ string: Any, replacementRange: NSRange) {
         super.insertText(string, replacementRange: replacementRange)
         onMarkedTextChange?(hasMarkedText())
+    }
+}
+
+extension View {
+    /// The composer's option controls (mode, model, files, web search): system buttons in the style
+    /// of Stop beside them, glass on macOS 26 and bordered before, round and icon-only, with names and
+    /// states in their tooltips and accessibility labels.
+    func composerOption() -> some View {
+        secondaryAction().buttonBorderShape(.circle).controlSize(.large).fixedSize()
     }
 }

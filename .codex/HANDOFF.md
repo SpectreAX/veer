@@ -1,13 +1,269 @@
 # Veer macOS handoff
 
-## Next up (2026-11-22, after the local integration commits)
+## 1.1.0 publication authorized (2026-11-23)
+
+- Delivered the first pass for all ten Phase II areas (Agent workspace through design system).
+
+- The user confirmed that the full Liquid Glass Phase II scope is part of 1.1.0. Claude started the editor pass, and Codex completed its verification and local delivery.
+- The user authorized publication of 1.1.0 (build 10) and explicitly waived the macOS 14 VM check for this release. The VM and remaining hands-on checks retain their unverified status. See the release prep evidence below.
+- For each completed item, record full verification, reviewed isolated snapshots (English and Simplified Chinese, light and dark, relevant widths and states), independent design review, and hands-on gaps. Continue with the default signed local-build replacement procedure after a verified delivery. Keep formal publishing gated on the user's explicit go-ahead.
 
 - Continue in `/Users/spectreax/Developer/Veer` on shared `main`. The integration's starting point was `31caaff`. Use the local commits below and keep the separate Claude worktrees intact. Read `AGENTS.md`, `macos/CLAUDE.md`, `macos/.claude/rules/*.md` and `macos/docs/WORKFLOW.md` before editing.
 - Settings → Proxy → Core port saving has passed both inactive and active isolated probes. Quitting mid-edit passed in an active isolated app (see below). Hands-on checks left: Full Keyboard Access, spoken VoiceOver and macOS 14.
 - The screenshot wrapper uses `com.yamax.veer.snapshots`. Map clicks, drag, reset, keyboard search selection, accessibility names and the dark zoomed state passed in active sample windows (see below); Full Keyboard Access on, spoken VoiceOver, pinch and macOS 14 remain hands-on.
 - Stage 3 items 1–5, Start/Retry notices, search focus recovery, Agent metadata and My Routing are integrated. Never enable the system proxy or TUN, or launch the installed app for tests. A public release requires fresh user authorization.
-- The installed `macos/dist/Veer.app` now matches the `2026-11-22-integration` build (1.0.8, build 9). The title bar passed physical pointer checks in both sample layouts. PLAN items 09 (title profile menu) and 10 (duplicate merge confirmation and recovery) also passed in active isolated windows (see below).
+- The installed `macos/dist/Veer.app` is now the 1.1.0 (10) release build from `scripts/release.sh`, the same app as in `dist/Veer-1.1.0.dmg`.
+- Temp cleanup (2026-11-23, on the user's request): about 52 GB of Veer folders in `$TMPDIR` were deleted, mostly 56 `veer-codex.*` snapshot copies (about 850 MB each: the copied tree plus its build), probe and delivery copies, and about 8,700 small folders left by test runs. `.codex/scripts/snapshots.sh` no longer copies `.claude/worktrees`. Its copy stays after a run because the shots are read from it, so copy the evidence out and delete the `veer-codex.*` folder afterwards.
 - Hands-on integration checks still include system Reduce Motion, Full Keyboard Access, spoken VoiceOver, macOS 14 and real-network behavior. The user chose **1.1.0** for the next formal release. Update `Resources/Info.plist` when preparing that release and follow `macos/docs/RELEASE.md`.
+- At Codex sync, the installed menus-and-forms build and its archive both passed strict signature verification and their executable and Info.plist matched. The 665 tests are Claude's recorded run in `.codex/local/glass2-menus-20261122/verify-final.log`.
+
+## 1.1.0 release prep (2026-11-23, Claude; not published)
+
+On the user's "Start release prep":
+- Version 1.1.0, build 10 (`macos/Resources/Info.plist`).
+- `verify.sh` and `VEER_MIHOMO_BIN=$PWD/vendor/mihomo swift test`: all 667 tests passed in each (37/151/361/118). The 24 skipped are the real-network, real-data and AI-eval suites, as before (`.codex/local/release-1.1.0/verify.log`, `swift-test-mihomo.log`).
+- Screenshots: all 418 scenes rendered in an isolated copy, en and zh-Hans, light and dark (836 images, `.codex/local/release-1.1.0/snapshots/`), each looked at in contact sheets (`sheets/`): no clipping, overlap or blank windows. Text at full size rests on the per-item reviews.
+- Notices match the bundle: Mihomo 1.19.29, Sparkle 2.9.6, Yams 6.2.2.
+- Notes: `macos/dist/notes-1.1.0.html` (zh and en).
+- `scripts/release.sh --notes dist/notes-1.1.0.html`, without `--publish`. The installed app was not running and was backed up first (`.codex/local/release-1.1.0/pre-release.5WBYRl/`; the previous appcast is `appcast-1.0.8.xml`).
+  - `dist/Veer-1.1.0.dmg`: 26,262,779 bytes, SHA-256 `449f3f5a1f370fbd2a501d1771cbe3d7c05ae1cecb082b7c36347b0032f52a3a`, Apple Development signed, not notarized.
+  - `dist/appcast.xml`: 1.1.0 / 10, minimum macOS 14.0, URL `https://github.com/SpectreAX/veer/releases/download/macos-v1.1.0/Veer-1.1.0.dmg`.
+  - Checked: `hdiutil verify` VALID; the DMG's app is byte-identical to `dist/Veer.app` and passes deep strict verification; Sparkle `sign_update --account com.yamax.veer --verify` passed; `SUPublicEDKey` unchanged; `SUFeedURL` is Veer's releases feed.
+- The DMG was built from the uncommitted working tree. `.codex/local/release-1.1.0/source-manifest.txt` fingerprints the sources it used (275 files), so the release commit can be checked against it before tagging.
+
+Not done, needs the user: RELEASE.md section 2 hands-on checks (system proxy, TUN, Agent, menus, sidebar, window drag, full screen), opening the DMG and launching from Applications, the macOS 14 VM. Publishing (commit and push, tag `macos-v1.1.0` on that commit, `release.sh --notes dist/notes-1.1.0.html --publish`, anonymous appcast and DMG check, and the old-feed step if wanted) needs a separate go-ahead.
+
+## Liquid Glass Phase II, design system item 1: the composer's completion list on tokens and the system selection (2026-11-22, Claude)
+
+Audit of how page code uses `VeerUI`: radii, raw colors, animation curves, spacing and macOS 26 APIs are already held by SwiftLint rules, and page code has no literal radius or named color. The one hand-drawn shadow was on the Agent composer's `@` exit and `/` command completion list (`CompletionList` in `Composer.swift`), which also had no row in `Design/COMPONENTS.md`.
+
+Reproduced in new isolated scenes 24q (`.codex/local/glass2-design-20261122/before/`): the list was a fixed 340 pt, so with a 320 pt Agent panel it ran past the panel and the window edge and cut off the kind tags (Group, Nodes, Built-in); the highlight was green at 16%, barely visible in dark.
+
+Change: the list is never wider than the composer (at most 340 pt); the highlighted row is `selectionFill` with `onAccent` text and tag, as a menu's is; the `.black.opacity(0.12)` shadow is gone, the solid `surfaceRaised` with a separator edge stays (DESIGN_SPEC Materials: nothing in the Agent panel but the composer has glass); the pointer moves the highlight on hover; the highlighted row has the selected trait. `AgentStore.completionSeed` opens the list for snapshots. `CompletionList` row added to COMPONENTS.
+
+Checks run this session:
+- `verify.sh`: format, lint, build and all 667 tests passed (37/151/361/118; `verify-final.log`).
+- Snapshots, en and zh-Hans, light and dark: 24q-panel-completion-smallest, 24q-panel-completion, 24q-agent-completion-commands, plus 09b and 24m (`after/`, `final/`): the list fits a 320 pt panel with every tag whole.
+- `/apple-design-review` (independent): no Critical or Major. From its Minors: Up and Down now announce the highlighted name to VoiceOver (the text view keeps the focus, so the selected trait alone is not heard). Giving the name layout priority was tried and reverted: in the 320 pt panel it squeezed a long node's region to a clipped glyph, so the name stays shortened in the middle with region and tag whole. Minors left: a resting pointer may take the highlight from the keyboard as typing filters the list (as menus do; not verified); the selection color does not switch to the inactive one if the window loses focus with the list open (not verified that it can).
+
+Recorded, not changed: DNS and Route Test cap their content at a literal 720 pt while the Tools list uses `Metrics.readingWidth` (760); the 56 pt type columns in Logs and DNS and the sheet widths (480–680) are not tokens.
+
+Delivery: `macos/dist/builds/2026-11-22-glass2-design/Veer.app` (sources compared, Apple Development, 1.0.8 build 9) replaced `macos/dist/Veer.app`, which was not running; backup `/Users/spectreax/Developer/Veer/.codex/local/glass2-design-20261122/pre-replace.fIiiAv/Veer.app` (the glass2-tools build); deep strict verification on both, executables match.
+
+NOT VERIFIED: Up/Down with the pointer hovering, VoiceOver reading the selected row, the list over the conversation in an active window, macOS 14 VM.
+
+Next: Phase II's ten areas have each had a first pass. Remaining: the hands-on checks listed per item, then 1.1.0 release prep on the user's word.
+
+## Liquid Glass Phase II, tool controls item 1: Logs at narrow widths, Esc on DNS Cancel (2026-11-22, Claude)
+
+Audit of Requests, DNS Lookup, Route Test and Logs at the standard width and, in new scenes 42a–42d, at 860 × 560 with the Agent docked (`.codex/local/glass2-tools-20261122/before/`, `narrow/`). Sound: Requests' and Logs' Clear can be undone (toast, VoiceOver announcement, menu items); Route Test's selected TCP/UDP segment is system blue by design (DESIGN_SPEC Color); its port field has an accessibility label; Route Test and DNS wrap at 860; Requests scrolls its columns as Connections does; Return runs Look Up and Test, Esc cancels Route Test; Logs copies three ways.
+
+Gap fixed (`Sources/VeerApp/LogsView.swift`): at 860 docked each log line was one row of time, a 56 pt level column and the message, which got about 125 pt and wrapped 8–9 times. Below a 480 pt list width the time and level now sit on a line above the message. The design review found the switch following the live width, so every row would reflow mid-way through the Agent panel's motion; it now picks the narrower end's arrangement before the motion, holds it through a reversal and follows the width again at rest, as `SteadyChoice` does (`LogsLayoutTests`, 2 tests). The review also gave DNS Lookup's Cancel the Esc shortcut Route Test's already had (`DNSView.swift`).
+
+Checks run this session:
+- `verify.sh`: format, lint, build and all 667 tests passed (37/151/361/118; `verify-final.log`).
+- Snapshots, en and zh-Hans, light and dark: 42a–42d, 09f-logs, 09i-dns (`after/`, `final/`): narrow log lines take 2–4 lines; the standard width is unchanged.
+- `/apple-design-review` (independent): Major (reflow during motion) fixed. Minors left: the DNS resolver picker truncates at 860, Route Test's result title wraps to two lines there, DNS history Clear has no Undo, some fixed sizes are not tokens (existing).
+
+Delivery: `macos/dist/builds/2026-11-22-glass2-tools/Veer.app` (sources compared, Apple Development, 1.0.8 build 9) replaced `macos/dist/Veer.app`, which was not running; backup `.codex/local/glass2-tools-20261122/pre-replace.TTUjT7/Veer.app` (the glass2-editmenu build); deep strict verification on both, executables match.
+
+NOT VERIFIED: the Logs layout while opening and closing the Agent panel in a window about 900–1000 pt wide; Esc on DNS Cancel; keyboard and VoiceOver; macOS 14 VM.
+
+Next: the design system (Phase II area 10), the last area.
+
+## Liquid Glass Phase II, menus and forms item 2: the system Edit menu's text editing group (2026-11-22, Claude; user chose "restore the system menu")
+
+Before: `CommandGroup(replacing: .textEditing)` held one custom "Find ⌘F". System limit, confirmed in a probe (`.codex/local/glass2-editmenu-20261122/run-without-textediting/findprobe.txt`): removing the replacement alone restores nothing; a SwiftUI app's Edit menu here has no Find, Spelling and Grammar, Substitutions, Transformations or Speech unless the scene adds `TextEditingCommands()`.
+
+Change: `TextEditingCommands()` on the main `Window` scene; `AppDelegate`, the end of the responder chain, implements `performTextFinderAction(_:)` and `performFindPanelAction(_:)`: Find… (tag 1) puts the cursor in the key window's top-row search (`ToolbarSearchFocus.field(in:)`), and `NSMenuItemValidation` enables Find… only when the page can be searched and the key window has that field; the other find items stay off there. A text view with a find of its own takes the command first. `DESIGN_SPEC.md` (Toolbar) and `docs/SPEC.md` updated; the unused "查找" string removed.
+
+Probe (isolated `com.yamax.veer.probe.headertarget`, sample data with a local model chosen so the Agent composer shows, no core or helper, system proxy and TUN off; keys posted only to the probe, menus pressed through Accessibility; `run/findprobe.txt`, `findprobe2.txt`, `findprobe3.txt`):
+- Edit menu: Find ▸ (Find… ⌘F, Find and Replace… ⌥⌘F, Find Next ⌘G, Find Previous ⇧⌘G, Use Selection for Find ⌘E, Jump to Selection ⌘J), Spelling and Grammar, Substitutions, Transformations, Speech; exactly one item with ⌘F.
+- Main window, Proxies, focus on the sidebar: Edit → Find → Find… and ⌘F each move focus to the toolbar search ("Search nodes or regions").
+- Import sheet's TextEditor: its own find (Find…, Find Next enabled) and the text commands.
+- Settings port field: text commands enabled, Find off. Separate Agent window, composer focused: Paste, Select All, Spelling, Substitutions, Transformations, Speech enabled, Find off.
+
+Checks: `verify.sh` passed format, lint, build and all 665 tests (`verify-final.log`). `/apple-design-review` (independent re-review): pass, no Critical or Major. Minors: Transformations and the like look enabled with no text focus (system behaviour); with another text field focused in the main window ⌘F may go to that field (not probed).
+
+Delivery: `macos/dist/builds/2026-11-22-glass2-editmenu/Veer.app` (sources compared, Apple Development, 1.0.8 build 9) replaced `macos/dist/Veer.app`, which was not running; backup `.codex/local/glass2-editmenu-20261122/pre-replace.AXqg95/Veer.app` (the glass2-menus build); deep strict verification on both, executables match.
+
+NOT VERIFIED: ⌘F with another text field focused or after selecting text on Logs, Connections or Requests; the Chinese menu titles; VoiceOver on the Find submenu; macOS 14 VM.
+
+Next: tool controls (Phase II area 9); item 1 is recorded above.
+
+## Liquid Glass Phase II, menus and forms item 1: menu commands bring the main window forward, a setting's note in its own row (2026-11-22, Claude)
+
+Audit of the menu bar (File, Edit, View, Proxy in `VeerApp.swift`) and the Settings panes. Fixed:
+- View → Grid / Map / App Routing, chosen from Settings or the Agent window, changed the main window's page behind them; they now use `show(.proxies)`, as the page commands do since navigation item 1.
+- File → New Conversation (⌘N) and Add Images or Files… (found by the design review): with the Agent docked they acted on the panel behind Settings, and with the main window closed nothing appeared. `VeerCommands.openAgent(fresh:)` now also brings the main window forward unless the Agent has its own window.
+- Settings › General: the section footer explained only "Restore the last proxy state when Veer opens" but sat under all four toggles; it is that toggle's second line now, as the Proxy pane's settings describe themselves per row.
+- Not changed: ⌘O Import already brought the main window forward with its sheet in both builds (sheet presentation), so the extra step first tried there was removed again.
+
+Checks run this session (evidence `.codex/local/glass2-menus-20261122/`):
+- Probe (isolated `com.yamax.veer.probe.headertarget`, sample data, no core or helper, system proxy and TUN off; keys posted only to the probe, menus pressed through Accessibility, user idle): ⌘, then View → Map, and ⌘, then ⌘N. Before: Settings stayed key and the change happened behind it. After: the main window came forward (`keys/log.txt`).
+- `verify.sh`: format, lint, build and all 665 tests passed (37/151/361/116) (`verify-final.log`).
+- Snapshots, en and zh-Hans, light and dark: 13-settings-general, 14-settings-proxy (`before/`, `after/`).
+- `/apple-design-review` (independent): two Majors. ⌘N fixed (by the reviewer, then confirmed in the probe). **Open, needs a decision:** `CommandGroup(replacing: .textEditing)` (taken to free ⌘F for the toolbar search, commit 0da55e0) leaves the Edit menu without Spelling and Grammar, Substitutions, Transformations and Speech; the probe's Edit menu reads Undo, Redo, Cut, Copy, Paste, Delete, Select All, Find ⌘F, Writing Tools, AutoFill, Dictation, Emoji & Symbols. Text fields such as Import and the DNS servers cannot turn smart quotes off. Options: keep the system group and route its Find… to the toolbar search (`onCommand` for the find action), patch the system Find item through AppKit, or record a deviation. Minors: Agent window placement items in View, sentence case on "Allow connections from the local network" in the Proxy menu, ⌘F enabled but inert when Settings or the Agent window is in front, the Language picker beside the system's per-app language (product decision).
+
+Delivery: `macos/dist/builds/2026-11-22-glass2-menus/Veer.app` (sources compared, Apple Development, 1.0.8 build 9) replaced `macos/dist/Veer.app`, which was not running; backup `.codex/local/glass2-menus-20261122/pre-replace.wYxDsV/Veer.app` (the glass2-filters build); deep strict verification on both, executables match.
+
+NOT VERIFIED: the real Settings window (nine panes in 560 pt: toolbar overflow, last pane restored), VoiceOver on the toggle's second line, macOS 14 VM.
+
+Next: restore the system Edit group and verify Find routing, then tool controls (Phase II area 9).
+
+## Liquid Glass Phase II, filters item 1: Connections filters by process, app and policy group (2026-11-22, Claude)
+
+Reproduced in isolated snapshots (`.codex/local/glass2-filters-20261122/before/`):
+- 41a: a chosen process (zoom.us) with no live connection. The options came only from live connections, so the picker's title went blank while it still filtered everything out (0 connections).
+- 41b: process git with group DIRECT matched nothing: an empty table, with no explanation and no way back.
+- 41c: 860 × 560 with the Agent docked: the three pickers overflowed and the policy-group picker was cut off at the panel's edge.
+
+Change (`Sources/VeerApp/ConnectionsView.swift`): `ConnectionFilters` (process, app, policy; `options(live:chosen:)` keeps the chosen value as an option; the app picker remembers the chosen app's name). Filters or a search that match nothing show a `StateView` "没有符合筛选条件的连接" / "No matching connections" with the number of live connections and "显示全部连接" / "Show All Connections" (clears every filter and the search). Where the three pickers do not fit, one native "筛选（N）" / "Filter (N)" menu holds them as submenus with Show All Connections; the count gives way first. The design review found the first version collapsing to the menu already at 1080 pt with the Agent docked (`ViewThatFits` measured the pickers at their widest item) and fixed it by measuring whole rows. `ProxyStore.connectionsFilterSeed` presets filters for snapshots. `docs/SPEC.md` 5.5 updated.
+
+Consistency: Logs' level filter ("No matching logs" with Show All Levels) and the Proxies grid and map search ("No nodes or groups match …" with Clear Search) follow the same pattern; the English titles now share sentence case.
+
+Checks run this session:
+- `verify.sh`: format, lint, build and all 665 tests passed (new `ConnectionFiltersTests`; 37/151/361/116; `verify-final.log`).
+- Snapshots, en and zh-Hans, light and dark: 41a, 41b, 41c, 09e-connections, 24d-panel-connections, 09m, and Logs 09l, Proxies 18m/18k (`after/`, `final/`, `consistency/`): 1080 docked shows all three pickers, 860 docked shows "Filter (1)".
+- `/apple-design-review` (independent): Major (early collapse) fixed. Minors: the menu's submenu titles differ (Process / Filter by App / Group; needs new strings), "1 connections" in English, no steadying of the switch while the Agent panel moves, pickers centred in their stretched frames at wide widths (existing).
+- Keyboard and VoiceOver, from source only: system Picker, Menu and Button; the empty state's title has the header trait and its symbol is hidden. NOT VERIFIED by hand: Full Keyboard Access reaching the Filter menu and Show All Connections, VoiceOver reading the submenus and their checked items, the bar during the Agent panel's motion, macOS 14.
+
+Delivery: `macos/dist/builds/2026-11-22-glass2-filters/Veer.app` (sources compared, Apple Development, 1.0.8 build 9) replaced `macos/dist/Veer.app`, which was not running (the design reviewer had run `scripts/build-app.sh` in the main checkout, so the replaced copy was its build); backup `.codex/local/glass2-filters-20261122/pre-replace.PndXBp/Veer.app`; deep strict verification on both, executables match.
+
+Next: menus and forms (Phase II area 8).
+
+## Liquid Glass Phase II, proxy actions item 1: group test and node switch, region test (2026-11-22, Claude)
+
+Audit (Proxies page group header and the map's region panel): repeat triggers are already prevented (Test disabled while its group tests); a collapsed group keeps the node menu in its header, so switching works collapsed; the current node reads "→ name"; a switch is read back from the core and a failure becomes a notice; per-node failures show on the tiles. Controls stay visible at the standard width, at 860 pt and with the Agent docked. Gaps:
+- During a profile switch the group's Test stayed enabled while `testNodes` silently did nothing (the region Test already disabled itself).
+- The group's spinner appeared before the Ask Agent menu and pushed the header row left.
+- VoiceOver: every group's button read "Test", the spinner had no label, and the node menu read its arrow with no group name.
+
+Change: `ProxyStore.canStartLatencyTest(_:)` (core running, no profile switch, scope not testing) drives the group and region buttons' disabled state and the guard in `testNodes`; a group with nothing testable (only REJECT, PASS and the like) is disabled too (review Minor). The group's spinner takes the Test button's place, as the region test's does, so the row stays put. Labels: "为“group”测速" (existing en "Test latency in %@"), "正在测速", and the node menu "“group”使用的节点" / "Node used by “%@”" with the node as its value (also on the read-only text of automatic groups). Files: `ProxiesView.swift`, `NodeMapView.swift`, `ProxyStoreLatency.swift`, `SnapshotRunner.swift`, en strings.
+
+Checks run this session (evidence `.codex/local/glass2-proxyactions-20261122/`):
+- `verify.sh`: format, lint, build and all 663 tests passed (new `LatencyAvailabilityTests`; 37/151/361/114; `verify-final.log`).
+- Snapshots, en and zh-Hans, light and dark: 05, 05b, 05e, new 05g (testing, standard) and 05h (testing, 860 × 560 with the Agent docked), and the map's 18 series (`before/`, `after/`, crops in `crops/`): the spinner sits in the button's place, nothing else moves.
+- `/apple-design-review` (independent): no Critical or Major. Minors: nothing-testable groups (fixed); a disabled button's tooltip does not say why; the English group label reuses the region wording.
+
+Delivery: `macos/dist/builds/2026-11-22-glass2-proxyactions/Veer.app` (sources compared, Apple Development, 1.0.8 build 9) replaced `macos/dist/Veer.app`, which was not running; backup `.codex/local/glass2-proxyactions-20261122/pre-replace.ORDKDa/Veer.app` (the glass2-editors build); deep strict verification on both, executables match.
+
+NOT VERIFIED (hands-on): Full Keyboard Access order through the header (wide and two-row) and the region panel, and where focus goes after pressing Test; VoiceOver on the node menu, Test and the spinner, and whether a finished test is noticed; real-network tests and switches.
+
+Next: filters (Phase II area 7).
+
+## Liquid Glass Phase II editor controls and counter cleanup (2026-11-22, Claude and Codex)
+
+- Claude implemented inline guidance when a URL or other invalid value is pasted into the App Routing domain exception. The new policy-group editor now enforces the name length in the Save action and sizes the form to its rows so the name warning leaves the type picker visible. Duplicate names retain the existing numbering behavior. `EditorValidationTests` covers the shared validation rules.
+- The independent design reviewer found 3.90:1 contrast for the two warning messages in light appearance. Codex switched both to the standard primary-text `StatusBadge`. The final 12 captures (macOS 27.3, English and Simplified Chinese, light and dark) show the empty group editor (760 × 640 pt), empty domain sheet (480 × 360 pt) and invalid domain sheet (480 × 400 pt). The warnings, pickers and buttons fit. Final warning text measured 14.13:1 in light appearance and at least 10.35:1 in dark. The review has no remaining Critical or Major findings. The general domain hint still also appears for Domain Keyword (Minor). [Apple accessibility guidance](https://developer.apple.com/design/human-interface-guidelines/accessibility)
+- The rule-set counter suite stalled in one Claude run and in Codex's seventh repeat. Both process samples show `RuleSetCounter` blocked in Foundation's `waitUntilExit` during the held-controller-port case. The counter now waits for a termination notification off Swift's cooperative executor. It gives the child 500 ms after SIGTERM and uses SIGKILL if it is still running, with a final wait capped at 500 ms. The regression with a child that ignores SIGTERM failed on the original code (about 8.1 seconds) and passed after the fix (3.1 seconds in the full suite). All ten repeat runs passed. The stalled test processes were cleaned up.
+- Fresh `verify.sh` passed format, lint, build and all 662 tests (37 UI, 151 Proxy, 361 Core, 113 App). Evidence in `.codex/local/glass2-editors-codex-20261122/`, including `verify-final.log`, `final/`, counter stacks and repeat logs.
+- The Apple Development signed `macos/dist/builds/2026-11-22-glass2-editors/Veer.app` replaced the stopped `macos/dist/Veer.app`. All 270 source and build input paths matched and all 185 bundle paths matched. Both the installed package and its backup passed strict signature verification. Backup `.codex/local/glass2-editors-codex-20261122/pre-replace.EYldBZ/Veer.app`. The installed app stayed closed and system proxy settings stayed off.
+- NOT VERIFIED in a live sheet: Tab order, Return and Escape, VoiceOver, valid submission, presentation in the minimum parent window, opening domain exceptions from compact Details, and macOS 14. The 1.1.0 release remains to be prepared.
+
+## Liquid Glass Phase II, navigation item 1: one name per page, menu commands bring the main window forward (2026-11-22, Claude)
+
+Audit: the sidebar's two groups, ⌘1–⌘5, the Tools subpages' glass back button and View → Back (⌘[), the parent row staying selected on a subpage and the accent selection (a documented deviation) are sound. Two gaps:
+- The Tools row "DNS 查询" / "DNS Lookup" opened a page titled "DNS" in the top row, the window title and View → Tools; the other three tool rows share their page's title.
+- ⌘1–⌘5, View → Tools items and ⌘[ chosen from the Agent window or Settings changed the main window's page behind them without bringing it forward (design review Minor; reproduced in a probe).
+
+Change: `Page.dns.title` is "DNS 查询" (en "DNS Lookup", an existing string) and the Tools row uses it (`MainView.swift`, `ToolsView.swift`); `VeerCommands.show(_:)` sets the page and brings the main window forward through `AppDelegate.openMain`, the path the global open-window shortcut uses (`VeerApp.swift`).
+
+Checks run this session (evidence `.codex/local/glass2-nav-20261122/`):
+- `verify.sh`: format, lint, build and all 659 tests passed (`verify-final.log`).
+- Snapshots, en and zh-Hans, light and dark: 09i-dns, 07d-failed-dns, 06b-tools, 08g-empty-stopped-logs-narrow (`before/`, `after/`, crops in `crops/`): the title capsule holds the new name.
+- Key probe (isolated `com.yamax.veer.probe.headertarget` builds, sample data, no core or helper, system proxy and TUN off; keys posted only to the probe while active; the user idle for 6 minutes): ⌘, then ⌘2. Before the fix Settings stayed key with the main window switched to Proxies behind it; after, the main window came forward on Proxies (`keys/log.txt`).
+- `/apple-design-review` (independent): no Critical or Major. Minors left: View has both "Tools ⌘4" and a "Tools" submenu (a wording decision); the sidebar's click-Tools-to-go-back is pointer only (⌘4 and ⌘[ cover the keyboard).
+
+Delivery: `macos/dist/builds/2026-11-22-glass2-nav/Veer.app` (sources compared, Apple Development, 1.0.8 build 9) replaced `macos/dist/Veer.app`, which was not running; backup `.codex/local/glass2-nav-20261122/pre-replace.PdNdQv/Veer.app` (the glass2-motion build); deep strict verification on both, executables match.
+
+NOT VERIFIED: keyboard and VoiceOver passes through the sidebar, back button and View menu; ⌘1–⌘5 during onboarding; macOS 14 VM.
+
+Next: editor controls (Phase II area 5).
+
+## Liquid Glass Phase II, system transitions item 1: Reduce Motion and motion tokens (2026-11-22, Claude)
+
+Audit of every animation site in `Sources/VeerApp` and `Sources/VeerUI` against DESIGN_SPEC Motion ("only fade" with Reduce Motion; `Motion` tokens or a documented spring):
+- The Agent's undo toast (panel and Agent page, `AgentConversation`) always rose from the bottom, while the main window's identical toast already respected Reduce Motion; its `.animation` wrapper also ignored the setting, so a turn arriving with the toast slid in (found by the design review).
+- `ConversationView`'s three animated scrolls to the newest turn and the onboarding step mark's width change ignored Reduce Motion.
+- The toolbar groups' spring (`PageToolbar`) and the Overview ripple's curves were inline literals.
+Already guarded and unchanged: the panel reveal, sidebar animator, map viewport, the glass switch's selection, the toolbar group swap, `CoreStateRing`, the start button's crossfade.
+
+Change: `Motion.unlessReduced(_:_:)` (VeerUI) and tokens `Motion.toolbar`, `Motion.ripple`, `Motion.step`; the sites above switch or jump at once with Reduce Motion (the toast appears without moving, as in the main window); the toolbar buttons' press shrink is off under Reduce Motion; a new SwiftLint rule `no_literal_animation` (error) keeps literal curves out of page code (checked: it flags a literal, and the tree passes). `DESIGN_SPEC.md` (Motion) and `Design/TOKENS.md` record it.
+
+Checks run this session (evidence `.codex/local/glass2-motion-20261122/`):
+- `verify.sh`: format, lint, build and all 659 tests passed (new `MotionTests`; 37/151/360/111; `verify-final.log`).
+- Snapshots at rest, en and zh-Hans, light and dark: 01–03 onboarding, 09e-agent-undoing, 19b-toast-undo, 24-panel-overview, 04-overview-running (`after/`): unchanged, as expected. The active 09e render also shows the composer's web-search toggle green when on, which closes that NOT VERIFIED item from Agent item 1.
+- `/apple-design-review` (independent): Major (toast wrapper animation) fixed; Minor (press shrink) fixed.
+
+Delivery: `macos/dist/builds/2026-11-22-glass2-motion/Veer.app` (sources compared, Apple Development, 1.0.8 build 9) replaced `macos/dist/Veer.app`, which was not running. Backup `.codex/local/glass2-motion-20261122/pre-replace.JWHEXe/Veer.app` passed strict signature verification and its executable matches the archived glass2-overview build (confirmed at Codex sync).
+
+NOT VERIFIED (hands-on): with System Settings → Accessibility → Display → Reduce Motion on, watch the Agent toast, a new turn scrolling into view, the onboarding step mark and toolbar presses; macOS 14 VM.
+
+Next: navigation (Phase II area 4).
+
+## Liquid Glass Phase II, Overview primary button (2026-11-22, Claude)
+
+Audit: the Overview's 64 pt round start button was `primaryAction()` (prominent green) in every state, so while the core ran the page's prominent green action was Stop, which cuts every connection. The toolbar's start/stop is neutral in both states. HIG Buttons: a prominent style for the most likely action, and no primary role for a destructive one.
+
+Change (`Sources/VeerApp/OverviewView.swift`, `StartStopStyle`): stopped or failed, Start stays the page's one primary action (`primaryAction()`); running, Stop is `secondaryAction()` at large size (neutral glass on macOS 26, bordered before). Size, place, ⌘R help, accessibility labels and `CoreStateRing` are unchanged. The two system styles are two buttons to SwiftUI, so the change is a crossfade of the whole button (`Motion.quick`; a fade, kept under Reduce Motion); the symbol-replace transition that could no longer run was removed and the comment says why. `DESIGN_SPEC.md` (Components and interaction) records it.
+
+Checks run this session (evidence `.codex/local/glass2-overview-20261122/`):
+- `verify.sh`: format, lint, build and all 658 tests passed on the final source (`verify-final.log`).
+- Isolated snapshots, en and zh-Hans, light and dark: 04-overview-running, 04i-overview-stopped, 04f-overview-starting, 04j-overview-wide, 07-failed, 24-panel-overview, 15-overview-tun (`before/`, `after/`, `final/`, crops in `crops/`). Running shows a neutral glass circle with the stop symbol; stopped the green Start; starting the disabled button with its ring; failed shows no big button (Try Again is the one prominent action); with the panel open the page has one green action.
+- `/apple-design-review` (independent): no Critical or Major. Its Minor (the style swap replaces the button, so the symbol transition could not play) is addressed by the crossfade and the corrected comment.
+- Focus probe: an isolated build (`com.yamax.veer.probe.headertarget`, current source, sample data, no core or helper, system proxy and TUN off) could not take focus onto the button through Accessibility with Full Keyboard Access off (`focus/before-fix.txt`); the system setting was not changed.
+
+Delivery: `macos/dist/builds/2026-11-22-glass2-overview/Veer.app` (sources compared, Apple Development, 1.0.8 build 9) replaced `macos/dist/Veer.app`, which was not running; backup `.codex/local/glass2-overview-20261122/pre-replace.3F1lDc/Veer.app` (the glass2-header build); deep strict verification on both, executables match.
+
+NOT VERIFIED (hands-on): with Full Keyboard Access on, Tab to the big button and press Space to stop; focus should stay on the button, now Start. If it is lost, that is Major (restore it with a `@FocusState` after the phase changes). VoiceOver reading "Start" after Stop; the macOS 14 bordered look.
+
+Next: system transitions (Phase II area 3).
+
+## Liquid Glass Phase II, Agent workspace item 2: panel header groups and click targets (2026-11-22, Claude)
+
+Audit: the panel header ran five secondary icons (undo change, new conversation, open on the Agent page, open in a separate window, hide the panel) together at 4 pt spacing, mixing actions on the conversation with where the Agent is shown, and each button's click target was its glyph (measured: "Hide Agent Panel" 15 × 12 pt, below the HIG's 20 × 20 pt minimum; 28 × 28 pt is the default). The Agent window's toolbar already keeps undo and new apart from dock.
+
+Change (`Sources/VeerApp/Agent/AgentPanel.swift`, `Sources/VeerUI`):
+- Two groups by function, 8 pt apart: undo and new | Agent page, separate window, hide.
+- `.labelStyle(.iconTarget)` (VeerUI, `Metrics.iconTarget` = 28): an icon-only label framed at 28 × 28 pt with a rectangular content shape. The frame must be inside the label: a borderless button on macOS is an AppKit button sized to its label, so the first version's frame around the button left the target at the glyph (caught by the design review with an off-screen harness and fixed there). The title stays in the label for VoiceOver.
+- Still borderless and secondary. The system `.accessoryBarAction` style was tried and rejected: it draws a grey tile behind every icon at rest, heavier than the toolbar beside it, and truncated the title at 320 pt (`after1/`).
+- `Design/TOKENS.md` and `Design/COMPONENTS.md` record the token and the label style.
+
+Checks run this session (evidence `.codex/local/glass2-header-20261122/`):
+- `verify.sh`: format, lint, build and all 658 tests passed on the final source (`verify-final.log`).
+- Isolated snapshots, en and zh-Hans, light and dark: 24-panel-overview, 24m-panel-smallest (320 pt panel), 24c-panel-narrow, 24k, 24d, 24b, 24j (`after2/`, the reviewer's `after3/`, crops in `crops/`). The groups read clearly; the title does not truncate at 320 pt.
+- Real pointer (HID-level clicks, only while the probe was active and topmost, cursor put back; the user had been idle 14 minutes): isolated probe `com.yamax.veer.probe.headertarget` (current source, Codex's sidebar-pointer probe pattern, sample data, Agent docked, no core binary or helper in the bundle, ad hoc signature, system proxy and TUN off; its launch check requires that and the sample's display-only system-proxy flag is set off before it). All five header buttons are 28 × 28 pt; a click 11 pt right and below the centre of "Hide Agent Panel" hid the panel in English and Chinese. The same click on Codex's earlier package (old code, 15 × 12 pt) missed (`realclick/click-log.txt`). No probe left.
+- `/apple-design-review` (independent): Major (target not enlarged) fixed; Minor left: icons about 10–12 pt apart within a group, matching the toolbar beside it.
+
+Delivery: `macos/dist/builds/2026-11-22-glass2-header/Veer.app` (sources compared, Apple Development, 1.0.8 build 9) replaced `macos/dist/Veer.app`, which was not running; backup `.codex/local/glass2-header-20261122/pre-replace.jJq4lB/Veer.app` (the glass2-composer build); deep strict verification on both, executables match.
+
+NOT VERIFIED: the keyboard focus ring (a 28 pt square on the capsule bar), VoiceOver reading the buttons' names through the new label style, macOS 14 VM.
+
+Next: the Overview primary button. (The Agent window's toolbar uses system toolbar items, whose targets are the system's.)
+
+## Liquid Glass Phase II, Agent workspace item 1: composer options as system controls (2026-11-22, Claude)
+
+Audit (docked panel, detached window, composer against `DESIGN_SPEC.md` Window, Navigation and Materials, with renders of 24-panel-overview, 24k, 24m, 24c, 24w-agent-window{,-smallest,-wide}, 09b and 09d in `.codex/local/glass2-agent-20261122/before/`): the panel's single glass base, the composer's own glass, the window's system toolbar and the one-conversation rule match the spec. The first gap: the composer's four option controls (execution mode, model, files, web search) were Veer's own `PillButtonStyle` / `ToggleChip` (hand-set fill, hover and press opacities; web search a button with a selected trait), while Stop and Send beside them were already system buttons.
+
+Change:
+- `composerOption()` (in `Composer.swift`): `secondaryAction()` with a circle border shape, large, fixed size (`.glass` on macOS 26, `.bordered` before), used by all four options, as Stop already is.
+- Web search is a system `Toggle` in the button style (icon only), tinted `accentFill` only while on. Review found the system blue for on (Major), and a constant tint turned an off toggle green too, hence the conditional tint.
+- Full access colors only its symbol (`statusWarning`); the other modes use the system label color, which follows the window's state. Each mode has its own symbol as well.
+- The model button's accessibility label now says when the AI key is missing (it was a color dot only).
+- Removed `PillButtonStyle`, `ToggleChip` and the then-unused `AdaptiveLabelStyle` from VeerUI; `Design/COMPONENTS.md` and `DESIGN_SPEC.md` (Materials) record the change.
+- New snapshot scenes `24o-panel-composer-full-access` (full access, web search off) and `24o-panel-composer-local` (local parsing: files and web search disabled).
+
+Checks run this session:
+- `verify.sh`: format, lint, build and all 658 tests passed on the final source (36/151/360/111; `verify-final.log`).
+- Isolated snapshots (`com.yamax.veer.snapshots`), en and zh-Hans, light and dark: 24-panel-overview, 24o-*, 24m-panel-smallest, 24w-agent-window{,-smallest}, 09b, 09p, 09q (`after2/`, `after3/`, `final/`; crops in `crops/`). Most windows rendered inactive (flat glass); one active render (`after3/zh-Hans/24o-panel-composer-local-dark.png`) shows the system glass circles. Layout fits at the narrowest panel and the smallest Agent window.
+- `/apple-design-review` (independent): Major fixed (on-state color), Minor fixed (missing key by color only). Remaining Minors: the inactive on state is a faint grey fill (system behavior); warning-color contrast not measured.
+
+Delivery: `macos/dist/builds/2026-11-22-glass2-composer/Veer.app` (sources compared, Apple Development, 1.0.8 build 9) replaced `macos/dist/Veer.app`, which was not running; backup `.codex/local/glass2-agent-20261122/pre-replace.PIlqGX/Veer.app` (the integration build); deep strict verification on both, executables match. Version stays 1.0.8 (9) until release preparation for 1.1.0.
+
+NOT VERIFIED: the final code's web-search on state in an active window (green), focus rings and Full Keyboard Access on the glass circles, hover and press, VoiceOver reading web search as a switch, the `.bordered` fallback on macOS 14 and 15.
+
+Next in the Agent workspace: the panel header's five icon controls (undo, new conversation, open on the Agent page, separate window, close) beside the window toolbar's grouped items; then the Overview primary button.
 
 ## Local integration commits (2026-11-22, Codex)
 

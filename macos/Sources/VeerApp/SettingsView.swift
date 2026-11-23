@@ -59,16 +59,16 @@ struct GeneralSettings: View {
                         }
                     }
                 if let loginProblem { StatusBadge(kind: .warning, text: loginProblem, compact: true) }
-                Toggle(String(localized: "打开 Veer 时恢复上次的代理状态"), isOn: $store.restoreLastState)
+                // What it does in its own row, as the Proxy pane's settings say theirs: under the section,
+                // the note read as if it were about every setting in it.
+                Toggle(isOn: $store.restoreLastState) {
+                    Text(String(localized: "打开 Veer 时恢复上次的代理状态"))
+                    Text(String(localized: "上次退出时内核在运行，就重新启动它，并恢复模式和系统代理。"))
+                }
                 Toggle(String(localized: "在菜单栏显示实时速率"), isOn: $store.showRateInMenuBar)
                 Toggle(String(localized: "在概览中检测出口 IP"), isOn: $store.showExitIP)
             } header: {
                 Text(String(localized: "启动与菜单栏"))
-            } footer: {
-                Text(String(localized: "上次退出时内核在运行，就重新启动它，并恢复模式和系统代理。"))
-                    .font(.caption).foregroundStyle(.secondary)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .formStyle(.grouped)

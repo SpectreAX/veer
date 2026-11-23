@@ -230,6 +230,27 @@ enum SnapshotRunner {
             Scene(name: "07h-failed-controller-port", store: { controllerPortTaken() }, view: AnyView(MainView())),
             Scene(name: "07i-failed-controller-port-smallest", size: CGSize(width: 860, height: 560), store: { controllerPortTaken() },
                   view: AnyView(MainView())),
+            // App Routing's domain exception sheet, empty and with a pasted address it can't use.
+            Scene(name: "40i-domain-exception", size: CGSize(width: 480, height: 360), store: { running(page: .proxies) },
+                  view: AnyView(DomainRouteSheet(app: sampleApps()[0], targets: (["节点选择", "Netflix"], ["🇯🇵 日本 大阪 02"])) { _ in })),
+            Scene(name: "40j-domain-exception-invalid", size: CGSize(width: 480, height: 400), store: { running(page: .proxies) },
+                  view: AnyView(DomainRouteSheet(app: sampleApps()[0], targets: (["节点选择", "Netflix"], ["🇯🇵 日本 大阪 02"]),
+                                                 value: "https://www.youtube.com/watch") { _ in })),
+            // The new-group editor with a name it can't save (empty), so its note shows above the type.
+            Scene(name: "09m-group-editor-name-note", size: CGSize(width: 760, height: 640), store: { running(page: .agent) },
+                  view: AnyView(GroupEditorSheet(target: GroupEditTarget(turnID: UUID(), itemID: 0))),
+                  agent: { sampleThread($0, status: .pending) }),
+            // A group's test under way: the spinner in the button's place, the header unmoved.
+            Scene(name: "05g-proxies-group-testing", store: {
+                let store = running(page: .proxies)
+                store.testingScopes.insert(.group("节点选择"))
+                return store
+            }, view: AnyView(MainView())),
+            Scene(name: "05h-proxies-group-testing-panel", size: CGSize(width: 860, height: 560), store: {
+                let store = running(page: .proxies, panel: true)
+                store.testingScopes.insert(.group("节点选择"))
+                return store
+            }, view: AnyView(MainView())),
             Scene(name: "08-proxies-stopped", store: {
                 let store = sample()
                 store.page = .proxies
@@ -412,6 +433,38 @@ enum SnapshotRunner {
                 store.agentPanelWidth = 320
                 return store
             }, view: AnyView(MainView()), agent: attachmentThread),
+            // The @ exit completion above the composer, over a conversation: the narrowest panel and the
+            // standard one; then / commands on the Agent page.
+            Scene(name: "24q-panel-completion-smallest", size: CGSize(width: 860, height: 560), store: {
+                let store = running(panel: true)
+                store.agentPanelWidth = 320
+                return store
+            }, view: AnyView(MainView()), agent: { agent in
+                agent.settings.provider = .ollama
+                sampleThread(agent, status: .pending)
+                agent.completionSeed = (trigger: "@", text: "")
+            }),
+            Scene(name: "24q-panel-completion", store: { running(panel: true) }, view: AnyView(MainView()), agent: { agent in
+                agent.settings.provider = .ollama
+                sampleThread(agent, status: .pending)
+                agent.completionSeed = (trigger: "@", text: "")
+            }),
+            Scene(name: "24q-agent-completion-commands", store: { running(page: .agent) }, view: AnyView(MainView()), agent: { agent in
+                agent.settings.provider = .ollama
+                agent.completionSeed = (trigger: "/", text: "")
+            }),
+            // The composer's option controls in their other states: full access (warning-colored symbol)
+            // and web search off with AI, then local parsing, where files and web search are unavailable.
+            Scene(name: "24o-panel-composer-full-access", store: { running(panel: true) }, view: AnyView(MainView()), agent: { agent in
+                agent.settings.provider = .ollama
+                agent.executionMode = .full
+                agent.searchSettings.enabled = false
+            }),
+            Scene(name: "24o-panel-composer-local", size: CGSize(width: 860, height: 560), store: { running(panel: true) },
+                  view: AnyView(MainView()), agent: { agent in
+                agent.settings.provider = .ollama
+                agent.useAI = false
+            }),
             Scene(name: "24n-panel-failed", store: {
                 let store = failed(page: .overview)
                 store.agentPanel = true
@@ -468,6 +521,29 @@ enum SnapshotRunner {
                 sampleThread(agent, status: .written)
             }, fullScreen: true),
             Scene(name: "25b-fullscreen-proxies", store: { running(page: .proxies) }, view: AnyView(MainView()), fullScreen: true),
+            // Filters: a process whose connections have all closed, filters that together match nothing,
+            // and a filtered page at the smallest window with the Agent docked.
+            Scene(name: "41a-connections-filter-gone", store: {
+                let store = running(page: .connections)
+                store.connectionsPaused = true
+                store.connections = sampleConnections()
+                store.connectionsFilterSeed = ConnectionFilters(process: "zoom.us")
+                return store
+            }, view: AnyView(MainView())),
+            Scene(name: "41b-connections-filter-none", store: {
+                let store = running(page: .connections)
+                store.connectionsPaused = true
+                store.connections = sampleConnections()
+                store.connectionsFilterSeed = ConnectionFilters(process: "git", policy: "DIRECT")
+                return store
+            }, view: AnyView(MainView())),
+            Scene(name: "41c-connections-filter-panel-smallest", size: CGSize(width: 860, height: 560), store: {
+                let store = running(page: .connections, panel: true)
+                store.connectionsPaused = true
+                store.connections = sampleConnections()
+                store.connectionsFilterSeed = ConnectionFilters(process: "Safari")
+                return store
+            }, view: AnyView(MainView()), agent: { agent in agent.settings.provider = .ollama }),
             Scene(name: "09e-connections", store: {
                 let store = running(page: .connections)
                 store.connectionsPaused = true
@@ -511,6 +587,24 @@ enum SnapshotRunner {
                 store.routeTestRequest = RouteTestRequest(host: "www.bilibili.com", network: "TCP")
                 return store
             }, view: AnyView(MainView())),
+            // The tools at the smallest window with the Agent docked.
+            Scene(name: "42a-route-test-panel-smallest", size: CGSize(width: 860, height: 560), store: {
+                let store = running(page: .route, panel: true, config: routeSampleConfig)
+                store.routeTestRequest = RouteTestRequest(host: "www.bilibili.com", network: "TCP")
+                return store
+            }, view: AnyView(MainView()), agent: { agent in agent.settings.provider = .ollama }),
+            Scene(name: "42b-dns-panel-smallest", size: CGSize(width: 860, height: 560), store: { running(page: .dns, panel: true) },
+                  view: AnyView(MainView()), agent: { agent in agent.settings.provider = .ollama }),
+            Scene(name: "42c-requests-panel-smallest", size: CGSize(width: 860, height: 560), store: {
+                let store = running(page: .requests, panel: true)
+                store.requests = sampleConnections().enumerated().map { ClosedRequest(row: $1, closedAt: .now.addingTimeInterval(-Double($0) * 7)) }
+                return store
+            }, view: AnyView(MainView()), agent: { agent in agent.settings.provider = .ollama }),
+            Scene(name: "42d-logs-panel-smallest", size: CGSize(width: 860, height: 560), store: {
+                let store = running(page: .logs, panel: true)
+                store.logs = sampleLogs()
+                return store
+            }, view: AnyView(MainView()), agent: { agent in agent.settings.provider = .ollama }),
             Scene(name: "04b-overview-suggestions", store: {
                 let store = running()
                 store.suggestions = [Suggestion(kind: .failing(host: "chatgpt.com", count: 4)),

@@ -83,100 +83,6 @@ public struct Chip: View {
     }
 }
 
-/// Icon pill for the composer's menu buttons: a neutral (or tinted) wash that deepens on hover and
-/// press, like `ToggleChip` beside it.
-public struct PillButtonStyle: ButtonStyle {
-    public init(tint: Color? = nil) { self.tint = tint }
-
-    public var tint: Color?
-
-    public func makeBody(configuration: Configuration) -> some View {
-        PillBody(configuration: configuration, tint: tint)
-    }
-
-    private struct PillBody: View {
-        let configuration: Configuration
-        let tint: Color?
-        @Environment(\.isEnabled) private var isEnabled
-        @State private var hovering = false
-
-        var body: some View {
-            let base = tint == nil ? 0.06 : 0.14
-            configuration.label
-                .font(.callout)
-                .foregroundStyle(tint ?? .primary)
-                .opacity(isEnabled ? 1 : 0.4)
-                .padding(.horizontal, Spacing.sm + Spacing.xxs)
-                .padding(.vertical, Spacing.xs)
-                .background((tint ?? .primary).opacity(configuration.isPressed ? base + 0.08 : hovering && isEnabled ? base + 0.04 : base), in: Capsule())
-                .contentShape(Capsule())
-                .onHover { hovering = $0 }
-                .animation(Motion.quick, value: hovering)
-        }
-    }
-}
-
-/// On / off pill for a composer option. Off it matches the neutral mode pill beside it; on it takes
-/// an accent wash, edge and text, so the state reads from more than color alone (also announced as
-/// selected).
-public struct ToggleChip: View {
-    public init(title: String, symbol: String, isOn: Binding<Bool>, compact: Bool = false) {
-        self.title = title
-        self.symbol = symbol
-        _isOn = isOn
-        self.compact = compact
-    }
-
-    public let title: String
-    public let symbol: String
-    @Binding public var isOn: Bool
-    /// Icon only, for narrow rows; the title stays as the accessibility label.
-    public var compact = false
-    @Environment(\.isEnabled) private var isEnabled
-    @State private var hovering = false
-
-    public var body: some View {
-        Button { isOn.toggle() } label: {
-            Label(title, systemImage: symbol)
-                .labelStyle(.adaptive(compact))
-                .font(.callout)
-                .foregroundStyle(isOn && isEnabled ? Color.veerAccent : isEnabled ? Color.primary : Color.secondary)
-                .padding(.horizontal, Spacing.sm + Spacing.xxs)
-                .padding(.vertical, Spacing.xs)
-                .background(background, in: Capsule())
-                .overlay(Capsule().strokeBorder(isOn && isEnabled ? Color.veerAccent.opacity(0.4) : .clear))
-                .opacity(isEnabled ? 1 : 0.6)
-                .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .fixedSize()
-        .onHover { hovering = $0 }
-        .animation(Motion.quick, value: isOn)
-        .animation(Motion.quick, value: hovering)
-        .accessibilityLabel(title)
-        .accessibilityAddTraits(isOn ? .isSelected : [])
-    }
-
-    private var background: Color {
-        guard isEnabled else { return Color.primary.opacity(0.06) }
-        if isOn { return Color.veerAccent.opacity(hovering ? 0.2 : 0.14) }
-        return Color.primary.opacity(hovering ? 0.1 : 0.06)
-    }
-}
-
-public struct AdaptiveLabelStyle: LabelStyle {
-    public init(iconOnly: Bool) { self.iconOnly = iconOnly }
-
-    public let iconOnly: Bool
-    public func makeBody(configuration: Configuration) -> some View {
-        if iconOnly { configuration.icon } else { Label(configuration) }
-    }
-}
-
-public extension LabelStyle where Self == AdaptiveLabelStyle {
-    static func adaptive(_ iconOnly: Bool) -> AdaptiveLabelStyle { AdaptiveLabelStyle(iconOnly: iconOnly) }
-}
-
 /// Centered empty / error / informational state with an optional action.
 public struct StateView: View {
     public init(symbol: String, title: String, message: String? = nil, actionNotice: String? = nil,
@@ -309,6 +215,25 @@ public struct SecondaryActionStyle: ViewModifier {
         }
         .tint(nil)
     }
+}
+
+/// Icon only, in a `Metrics.iconTarget` square that takes the click, not only the glyph. The frame has
+/// to be inside the label: a borderless button on macOS is an AppKit button sized to its label, so a
+/// frame or content shape around the button leaves its click target at the glyph. The title stays in
+/// the label, so VoiceOver still reads it.
+public struct IconTargetLabelStyle: LabelStyle {
+    public init() {}
+
+    public func makeBody(configuration: Configuration) -> some View {
+        Label(configuration)
+            .labelStyle(.iconOnly)
+            .frame(width: Metrics.iconTarget, height: Metrics.iconTarget)
+            .contentShape(Rectangle())
+    }
+}
+
+public extension LabelStyle where Self == IconTargetLabelStyle {
+    static var iconTarget: IconTargetLabelStyle { IconTargetLabelStyle() }
 }
 
 public extension View {

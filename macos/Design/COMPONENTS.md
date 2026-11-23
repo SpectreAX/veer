@@ -23,6 +23,7 @@ Use the native control first, then a `VeerUI` component, then a new one. Shared 
 | `floatingPanel()` | Panels floating over the window, such as onboarding |
 | `panel()` | Content panels: solid, no glass |
 | `neutralControl()` | A control that should not take the accent color |
+| `.labelStyle(.iconTarget)` | A borderless icon-only button with a `Metrics.iconTarget` (28 pt) click target rather than its glyph. The frame is inside the label, because a borderless button on macOS is an AppKit button sized to its label; a frame around the button does not reach it (measured 2026-11-22). Agent panel header |
 | `SoftenedUnderComposer` | Softens a conversation line or card in proportion to how much of it is under the composer's glass, which in an active window otherwise shows sharp text behind it; the glass API has no blur control. It follows layout, as a draw-time `visualEffect` on every line kept a layer each (about 47 MB), and goes on each line directly, as a container wrapping each child slowed the panel's motion. |
 | `glassSurface(in:)` | A glass surface with the older-system fallback. The Agent panel (`AgentPanelColumn`) is one: the whole column on one regular glass shape, clipped to it underneath so the system keeps its own edge, with a separator-colored edge added only under Increase Contrast |
 
@@ -32,7 +33,7 @@ Use the native control first, then a `VeerUI` component, then a new one. Shared 
 |---|---|
 | `StatusBadge` | Status as an icon and text |
 | `Tag` | A small label |
-| `Chip`, `ToggleChip`, `PillButtonStyle` | Compact pills |
+| `Chip` | Compact pill for a suggested instruction or a choice in a turn (`Chip(text:symbol:action:)`). The composer's option controls, which used `ToggleChip` and `PillButtonStyle`, are system buttons since 2026-11-22 (`composerOption()`: `secondaryAction()` in a circle; web search a `Toggle` in the button style). |
 | `StateView` | Empty, loading and error states |
 | `ExitLabel` | Exit node and country |
 | `SegmentedControl` | Standard segmented picker in the system's colors, for symbols or text |
@@ -43,6 +44,7 @@ Use the native control first, then a `VeerUI` component, then a new one. Shared 
 | `ProfileTile`, `ToolRow` | A row of plain buttons with secondary actions beside them, on `ProxiesView` and `ToolsView`. Plain buttons, so keyboard and VoiceOver work as for any button |
 | `CoreStateRing` | A ring and ripple around the Overview's start button, for what the core is doing. Decorative: hidden from VoiceOver, which hears the new state as an announcement. Same in light and dark and on macOS 14; steady with Reduce Motion |
 | `selectionHighlight` | A selected row in the sidebar and conversation list, in `selectionFill` whatever has the focus, since pages move the focus to their own fields. Dimmed by the system when the window is in the background |
+| `CompletionList` | The Agent composer's `@` exit and `/` command completion, floating above it as a menu does: solid `surfaceRaised` with a separator edge and no shadow (nothing in the Agent panel but the composer has glass, as regular glass shows the conversation sharp behind it), the highlighted row in `selectionFill` with `onAccent`, at most 340 pt and never wider than the composer (2026-11-22: a fixed 340 pt ran past a 320 pt panel and cut off the kind tags). Native alternatives fall short: `NSTextView.complete(_:)` lists bare words with no region or kind and takes the keyboard into its own window; SwiftUI's `textInputSuggestions` is for a `TextField` on macOS 15 and later, not this text view. Keyboard: the text view keeps focus; Up and Down move the highlight, Return or Tab picks, Esc closes, typing filters. The pointer highlights on hover and picks on click. VoiceOver: each row is a button, the highlighted one with the selected trait. Light and dark through `surfaceRaised`, `separatorLine` and the system selection color; the same on macOS 14 |
 | `AttachmentChip` | A file or image going with an Agent instruction, removable in the composer. A row of name, state and remove button that no system control offers. Keyboard and VoiceOver through its plain remove button; its label says what was hidden or cut. Same in light and dark through `subtleFill`, and on macOS 14 |
 | `ColumnFit` | Not a control: which table columns to hide so that the rest fit, for tables that narrow beside a panel |
 | `PanelRevealStack` | Page and Agent panel in one `Layout` whose animatable `reveal` drives both: the page gets each real width, and the panel, at its full width, is pushed in from past the trailing edge by a transform on the same value, its leading edge on the page's trailing edge. The panel draws above the page while open or moving, so its glass shadow falls on the page. No native split view offers a trailing panel that animates with the page on one curve without the inspector's crash. |

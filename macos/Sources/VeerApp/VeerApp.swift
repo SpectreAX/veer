@@ -20,7 +20,12 @@ struct VeerApp: App {
         // The window's title is `MainView`'s own, in the row with its other controls.
         .windowStyle(.hiddenTitleBar)
         .defaultSize(Metrics.defaultWindow)
-        .commands { VeerCommands(store: store, agent: agent) }
+        .commands {
+            VeerCommands(store: store, agent: agent)
+            // Find, Spelling and Grammar, Substitutions, Transformations and Speech in the Edit menu.
+            // A SwiftUI app has none of them unless it asks (seen in a probe on macOS 27).
+            TextEditingCommands()
+        }
 
         MenuBarExtra {
             MenuBarContent().environment(store)
@@ -45,7 +50,7 @@ struct VeerApp: App {
     }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     static let store = makeStore(ProcessInfo.processInfo.environment)
     static let agent = makeAgent(proxy: store, ProcessInfo.processInfo.environment)
     /// Opens the main window; set by the menu bar label, which can reach `openWindow`.
@@ -110,6 +115,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                           defaults: UserDefaults(suiteName: "veer-snapshot-agent-\(UUID().uuidString)")!, persist: false)
     }
 
+    // MARK: Edit › Find
+
+    // AppKit: SwiftUI has no way to take the system Find menu's command; it travels up the
+    // responder chain, which ends at the application's delegate. A text view that has a find of
+    // its own takes it first; otherwise Find… (⌘F) puts the cursor in the key window's toolbar
+    // search, and the menu's other find items stay unavailable.
+    @objc func performTextFinderAction(_ sender: Any?) { findInToolbar(sender) }
+    @objc func performFindPanelAction(_ sender: Any?) { findInToolbar(sender) }
+
+    /// Show Find Interface (NSTextFinder.Action) and Show Find Panel (NSFindPanelAction) are both 1.
+    private static let showFind = 1
+
+    private func findInToolbar(_ sender: Any?) {
+        guard (sender as? NSMenuItem)?.tag ?? Self.showFind == Self.showFind else { return }
+        MainActor.assumeIsolated {
+            guard Self.store.canSearch else { return }
+            ToolbarSearchFocus.focus()
+        }
+    }
+
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        guard item.action == #selector(performTextFinderAction(_:)) || item.action == #selector(performFindPanelAction(_:)) else { return true }
+        return MainActor.assumeIsolated {
+            item.tag == Self.showFind && Self.store.canSearch && ToolbarSearchFocus.field(in: NSApp.keyWindow) != nil
+        }
+    }
+
     /// Closing the window keeps the proxy running in the menu bar.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
@@ -143,6 +175,21 @@ struct VeerCommands: Commands {
     @AppStorage("proxiesShowApps") private var proxiesShowApps = false
     @AppStorage("agentWindowOnTop") private var agentWindowOnTop = false
 
+    /// A page chosen from the menu bar, perhaps from the Agent window or Settings: the main window
+    /// comes forward to show it, as the global "open window" shortcut brings it.
+    private func show(_ page: Page) {
+        store.page = page
+        AppDelegate.openMain?()
+        DockPresence.windowOpened()
+    }
+
+    /// The Agent from the menu bar, perhaps from Settings: its own window comes forward by itself
+    /// (`showAgent`), and the panel or Agent page is in the main window, which must come forward too.
+    private func openAgent(fresh: Bool = false) {
+        agent.open(fresh: fresh)
+        if store.agentPresentation != .detached { store.openMainWindow() }
+    }
+
     var body: some Commands {
         // The same native animation as the window button, including interrupted transitions.
         // Keep the standard full-screen command in the sidebar group.
@@ -151,10 +198,10 @@ struct VeerCommands: Commands {
             Button("检查更新…") { Updater.shared.checkForUpdates() }
         }
         CommandGroup(replacing: .newItem) {
-            Button("新对话") { agent.open(fresh: true) }
+            Button("新对话") { openAgent(fresh: true) }
                 .keyboardShortcut("n")
             Button("添加图片或文件…") {
-                agent.open()
+                openAgent()
                 agent.choosingAttachments = true
             }
             .keyboardShortcut("a", modifiers: [.command, .shift])
@@ -171,22 +218,19 @@ struct VeerCommands: Commands {
             Button("备份…") { BackupFlow.backUp(store: store) }
             Button("从备份恢复…") { BackupFlow.restore(store: store) }
         }
-        // In place of the default Find menu, which takes ⌘F first and has nothing to do here.
-        CommandGroup(replacing: .textEditing) {
-            Button("查找") { ToolbarSearchFocus.focus() }
-                .keyboardShortcut("f")
-                .disabled(!store.canSearch)
-        }
+        // The Edit menu's text editing group is the system's (`TextEditingCommands` on the main
+        // scene). Its Find… (⌘F) reaches the toolbar search through the responder chain:
+        // `AppDelegate.performTextFinderAction(_:)`.
         CommandGroup(after: .sidebar) {
             ForEach(Array(Page.sidebarPages.enumerated()), id: \.element) { index, page in
-                Button(page.title) { store.page = page }.keyboardShortcut(KeyEquivalent(Character(String(index + 1))))
+                Button(page.title) { show(page) }.keyboardShortcut(KeyEquivalent(Character(String(index + 1))))
             }
             Menu(Page.tools.title) {
                 ForEach(Page.allCases.filter { $0.parent == .tools }) { page in
-                    Button(page.title) { store.page = page }
+                    Button(page.title) { show(page) }
                 }
             }
-            Button("后退") { if let parent = store.page.parent { store.page = parent } }
+            Button("后退") { if let parent = store.page.parent { show(parent) } }
                 .keyboardShortcut("[")
                 .disabled(store.page.parent == nil)
             Divider()
@@ -204,16 +248,16 @@ struct VeerCommands: Commands {
             Toggle("网格", isOn: Binding(get: { !proxiesShowMap && !proxiesShowApps }, set: { _ in
                 proxiesShowMap = false
                 proxiesShowApps = false
-                store.page = .proxies
+                show(.proxies)
             }))
             .disabled(!store.isRunning || store.groups.isEmpty)
             Toggle("地图", isOn: Binding(get: { proxiesShowMap && !proxiesShowApps }, set: { _ in
                 proxiesShowMap = true
                 proxiesShowApps = false
-                store.page = .proxies
+                show(.proxies)
             }))
             .disabled(!store.isRunning || store.groups.isEmpty)
-            Toggle("应用分流", isOn: Binding(get: { proxiesShowApps }, set: { _ in proxiesShowApps = true; store.page = .proxies }))
+            Toggle("应用分流", isOn: Binding(get: { proxiesShowApps }, set: { _ in proxiesShowApps = true; show(.proxies) }))
                 .disabled(store.profiles.isEmpty)
             Divider()
         }

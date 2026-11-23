@@ -194,9 +194,6 @@ struct GroupSection: View {
     /// `compact` leaves the Ask Agent menu its symbol, and the row its width.
     private func actions(compact: Bool) -> some View {
         HStack(spacing: Spacing.sm) {
-            if store.testingScopes.contains(.group(group.name)) {
-                ProgressView().controlSize(.small)
-            }
             Menu {
                 Button("换到延迟最低的节点") { ask(String(localized: "“\(group.name)”换到延迟最低的节点")) }
                 Button("哪些网站走这个策略组？") { ask(String(localized: "哪些网站走“\(group.name)”？")) }
@@ -210,11 +207,22 @@ struct GroupSection: View {
             }
             .menuStyle(.borderlessButton).fixedSize().neutralControl()
             .help("让 Agent 处理这个策略组")
-            Button("测速") { store.testDelay(group.name) }
-                .secondaryAction()
-                .fixedSize()
-                .disabled(store.testingScopes.contains(.group(group.name)))
-                .help("测试这个策略组里每个成员的延迟")
+            // As the map's region test: the spinner takes the button's place, so the row does not move
+            // as a test starts, and the button is unavailable when a test could not start.
+            let scope = LatencyScope.group(group.name)
+            let testing = store.testingScopes.contains(scope)
+            ZStack(alignment: .trailing) {
+                Button("测速") { store.testDelay(group.name) }
+                    .secondaryAction()
+                    .fixedSize()
+                    .opacity(testing ? 0 : 1)
+                    // Also when nothing in it can be tested (only REJECT, PASS and the like).
+                    .disabled(!store.canStartLatencyTest(scope) || store.testableMembers(of: group).isEmpty)
+                    .accessibilityLabel(String(localized: "为“\(group.name)”测速"))
+                    .accessibilityHidden(testing)
+                    .help("测试这个策略组里每个成员的延迟")
+                if testing { ProgressView().controlSize(.small).accessibilityLabel(String(localized: "正在测速")) }
+            }
         }
     }
 
@@ -231,8 +239,13 @@ struct GroupSection: View {
                 .menuStyle(.borderlessButton).fixedSize(horizontal: false, vertical: true).neutralControl()
                 .font(.callout)
                 .help("切换节点")
+                // Which group's node it is, without the arrow, which VoiceOver would read out.
+                .accessibilityLabel(String(localized: "“\(group.name)”使用的节点"))
+                .accessibilityValue(now)
             } else {
                 Text(verbatim: "→ \(now)").font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                    .accessibilityLabel(String(localized: "“\(group.name)”使用的节点"))
+                    .accessibilityValue(now)
             }
         }
     }

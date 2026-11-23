@@ -5,6 +5,8 @@ import VeerProxy
 struct ConversationView: View {
     @Environment(AgentStore.self) private var store
     @Environment(\.agentCompact) private var compact
+    // The scroll to the newest turn is animated, or a jump with Reduce Motion.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var followsBottom = true
     @State private var metaToReveal: AgentMetaAnchor?
     /// The composer's bar, for placing the button back to the newest turn above it.
@@ -72,13 +74,13 @@ struct ConversationView: View {
             // previous one's position.
             .id(store.selectedID)
             .onChange(of: store.conversationToken) {
-                if followsBottom { withAnimation(Motion.standard) { proxy.scrollTo("bottom", anchor: .bottom) } }
+                if followsBottom { withAnimation(Motion.unlessReduced(Motion.standard, reduceMotion)) { proxy.scrollTo("bottom", anchor: .bottom) } }
             }
             .onChange(of: allTurns.count) { old, new in
                 // A new turn is always something the user just asked for: show it.
                 guard new > old else { return }
                 followsBottom = true
-                withAnimation(Motion.standard) { proxy.scrollTo("bottom", anchor: .bottom) }
+                withAnimation(Motion.unlessReduced(Motion.standard, reduceMotion)) { proxy.scrollTo("bottom", anchor: .bottom) }
             }
             .onChange(of: store.selectedID) {
                 followsBottom = true
@@ -167,7 +169,7 @@ struct ConversationView: View {
         if !followsBottom && !turns.isEmpty {
             Button {
                 followsBottom = true
-                withAnimation(Motion.standard) { proxy.scrollTo("bottom", anchor: .bottom) }
+                withAnimation(Motion.unlessReduced(Motion.standard, reduceMotion)) { proxy.scrollTo("bottom", anchor: .bottom) }
             } label: {
                 Image(systemName: "arrow.down").fontWeight(.semibold)
             }

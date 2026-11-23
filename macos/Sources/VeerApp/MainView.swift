@@ -38,7 +38,8 @@ enum Page: String, CaseIterable, Identifiable, Hashable {
         case .tools: String(localized: "工具")
         case .requests: String(localized: "请求")
         case .logs: String(localized: "日志")
-        case .dns: String(localized: "DNS")
+        // As the Tools row that opens it says, so the row, the page's title and View → Tools agree.
+        case .dns: String(localized: "DNS 查询")
         case .route: String(localized: "分流测试")
         case .agent: String(localized: "Agent")
         }

@@ -85,21 +85,29 @@ struct AgentPanel: View {
             // Which conversation is open, which the label alone would not say.
             .accessibilityValue(agent.current?.title ?? "")
             Spacer(minLength: Spacing.sm)
-            Group {
-                UndoChangeButton()
-                Button { agent.newThread() } label: { Label(String(localized: "新对话"), systemImage: "square.and.pencil") }
-                    .help(String(localized: "新对话（⌘N）"))
-                    .disabled(proxy.activeProfile == nil)
-                Button { proxy.page = .agent } label: { Label(String(localized: "在 Agent 页打开"), systemImage: "arrow.up.left.and.arrow.down.right") }
-                    .help(String(localized: "在 Agent 页打开，查看全部对话"))
-                // The same conversation in a window of its own; the panel closes as it always does.
-                Button { agent.detach() } label: { Label(String(localized: "在独立窗口中打开"), systemImage: "macwindow.on.rectangle") }
-                    .help(String(localized: "在独立窗口中打开"))
-                // Over a window near the screen's edge the toolbar's own switch can be covered.
-                Button { proxy.agentPanel = false } label: { Label(String(localized: "隐藏 Agent 面板"), systemImage: "sidebar.trailing") }
-                    .help(String(localized: "隐藏 Agent 面板（⌥⌘I）"))
+            // Two groups, as in the Agent window's toolbar: what acts on the conversation, then where the
+            // Agent is shown. Each icon is a 28 pt target (`.iconTarget`), where a borderless icon was
+            // only as large as its glyph. The system's accessory-bar style draws a tile behind every
+            // icon at rest, heavier than the window's toolbar beside it, so the icons stay borderless.
+            HStack(spacing: Spacing.sm) {
+                HStack(spacing: 0) {
+                    UndoChangeButton()
+                    Button { agent.newThread() } label: { Label(String(localized: "新对话"), systemImage: "square.and.pencil") }
+                        .help(String(localized: "新对话（⌘N）"))
+                        .disabled(proxy.activeProfile == nil)
+                }
+                HStack(spacing: 0) {
+                    Button { proxy.page = .agent } label: { Label(String(localized: "在 Agent 页打开"), systemImage: "arrow.up.left.and.arrow.down.right") }
+                        .help(String(localized: "在 Agent 页打开，查看全部对话"))
+                    // The same conversation in a window of its own; the panel closes as it always does.
+                    Button { agent.detach() } label: { Label(String(localized: "在独立窗口中打开"), systemImage: "macwindow.on.rectangle") }
+                        .help(String(localized: "在独立窗口中打开"))
+                    // Over a window near the screen's edge the toolbar's own switch can be covered.
+                    Button { proxy.agentPanel = false } label: { Label(String(localized: "隐藏 Agent 面板"), systemImage: "sidebar.trailing") }
+                        .help(String(localized: "隐藏 Agent 面板（⌥⌘I）"))
+                }
             }
-            .labelStyle(.iconOnly)
+            .labelStyle(.iconTarget)
             .buttonStyle(.borderless)
             .foregroundStyle(.secondary)
         }

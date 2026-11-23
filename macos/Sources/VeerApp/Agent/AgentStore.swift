@@ -38,6 +38,8 @@ final class AgentStore {
     @ObservationIgnored private var turnBaseline = 0
     var composerText = ""
     var composerFocusToken = 0
+    /// Snapshots only: a completion query the composer opens with (`@` exits or `/` commands).
+    @ObservationIgnored var completionSeed: (trigger: Character, text: String)?
     var showingModelPopover = false
     var showingExecutionModePicker = false
     var payloadTurnID: UUID? { didSet { if payloadTurnID == nil { payloadComparing = false } } }

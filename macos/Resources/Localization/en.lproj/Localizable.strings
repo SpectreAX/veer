@@ -1194,7 +1194,6 @@
 "隐藏 Agent 面板" = "Hide Agent Panel";
 
 /* Toolbar search */
-"查找" = "Find";
 "搜索" = "Search";
 "清除搜索" = "Clear Search";
 
@@ -1637,3 +1636,11 @@
 "未能切换到“%@”，也未能恢复上一个配置：%@" = "Couldn't switch to “%@” or restore the previous profile: %@";
 "无法恢复之前的配置。" = "Couldn't restore the previous profile.";
 "关闭提示" = "Dismiss Message";
+"只填域名，例如 example.com，不带 https://、路径、空格、逗号、括号、* 或 ?。" = "Enter only the domain, for example example.com, without https://, a path, spaces, commas, parentheses, * or ?.";
+"“%@”使用的节点" = "Node used by “%@”";
+"没有符合筛选条件的连接" = "No matching connections";
+"现在有 %@ 个连接，都不符合当前的筛选或搜索。" = "There are %@ connections now, and none match the current filters or search.";
+"显示全部连接" = "Show All Connections";
+"筛选" = "Filter";
+"筛选（%@）" = "Filter (%@)";
+"按进程、应用或策略组筛选" = "Filter by process, app or policy group";
