@@ -5,16 +5,16 @@ the app at `Veer.app/Contents/Resources/licenses/`.
 
 Veer 随应用打包以下组件，各自适用其许可证；许可证全文位于应用包内 `Veer.app/Contents/Resources/licenses/`。
 
-## Mihomo v1.19.29
+## Mihomo v1.19.34
 
 - Used as a separate program, `Contents/Resources/bin/mihomo`, that Veer starts and controls
   through its local HTTP controller. Veer does not link to it.
   作为独立程序使用：Veer 启动它，并通过本机 HTTP 控制接口控制它，不与其链接。
 - License: GNU General Public License v3.0 (`licenses/mihomo-LICENSE`).
 - Copyright: the Mihomo (MetaCubeX) and Clash authors.
-- Corresponding source: built unmodified from tag `v1.19.29` (commit
-  `e26714a181ac0e2fa803453c0a8e9a9ce94e31cb`) of
-  <https://github.com/MetaCubeX/mihomo/tree/v1.19.29> by `scripts/build-mihomo.sh`.
+- Corresponding source: built unmodified from tag `v1.19.34` (commit
+  `0455d0d28c4526937380505153e65a843d8612e8`) of
+  <https://github.com/MetaCubeX/mihomo/tree/v1.19.34> by `scripts/build-mihomo.sh`.
   对应源码：由 `scripts/build-mihomo.sh` 从上述标签原样构建，未作修改。
 - Written offer: for three years from the release of each version of Veer, anyone may request a
   copy of the exact Mihomo source used for that version from the copyright holder of Veer

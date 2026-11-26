@@ -3,8 +3,8 @@
 # so THIRD_PARTY_NOTICES.md can name its exact corresponding source.
 set -eu
 cd "${0:A:h}/.."
-tag=v1.19.29
-commit=e26714a181ac0e2fa803453c0a8e9a9ce94e31cb
+tag=v1.19.34
+commit=0455d0d28c4526937380505153e65a843d8612e8
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 

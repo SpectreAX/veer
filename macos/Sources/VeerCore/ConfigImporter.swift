@@ -98,9 +98,10 @@ public enum ConfigImporter {
 
         if let yaml = try yamlContent(text) { return yaml }
 
-        if let decoded = ShareLinkParser.base64String(trimmed), decoded.contains("://") || decoded.contains(":") {
+        if let decoded = ShareLinkParser.base64String(trimmed), decoded.contains(":") {
+            // YAML first: a full config holds "://" too, in its rule-provider and test URLs.
+            if let yaml = try yamlContent(decoded), isProxyContent(yaml) { return yaml }
             if decoded.contains("://") { return try links(decoded, format: .base64Links) }
-            if let yaml = try? yamlContent(decoded) { return yaml }
         }
         if trimmed.contains("://") { return try links(trimmed, format: .plainLinks) }
         throw EditorError(String(localized: "无法识别这份内容。Veer 支持 Mihomo / Clash YAML 配置、YAML 节点列表、Base64 订阅和分享链接列表（ss、ssr、vmess、vless、trojan、hysteria、hysteria2、tuic、socks5、http、anytls）。"))
@@ -115,15 +116,26 @@ public enum ConfigImporter {
                 throw EditorError(String(localized: "这是 sing-box 配置。Veer 目前只编辑 Mihomo 配置，请导入 Mihomo / Clash 格式的订阅。"))
             }
             if keys == ["proxies"], let list = mapping["proxies"]?.sequence {
-                return .nodes(.proxyListYAML, list.compactMap(value(from:)), skipped: [:])
+                return .nodes(.proxyListYAML, list.compactMap { value(from: $0) }, skipped: [:])
             }
             return .config(text: text, nodeCount: mapping["proxies"]?.sequence?.count ?? 0)
         }
         if let sequence = node.sequence, !sequence.isEmpty,
            sequence.allSatisfy({ $0.mapping?["name"] != nil && $0.mapping?["type"] != nil }) {
-            return .nodes(.proxyListYAML, sequence.compactMap(value(from:)), skipped: [:])
+            return .nodes(.proxyListYAML, sequence.compactMap { value(from: $0) }, skipped: [:])
         }
         return nil
+    }
+
+    /// Whether decoded Base64 is a config or node list, not a link that happens to read as a YAML
+    /// mapping ("ss://…#HK: 01").
+    static func isProxyContent(_ detected: Detected) -> Bool {
+        switch detected {
+        case .nodes: return true
+        case .config(let text, _):
+            let keys = Set((try? compose(yaml: text))?.mapping?.keys.compactMap(\.string) ?? [])
+            return !keys.isDisjoint(with: ["proxies", "proxy-providers", "proxy-groups", "rules"])
+        }
     }
 
     static func links(_ text: String, format: Format) throws -> Detected {
@@ -148,7 +160,7 @@ public enum ConfigImporter {
             do {
                 switch try detect(part.text) {
                 case .config(let text, _):
-                    proxies = (try compose(yaml: text)?.mapping?["proxies"]?.sequence.map(Array.init) ?? []).compactMap(value(from:))
+                    proxies = (try compose(yaml: text)?.mapping?["proxies"]?.sequence.map(Array.init) ?? []).compactMap { value(from: $0) }
                 case .nodes(_, let list, let partSkipped):
                     proxies = list
                     skipped.merge(partSkipped, uniquingKeysWith: +)
@@ -182,17 +194,27 @@ public enum ConfigImporter {
         return result
     }
 
-    static func value(from node: Node) -> YAMLValue? {
+    /// Node keys Mihomo reads only as booleans. It rejects `udp: yes` and `udp: 'yes'` alike, so
+    /// YAML 1.1 words under these keys become true or false.
+    static let booleanKeys: Set<String> = ["udp", "tls", "tfo", "skip-cert-verify", "xudp", "mptcp"]
+
+    static func value(from node: Node, key: String? = nil) -> YAMLValue? {
         switch node {
         case .scalar(let scalar):
+            let word = scalar.string.lowercased()
+            if let key, booleanKeys.contains(key) {
+                if ["true", "yes", "on"].contains(word) { return .bool(true) }
+                if ["false", "no", "off"].contains(word) { return .bool(false) }
+            }
             // Keep quoted strings as strings; only plain scalars may be numbers or booleans.
             guard scalar.style == .plain || scalar.style == .any else { return .string(scalar.string) }
             if let int = Int(scalar.string) { return .int(int) }
-            // Mihomo reads YAML 1.2: only true/false are booleans (not yes/on).
-            if ["true", "false"].contains(scalar.string.lowercased()) { return .bool(scalar.string.lowercased() == "true") }
+            // Mihomo reads YAML 1.2: elsewhere only true/false are booleans (not yes/on).
+            if ["true", "false"].contains(word) { return .bool(word == "true") }
             return .string(scalar.string)
-        case .sequence(let sequence): return .list(sequence.compactMap(value(from:)))
-        case .mapping(let mapping): return .map(mapping.compactMap { key, value in key.string.flatMap { k in Self.value(from: value).map { (k, $0) } } })
+        case .sequence(let sequence): return .list(sequence.compactMap { value(from: $0) })
+        case .mapping(let mapping):
+            return .map(mapping.compactMap { key, value in key.string.flatMap { name in Self.value(from: value, key: name).map { (name, $0) } } })
         case .alias: return nil
         }
     }

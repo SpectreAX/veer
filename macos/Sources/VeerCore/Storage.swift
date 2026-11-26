@@ -218,6 +218,11 @@ public struct SubscriptionResponse: Sendable {
 /// that plain HTTP is allowed to loopback and private LAN hosts, where self-hosted subscription
 /// managers such as Sub-Store usually run.
 public struct SubscriptionFetcher: Sendable {
+    /// Panels (XBoard, V2Board, SSPanel) and Subconverter pick the format from the User-Agent: some look
+    /// for "clash", some for "ClashMeta", "clash.meta" or "mihomo", and the rest get a Base64 link list
+    /// that loses fields a full Mihomo YAML keeps. This names all of them.
+    public static let userAgent = "clash-verge/v2.0 (compatible; ClashMeta; clash.meta; mihomo; Veer/1.1)"
+
     /// How requests leave: the system's settings, straight out, or through a local proxy port.
     public enum Route: Sendable, Equatable {
         case system, direct
@@ -327,8 +332,7 @@ public struct SubscriptionFetcher: Sendable {
         let session = URLSession(configuration: configuration, delegate: NoRedirect(), delegateQueue: nil)
         defer { session.finishTasksAndInvalidate() }
         var request = URLRequest(url: url, timeoutInterval: 30)
-        // Many subscription services return Mihomo YAML only to clients that identify as clash/mihomo.
-        request.setValue("Veer/1.0 (compatible; clash.meta; mihomo)", forHTTPHeaderField: "User-Agent")
+        request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
         let bytes: URLSession.AsyncBytes, response: URLResponse
         do { (bytes, response) = try await session.bytes(for: request) } catch {
             throw EditorError(String(localized: "无法下载订阅：网络错误或超时。"))

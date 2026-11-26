@@ -2,6 +2,17 @@
 
 本计划按 [REQUIREMENTS.md](REQUIREMENTS.md) 和 [SPEC.md](SPEC.md) 推进，取代 [PLAN_2026-10-29.md](PLAN_2026-10-29.md) 的第 2 到第 4 阶段。那份文档的第 1 阶段（可用的代理）已经完成并提交。
 
+## 订阅节点连不上、测速无效、速度极慢；内核升级（2026-11-26，Claude）
+
+来自 `DevMD/ForAgent.md` 的 CRITICAL 项和用户的分阶段计划。状态：Implemented，Pending Network Acceptance。未提交。
+
+| 阶段 | 内容 | 状态与证据 |
+| --- | --- | --- |
+| 1 | 随附 Mihomo v1.19.29 → v1.19.34（`0455d0d2…`，Go 1.27.4），含 tfo-go、DoH 拨号堆积、HTTP CONNECT 首包和 AnyTLS/Hysteria 修复 | Implemented。`build-mihomo.sh`、`THIRD_PARTY_NOTICES.md` 已更新；`CoreUpdaterTests` 不依赖实际版本 |
+| 2 | 订阅 UA 同时含 Clash、ClashMeta、clash.meta、mihomo；分享链接转换修复（`+` 不再变空格，httpupgrade 写成 `ws` + `v2ray-http-upgrade`，各协议的 allowInsecure/insecure、peer、mport、fp、alpn，Hysteria v1 默认带宽，hy2 无密码的 obfs 不写，v2ray-plugin 精确 TLS 与默认 websocket）；Base64 的完整 YAML 识别为 YAML；节点列表里布尔键的 yes/no/on/off 改为布尔 | Implemented。`ShareLinkFixTests`（含每种转换结果的 `mihomo -t`） |
+| 3 | 运行时 DNS：Veer 的 DNS 写 `default-nameserver`（223.5.5.5、119.29.29.29）；沿用配置 DNS 时，按域名的 DoH/DoT 且无 `default-nameserver` 则补上，IPv6 关闭时 `dns.ipv6` 改为 false，两条构建路径一致 | Implemented。`RuntimeOverrideTests`、`FastBuildTests`；SPEC §3 已更新 |
+| 4 | 验证与交付 | `verify.sh` 和 `VEER_MIHOMO_BIN=… swift test` 各 687 项全部通过；签名构建已替换 `dist/Veer.app`。导入真实问题订阅、测速和开代理后的真实网速需要用户实测 |
+
 ## 功能修复与 Liquid Glass 第二阶段（2026-11-20，Codex 接手）
 
 以 `main` 的 `31caaff` 为基线，整合 Claude 和 Codex 的功能修复与应用分流第 1 阶段。侧栏反转修复与功能整合已分别本地提交（`4b9c7a3`、`87fcd79`）。`Verified` 仅用于已经完成相应验收的项目。
