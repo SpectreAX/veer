@@ -65,7 +65,8 @@ struct ImportDetectionTests {
         let doc = try ConfigDocument.parse(result.text)
         #expect(doc.targets.filter { $0.kind == .node }.map(\.name) == ["JP 01", "JP 01-01"])
         #expect(result.text.contains("password: '123456'"))
-        #expect(result.text.contains("udp: 'yes'"))
+        // Mihomo rejects `udp: yes` and `udp: 'yes'` as a string (`mihomo -t`, v1.19.34), so the word becomes a boolean.
+        #expect(result.text.contains("udp: true"))
         let provider = try ConfigImporter.normalize("proxies:\n" + list.components(separatedBy: "\n").map { "  " + $0 }.joined(separator: "\n"))
         #expect(provider.format == .proxyListYAML)
     }

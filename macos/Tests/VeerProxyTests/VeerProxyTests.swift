@@ -334,6 +334,58 @@ struct RuntimeOverrideTests {
         #expect(dns["proxy-server-nameserver"] as? [String] == ["https://1.1.1.1/dns-query"])
     }
 
+    @Test func veersDNSFindsItsEncryptedUpstreamsThroughBootstrapIPs() throws {
+        var settings = RuntimeSettings()
+        settings.preferProfileDNS = false
+        let dns = try #require(try Self.config(settings)["dns"] as? [String: Any])
+        #expect(dns["default-nameserver"] as? [String] == RuntimeConfig.defaultBootstrapDNS)
+        #expect(dns["proxy-server-nameserver"] as? [String] == RuntimeSettings.defaultDNSServers)
+        settings.dnsServers = ["tls://dot.example.invalid", "223.5.5.5"]
+        let custom = try #require(try Self.config(settings)["dns"] as? [String: Any])
+        #expect(custom["nameserver"] as? [String] == settings.dnsServers && custom["default-nameserver"] as? [String] == RuntimeConfig.defaultBootstrapDNS)
+    }
+
+    @Test(arguments: [
+        ("nameserver: [https://dns.alidns.com/dns-query]", true),
+        ("nameserver: [223.5.5.5, 'https://1.1.1.1/dns-query', 'tls://[2400:3200::1]:853']", false),
+        ("nameserver: [223.5.5.5]\n  proxy-server-nameserver: ['tls://dot.pub:853#DIRECT']", true),
+        ("nameserver: [system, 'dhcp://en0']\n  nameserver-policy: {'+.cn': 'https://doh.pub/dns-query'}", true),
+        ("nameserver: [https://dns.alidns.com/dns-query]\n  default-nameserver: [114.114.114.114]", false),
+    ])
+    func aProfilesDNSGetsBootstrapIPsOnlyWhenItNeedsThem(dns: String, added: Bool) throws {
+        let profile = "dns:\n  enable: true\n  \(dns)\nrules: [MATCH,DIRECT]"
+        let section = try #require(try Self.config(RuntimeSettings(), profile: profile)["dns"] as? [String: Any])
+        if added {
+            #expect(section["default-nameserver"] as? [String] == RuntimeConfig.defaultBootstrapDNS, "\(dns)")
+        } else {
+            #expect(section["default-nameserver"] as? [String] != RuntimeConfig.defaultBootstrapDNS, "\(dns)")
+        }
+    }
+
+    @Test func aProfilesDNSIPv6FollowsTheIPv6Setting() throws {
+        let profile = "dns: {enable: true, ipv6: true, nameserver: [223.5.5.5]}\nrules: [MATCH,DIRECT]"
+        var settings = RuntimeSettings()
+        #expect((try Self.config(settings, profile: profile)["dns"] as? [String: Any])?["ipv6"] as? Bool == false)
+        settings.ipv6 = true
+        #expect((try Self.config(settings, profile: profile)["dns"] as? [String: Any])?["ipv6"] as? Bool == true)
+        // Left alone when the profile does not say.
+        #expect((try Self.config(RuntimeSettings())["dns"] as? [String: Any])?["ipv6"] == nil)
+    }
+
+    @Test(.enabled(if: CoreProcessTests.binary != nil)) func profileDNSFixesPassMihomo() async throws {
+        let profile = """
+        dns: {enable: true, ipv6: true, nameserver: ['https://dns.alidns.com/dns-query'], proxy-server-nameserver: ['tls://dot.pub']}
+        proxies:
+          - {name: tfo, type: trojan, server: tj.example.invalid, port: 443, password: x, udp: true, tfo: true}
+        rules:
+          - MATCH,tfo
+        """
+        let yaml = try RuntimeConfig.build(profile: profile, settings: RuntimeSettings(), controllerPort: 1, secret: "s")
+        #expect(yaml.contains("tfo: true") && yaml.contains("223.5.5.5"))
+        let check = await MihomoValidator(binary: CoreProcessTests.binary).validate(yaml)
+        #expect(check.status == .passed, "\(check.message) \(check.detail ?? "")")
+    }
+
     @Test func settingsSavedBeforeTheNewFieldsStillLoad() throws {
         let old = try JSONDecoder().decode(RuntimeSettings.self, from: Data(#"{"mixedPort":7899,"allowLAN":true,"logLevel":"debug"}"#.utf8))
         #expect(old.mixedPort == 7899 && old.allowLAN && old.logLevel == "debug")
@@ -378,6 +430,8 @@ struct FastBuildTests {
         """,
         "rules: [MATCH,DIRECT]",
         "proxies: []\nrules:\n- MATCH,DIRECT\n",
+        // A profile dns section that gets bootstrap resolvers and has its ipv6 turned off.
+        "dns:\n  enable: true\n  ipv6: true\n  nameserver:\n    - https://dns.alidns.com/dns-query\nrules:\n  - MATCH,DIRECT\n",
     ]
 
     static func load(_ yaml: String) throws -> NSDictionary {

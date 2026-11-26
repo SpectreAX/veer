@@ -76,7 +76,9 @@ Sources/
 | `ipv6` | 设置中的值，默认关闭 |
 | `find-process-mode` | 默认 `strict`；设置中可以改为 `off` |
 | 禁用 QUIC | 打开时在规则最前面插入 `AND,((NETWORK,UDP),(DST-PORT,443)),REJECT` |
-| `dns` | 配置里有 `dns` 段时沿用它，只补齐 TUN 需要的项。没有时写入默认值：fake-ip 模式、`fake-ip-filter`（`*.lan`、`*.local`、`+.push.apple.com`、`time.*.com`、`ntp.*`、`+.xboxlive.com`、`+.playstation.net`、`+.nintendo.net`）、DoH 上游（`https://dns.alidns.com/dns-query`、`https://doh.pub/dns-query`），`proxy-server-nameserver` 用相同的上游 |
+| `dns` | 配置里有 `dns` 段时沿用它，只补齐 TUN 需要的项。没有时写入默认值：fake-ip 模式、`fake-ip-filter`（`*.lan`、`*.local`、`+.push.apple.com`、`time.*.com`、`ntp.*`、`+.xboxlive.com`、`+.playstation.net`、`+.nintendo.net`）、DoH 上游（`https://dns.alidns.com/dns-query`、`https://doh.pub/dns-query`），`proxy-server-nameserver` 用相同的上游，`default-nameserver` 为 `223.5.5.5`、`119.29.29.29`（用来解析这些 DoH 上游的域名） |
+| `dns.default-nameserver` | 沿用配置自己的 `dns` 段时，若它没有 `default-nameserver`，而 `nameserver`、`fallback`、`proxy-server-nameserver`、`direct-nameserver` 或 `nameserver-policy` 里有按域名写的 DoH/DoT 上游，补上 `223.5.5.5`、`119.29.29.29`。已有的不改 |
+| `dns.ipv6` | 设置中 IPv6 关闭而配置的 `dns.ipv6: true` 时改为 `false`，避免返回内核不会连接的 IPv6 地址 |
 | `dns.listen` | 不开 TUN 时去掉（现有行为）。开 TUN 时由 `dns-hijack` 处理，不监听 53 端口 |
 | `tun` | 只在开启 TUN 时写入：`enable: true`、`stack: mixed`、`auto-route: true`、`auto-detect-interface: true`、`strict-route: true`、`dns-hijack: [any:53, tcp://any:53]`、`route-exclude-address`（`10.0.0.0/8`、`172.16.0.0/12`、`192.168.0.0/16`、`169.254.0.0/16`、`100.64.0.0/10`（含 Tailscale）、`fd7a:115c:a1e0::/48`、`fe80::/10`） |
 

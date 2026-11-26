@@ -109,6 +109,13 @@ public enum RuntimeConfig {
             dns[Node("listen")] = nil
             // TUN hijacks DNS to the core, which then has to answer it.
             if settings.tun { dns[Node("enable")] = Node("true", Tag(.bool)) }
+            // DoH and DoT servers named by host need plain resolvers to find them first. Mihomo's own
+            // fallback includes 8.8.8.8, which is often unreachable before the proxy is up.
+            if dns[Node("default-nameserver")] == nil, namesResolverByHost(dns) {
+                dns[Node("default-nameserver")] = Node(defaultBootstrapDNS.map { Node($0) })
+            }
+            // With IPv6 off, AAAA answers send apps to addresses the core will not dial.
+            if !settings.ipv6, dns[Node("ipv6")]?.bool == true { dns[Node("ipv6")] = Node("false", Tag(.bool)) }
             pairs.append((Node("dns"), .mapping(dns)))
         } else {
             pairs.append((Node("dns"), dnsSection(settings)))
@@ -231,8 +238,31 @@ public enum RuntimeConfig {
     static let fakeIPFilter = ["*.lan", "*.local", "+.push.apple.com", "time.*.com", "ntp.*.com", "+.ntp.org",
                                "+.xboxlive.com", "+.playstation.net", "+.nintendo.net"]
 
+    /// Plain resolvers, by IP, that find the encrypted upstreams' own addresses (AliDNS, DNSPod).
+    static let defaultBootstrapDNS = ["223.5.5.5", "119.29.29.29"]
+
+    /// Whether a `dns` section names any upstream by host (`https://dns.example/…`, `tls://dot.example`),
+    /// which the core must resolve before it can use it.
+    static func namesResolverByHost(_ dns: Node.Mapping) -> Bool {
+        var servers: [String] = []
+        for key in ["nameserver", "fallback", "proxy-server-nameserver", "direct-nameserver"] {
+            servers += dns[Node(key)]?.sequence?.compactMap(\.string) ?? []
+        }
+        if let policy = dns[Node("nameserver-policy")]?.mapping {
+            for (_, value) in policy { servers += value.sequence?.compactMap(\.string) ?? value.string.map { [$0] } ?? [] }
+        }
+        return servers.contains { server in
+            guard let scheme = server.range(of: "://"), !["dhcp", "system", "rcode"].contains(server[..<scheme.lowerBound].lowercased()) else { return false }
+            var host = server[scheme.upperBound...].prefix { !"/?#".contains($0) }
+            // An IPv6 address, in brackets or not.
+            if host.hasPrefix("[") || host.filter({ $0 == ":" }).count > 1 { return false }
+            if let colon = host.lastIndex(of: ":") { host = host[..<colon] }
+            return !host.isEmpty && !host.allSatisfy { $0.isASCII && ($0.isNumber || $0 == ".") }
+        }
+    }
+
     /// Veer's DNS for profiles without their own: encrypted upstreams, also used to resolve the
-    /// proxy servers themselves.
+    /// proxy servers themselves, found through plain bootstrap resolvers.
     static func dnsSection(_ settings: RuntimeSettings) -> Node {
         let servers = Node(settings.dnsServers.map { Node($0) })
         var pairs: [(Node, Node)] = [
@@ -244,7 +274,8 @@ public enum RuntimeConfig {
             pairs.append((Node("fake-ip-range"), Node("198.18.0.1/16")))
             pairs.append((Node("fake-ip-filter"), Node(fakeIPFilter.map { Node($0) })))
         }
-        pairs += [(Node("nameserver"), servers), (Node("proxy-server-nameserver"), servers)]
+        pairs += [(Node("default-nameserver"), Node(defaultBootstrapDNS.map { Node($0) })),
+                  (Node("nameserver"), servers), (Node("proxy-server-nameserver"), servers)]
         return Node(pairs)
     }
 

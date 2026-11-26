@@ -1,5 +1,29 @@
 # Veer macOS handoff
 
+## Subscription nodes that would not connect; Mihomo v1.19.34 (2026-11-26, Claude; not committed)
+
+Scope: the CRITICAL item in `DevMD/ForAgent.md` (some subscriptions import, but nodes don't connect, speed tests fail or traffic is very slow), following the user's staged plan. The other items in that file were not done (see Next).
+
+Changes:
+- Core: `scripts/build-mihomo.sh` pins v1.19.34 (`0455d0d28c4526937380505153e65a843d8612e8`, a lightweight tag, Latest on GitHub); `vendor/mihomo` rebuilt with Go 1.27.4; `THIRD_PARTY_NOTICES.md` updated, GPL notice and offer unchanged.
+- `SubscriptionFetcher.userAgent`: `clash-verge/v2.0 (compatible; ClashMeta; clash.meta; mihomo; Veer/1.1)`.
+- `ShareLinkParser`: query values keep `+`; a stray `%` in user info keeps the raw text; httpupgrade (vmess JSON, vless, VMessAEAD, trojan) is `network: ws` with `v2ray-http-upgrade` (Mihomo accepted `network: httpupgrade` at `-t` but dials it as plain TCP), `eh`/`ed` stripped from the path; `allowInsecure`/`insecure` everywhere, `peer` as SNI, Host as SNI when TLS has none, vmess JSON TLS for `xtls`/1/true and `fp`; trojan `tcp`/`original`/`none` write no network; hy2 `mport`, `upmbps`/`downmbps`, obfs only with a password and not `none`; Hysteria v1 `up`/`down` default to 100 Mbps; TUIC insecure and `disable_sni` truthy; AnyTLS omits empty sni/fingerprint, adds `fp` and `alpn`; SS v2ray-plugin TLS from the exact flag, `skip-cert-verify` passed through, empty mode → `websocket`. Long functions were split into helpers so none grew past its lint baseline.
+- `ConfigImporter`: Base64 is tried as YAML before links (and only taken when it holds proxies/providers/groups/rules); in YAML node lists `udp`/`tls`/`tfo`/`skip-cert-verify`/`xudp`/`mptcp` turn yes/no/on/off (quoted or not) into booleans.
+- `RuntimeConfig`: Veer's DNS writes `default-nameserver: [223.5.5.5, 119.29.29.29]`; a profile's own `dns` gets them when it names DoH/DoT servers by host and has none, and its `ipv6: true` becomes false when Veer's IPv6 is off. Both build paths share `overrides`. SPEC §3 documents it.
+
+Changed assertion (listed separately as the rules require): `ImportTests.yamlNodeListsAreWrapped` expected `udp: 'yes'`; it now expects `udp: true`. Evidence: `mihomo -t` (v1.19.34) rejects both `udp: yes` and `udp: 'yes'` ("'udp' expected type 'bool'"), accepts `udp: true`. Also recorded: empty or missing Hysteria `up`/`down`, `obfs: none` with an empty password, and an empty v2ray-plugin mode all fail `-t`. Log: `.codex/local/subscription-fix-20261126/mihomo-t-evidence.txt`.
+
+Checks run this session:
+- `bash .claude/scripts/verify.sh`: format, lint, build, 687 tests passed (37/155/377/118), 24 skipped as before (`verify.log`).
+- `VEER_MIHOMO_BIN=$PWD/vendor/mihomo swift test`: 687 passed, 0 failed (`swift-test-mihomo.log`). Real-core suites ran: `ShareLinkCoreTests` (18 converted links one by one and together), `RealValidatorTests`, `RealControllerTests`, `CoreProcessTests`, `profileDNSFixesPassMihomo` (a `tfo: true` node plus the DNS fixes).
+- No UI or string changes, so no visual audit or design review.
+
+Delivery: built in an isolated copy (`$TMPDIR/veer-codex.delivery.*`, sources, scripts and core compared equal, deleted afterwards), Apple Development, 1.1.0 build 10, SDK 27.2, minimum 14.0, bundled core v1.19.34: `macos/dist/builds/2026-11-26-subscription-fix/Veer.app` (`build.sha256`). The installed app was not running; old one moved to `.codex/local/subscription-fix-20261126/pre-replace.vPY20y/Veer.app` (1.1.0 release, core v1.19.29); deep strict verification passed on the new, the backup and the installed copy; executables match. Not launched. System proxy (FlClash, 7890) only read.
+
+NOT VERIFIED (needs the user): importing the real problem subscription, speed tests on it, real-network speed with the system proxy or TUN on. If an updated core was installed from Settings, it still runs instead of the bundled one until it is no longer newer. If "connects but very slow" remains, ask for the protocol, the node's `alpn`, `smux`, `fingerprint`, `flow`, `dialer-proxy`, and debug log lines or a redacted export, then diagnose again.
+
+Next: the other `DevMD/ForAgent.md` items (Proxies page performance with many nodes, a build number per build, removing old files after a release, a leaner `verify.sh`, the menu bar switch's Liquid Glass, managing profiles while the core is stopped) are not started. Nothing committed.
+
 ## 1.1.0 released (2026-11-23, Claude)
 
 - Published [Veer 1.1.0](https://github.com/SpectreAX/veer/releases/tag/macos-v1.1.0) from tag `macos-v1.1.0` (`ede27cf`) with the prepared `Veer-1.1.0.dmg` and `appcast.xml`, via `gh release create --verify-tag --latest` (not `release.sh --publish`, which would rebuild the checked DMG). Before upload: the tree matched `ede27cf`, all 275 hashes in `source-manifest.txt` matched, `hdiutil verify`, deep strict codesign of the app inside the DMG (1.1.0 / 10, new feed) and the Sparkle signature passed.
