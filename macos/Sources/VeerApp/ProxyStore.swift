@@ -132,7 +132,18 @@ final class ProxyStore {
     var downloadRate: Int64 = 0
     var testingScopes: Set<LatencyScope> = []
     /// Each node's delay as Veer tested it in the running profile; cleared with every new profile.
-    var delays: [String: NodeDelay] = [:]
+    /// Not observed: views read a node's `NodeDelayCell`, summaries `delayRevision`, so one result
+    /// redraws what shows that node rather than every group (`ProxyStoreLatency`).
+    @ObservationIgnored var delays: [String: NodeDelay] = [:]
+    /// One per node shown, by name; kept in step with `delays` a few times a second.
+    @ObservationIgnored var delayCells: [String: NodeDelayCell] = [:]
+    /// Results recorded since the cells were last brought up to date.
+    @ObservationIgnored var pendingDelayNames: Set<String> = []
+    /// Bumped each time results reach the cells: for views that sum up many nodes, such as the
+    /// map's regions and their lowest delays.
+    var delayRevision = 0
+    /// Names whose region and notice check have been read ahead (`warmNodeLookups`).
+    @ObservationIgnored var warmedNodeNames: Set<String> = []
     @ObservationIgnored var delayTimes: [String: Date] = [:]
     @ObservationIgnored var latencyRuns: [LatencyScope: Task<Void, Never>] = [:]
     @ObservationIgnored var delayFlush: Task<Void, Never>?
@@ -825,6 +836,8 @@ final class ProxyStore {
                                         isGroup: proxies[name]?.isGroup == true, state: blocks ? .untested : delays[name])
                 })
             }
+            syncDelayCells()
+            warmNodeLookups(Set(groups.flatMap { $0.members.map(\.name) }))
             let mode = Mode(rawValue: try await controller.mode().lowercased())
             if ticket == generation, let mode { self.mode = mode }
         } catch {
@@ -1164,7 +1177,7 @@ final class ProxyStore {
     func checkTestedNodes() {
         for group in groups where group.isSelectable {
             guard let now = group.now, let member = group.members.first(where: { $0.name == now }), !member.isGroup else { continue }
-            suggest(detector.tested(node: now, in: group.name, delay: member.delay))
+            suggest(detector.tested(node: now, in: group.name, delay: delays[now]?.legacyDelay ?? member.delay))
         }
     }
 

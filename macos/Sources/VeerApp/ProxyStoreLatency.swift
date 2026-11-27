@@ -10,6 +10,14 @@ nonisolated enum LatencyScope: Hashable, Sendable {
     case region(String)
 }
 
+/// One node's latest result in the running profile, nil before Veer has one; a view shows its own
+/// member's state then, as each group reported it. The store keeps one per name
+/// (`delayCell(for:)`), so a result redraws the views that show that node, and nothing else.
+@Observable final class NodeDelayCell {
+    var result: NodeDelay?
+    init(_ result: NodeDelay?) { self.result = result }
+}
+
 /// The one delay-testing service: the Proxies page, the map's regions, the start-up test and the
 /// Agent's runtime actions all test through here (`LatencyTest`), a few nodes at a time, with every
 /// result tagged by the profile it was measured in.
@@ -38,13 +46,18 @@ extension ProxyStore {
     /// Every node and group once, after a start or a profile switch: nodes first, as groups
     /// answer through one of them.
     func testEverythingOnce() {
-        var nodes: [String] = [], nested: [String] = []
+        testNodes(Self.everythingToTest(in: groups), scope: .everything)
+    }
+
+    /// Each node and group in `groups` once, nodes first: a node in several groups is tested once.
+    static func everythingToTest(in groups: [Group]) -> [String] {
+        var nodes: [String] = [], nested: [String] = [], seen: Set<String> = []
         for group in groups {
-            for member in group.members where !Self.untestable.contains(member.name) {
+            for member in group.members where !untestable.contains(member.name) && seen.insert(member.name).inserted {
                 if member.isGroup { nested.append(member.name) } else { nodes.append(member.name) }
             }
         }
-        testNodes(nodes + nested, scope: .everything)
+        return nodes + nested
     }
 
     /// Starts a run of `names` under `scope` (a group, a region, or every group). A run already under
@@ -54,7 +67,7 @@ extension ProxyStore {
         guard canStartLatencyTest(scope), let controller, !names.isEmpty else { return }
         let started = generation
         testingScopes.insert(scope)
-        for name in names where delays[name] != .testing { delays[name] = .testing }
+        for name in names where delays[name] != .testing { setDelay(.testing, for: name) }
         flushDelays()
         let url = delayURL
         let test = LatencyTest { name in try await controller.testDelay(proxy: name, url: url) }
@@ -77,18 +90,52 @@ extension ProxyStore {
         guard measured == generation else { return }
         // Called off while another scope still tests it: that run will say.
         if state == .cancelled, latencyRuns.count > 1 { return }
-        delays[name] = state
+        setDelay(state, for: name)
         if state.isResult { delayTimes[name] = .now }
         flushDelays()
     }
 
-    /// Results reach the groups a few times a second, not once per node: every tile would
-    /// otherwise draw again for each of several hundred results.
+    /// A node's delay, shown at the next flush.
+    func setDelay(_ state: NodeDelay, for name: String) {
+        delays[name] = state
+        pendingDelayNames.insert(name)
+    }
+
+    /// The cell that holds a node's latest result.
+    func delayCell(for name: String) -> NodeDelayCell {
+        if let cell = delayCells[name] { return cell }
+        let cell = NodeDelayCell(delays[name])
+        delayCells[name] = cell
+        return cell
+    }
+
+    /// `delays`, read so that a view follows each flush of results (`delayRevision`) rather than
+    /// each result.
+    var latestDelays: [String: NodeDelay] {
+        _ = delayRevision
+        return delays
+    }
+
+    /// A member's delay now: the latest result, else what its group last said. Read as a menu is
+    /// made, without observing anything.
+    func delayState(for member: Group.Member) -> NodeDelay { delays[member.name] ?? member.state }
+
+    /// Results reach the cells a few times a second, not once per node, and only the cells of the
+    /// nodes that changed. The groups themselves take them once, when a run ends (`now`): a new
+    /// `groups` redraws every group, its menu and its tiles, which several times a second made the
+    /// page stutter with a few thousand members.
     func flushDelays(now: Bool = false) {
         if now {
             delayFlush?.cancel()
             delayFlush = nil
-            groups = groups.map(applyingDelays)
+            applyPendingDelays()
+            var changed = false
+            let synced = groups.map { group in
+                let applied = applyingDelays(group)
+                if applied != group { changed = true }
+                return applied
+            }
+            if changed { groups = synced }
             return
         }
         guard delayFlush == nil else { return }
@@ -96,15 +143,50 @@ extension ProxyStore {
             try? await Task.sleep(for: .milliseconds(150))
             guard let self, !Task.isCancelled else { return }
             delayFlush = nil
-            groups = groups.map(applyingDelays)
+            applyPendingDelays()
         }
     }
 
+    private func applyPendingDelays() {
+        guard !pendingDelayNames.isEmpty else { return }
+        for name in pendingDelayNames {
+            if let cell = delayCells[name], cell.result != delays[name] { cell.result = delays[name] }
+        }
+        pendingDelayNames = []
+        delayRevision += 1
+    }
+
     private func applyingDelays(_ group: Group) -> Group {
-        Group(name: group.name, type: group.type, now: group.now, members: group.members.map { member in
+        guard group.members.contains(where: { member in delays[member.name].map { $0 != member.state } ?? false }) else { return group }
+        return Group(name: group.name, type: group.type, now: group.now, members: group.members.map { member in
             guard let state = delays[member.name], state != member.state else { return member }
             return Group.Member(name: member.name, delay: member.delay, isGroup: member.isGroup, state: state)
         })
+    }
+
+    /// The cells after the groups are read again or the results are forgotten. Cells of nodes no
+    /// group lists any more are let go.
+    func syncDelayCells() {
+        let listed = Set(groups.flatMap { $0.members.map(\.name) })
+        for (name, cell) in delayCells {
+            guard listed.contains(name) else { delayCells[name] = nil; continue }
+            if cell.result != delays[name] { cell.result = delays[name] }
+        }
+    }
+
+    /// Reads each new node's name once off the main thread (region, notice), so the first draw
+    /// of a big subscription finds the answers already made.
+    func warmNodeLookups(_ names: Set<String>) {
+        let fresh = names.subtracting(warmedNodeNames)
+        guard !fresh.isEmpty else { return }
+        if warmedNodeNames.count > 20_000 { warmedNodeNames = [] }
+        warmedNodeNames.formUnion(fresh)
+        Task.detached(priority: .utility) {
+            for name in fresh {
+                _ = NodeLocator.locate(name)
+                _ = NodeCleanup.isInfoNode(name)
+            }
+        }
     }
 
     /// Calls off every run and forgets every result: the profile they measured is gone.
@@ -117,6 +199,10 @@ extension ProxyStore {
         delayTimes = [:]
         delayFlush?.cancel()
         delayFlush = nil
+        pendingDelayNames = []
+        // Back to what the groups say until they are read again.
+        for cell in delayCells.values where cell.result != nil { cell.result = nil }
+        delayRevision += 1
     }
 
     /// The members' delays for a choice such as "the fastest": results measured in the last
@@ -143,7 +229,7 @@ extension ProxyStore {
         testingScopes.insert(scope)
         defer { if started == generation { testingScopes.remove(scope) } }
         let before = stale.reduce(into: [String: NodeDelay]()) { $0[$1] = delays[$1] ?? .untested }
-        for member in stale { delays[member] = .testing }
+        for member in stale { setDelay(.testing, for: member) }
         flushDelays()
         let url = delayURL
         var test = LatencyTest(concurrency: reuseFresh ? 16 : LatencyTest.defaultConcurrency, maximumConcurrency: reuseFresh ? 32 : nil,

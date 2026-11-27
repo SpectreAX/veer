@@ -1,5 +1,28 @@
 # Veer macOS handoff
 
+## Proxies page with many nodes: grid and map slowdown (2026-11-27, Claude)
+
+Item 1 of `DevMD/ForAgent.md`, following Codex's five-stage plan. Evidence and method: `.codex/local/proxies-perf-20261127/README.md`.
+
+Changes:
+- VeerCore: `NodeLocator.locate` runs one expression per kind (Chinese, English, codes) plus a word → code table, falling back to the old per-place expressions for an unforeseen case folding; agrees with the old implementation on 20,035 names (`NodeLocationSpeedTests`). `Place.flag` stored, `Place.name` from a one-time table, `sortedPlaces`, `hasFlag` without an array, `isInfoNode` precompiled and memoized (`BoundedCache`, shared with `locate`).
+- Delays: `ProxyStore.delays` is `@ObservationIgnored`; each shown node has a `NodeDelayCell` (latest result or nil), updated at the 150 ms flush for changed names only; `delayRevision` for summaries; `groups` take the results once, at the end of a run (`flushDelays(now:)`), and only if something changed. `testEverythingOnce` tests each name once. `refresh()` syncs cells and warms `locate`/`isInfoNode` off the main thread.
+- Grid: `LazyPullDown` (VeerUI, AppKit `NSPopUpButton` pull-down, items made in `menuNeedsUpdate`) for the group headers' and Overview's node menus via `GroupQuickSwitchMenu`; `NodeMenuBuckets` shared with the menu bar's SwiftUI `NodeMenuItems`. Outer `LazyVStack`; sections get `collapsed`/`testing`/`canTest` passed in; tiles observe only their cell. Collapse-all/expand-all are instant (no animation), and collapsing several scrolls to the first section: with the lazy stack an animated collapse-all left the page past its end, blank, and `.scrollPosition(id:)` anchoring cost ~450 ms per expand-all.
+- Map: regions no longer read delays; `WorldMap` gets counts; a region's nodes are in a lazy `SteadyGrid` with a `usable` set; region cards, the header's lowest delay and the map's VoiceOver value follow `delayRevision`.
+- Docs: SPEC 5.3, COMPONENTS (`LazyPullDown`), DESIGN_SPEC (`SteadyGrid` sentence), PLAN.
+
+Measured (isolated probe, 12 × 200 members over 654 names, 1080×720, 60 Hz): grid streaming 28–31 → 0–4 hitches per round, CPU 1.4 → 0.2–0.4 s; map streaming ~8 fps / 95 % CPU → 60 fps / 8–14 %; open 167–234 → 85–170 ms; map switch 157 → 83–95 ms; cold `locate` 15.5 → 1.8 ms; `isInfoNode` 650×10 181 → 14.5 ms. Unchanged: grid switch ~60–75 ms (diffuse SwiftUI/CA cost). **Regression: expand-all 119–151 → 431–559 ms** (`LazyVGrid` measures every member of each section that appears); fix would be row-chunked rows in one lazy stack.
+
+Checks run this session:
+- `bash .claude/scripts/verify.sh`: format, lint, build, 701 tests passed (39/155/382/125), with `VEER_MIHOMO_BIN=vendor/mihomo` from `env.sh` (`verify-final.log`).
+- Snapshots 04/05/18/24, zh-Hans and en, light and dark (256, `snapshots/`; first run's 42 blank en-dark images in `snapshots-run1/` re-rendered fine), compared with the 1.1.0 set; windows inactive.
+- `/apple-design-review` (independent): Major — VoiceOver reaches the pop-up button's cell, which lacked label/value — fixed (label, title and value on button and cell, tested); Minor — open menu inherited 12 pt callout — fixed (`menuFont`); DESIGN_SPEC sentence fixed; menu bar keeps "✓ " text in region titles (SwiftUI submenu labels show no icon); expand-all delay recorded.
+- Collapse frames compared base/after with wheel-event scrolling (`collapse-frames/wheel*.png`); earlier captures that moved the clip view directly are artifacts.
+
+Delivery: built in an isolated copy (sources equal), Apple Development, 1.1.0 build 10, core v1.19.34; `macos/dist/Veer.app` replaced (was not running; backup `.codex/local/proxies-perf-20261127/pre-replace.vymFUf/Veer.app`); deep strict verification passed on new, backup and `dist/builds/2026-11-27-proxies-perf/`. Not launched. FlClash's system proxy (7890) only read.
+
+NOT VERIFIED: spoken VoiceOver and Accessibility Inspector on the new menus; Full Keyboard Access (Tab into sections the lazy stack has not built, Space to open); the open menu's look; macOS 14 VM; a real large subscription. Not done: `/macos-visual-audit` as a skill (screens were compared by hand).
+
 ## Subscription nodes that would not connect; Mihomo v1.19.34 (2026-11-26, Claude; not committed)
 
 Scope: the CRITICAL item in `DevMD/ForAgent.md` (some subscriptions import, but nodes don't connect, speed tests fail or traffic is very slow), following the user's staged plan. The other items in that file were not done (see Next).

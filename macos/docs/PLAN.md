@@ -2,6 +2,21 @@
 
 本计划按 [REQUIREMENTS.md](REQUIREMENTS.md) 和 [SPEC.md](SPEC.md) 推进，取代 [PLAN_2026-10-29.md](PLAN_2026-10-29.md) 的第 2 到第 4 阶段。那份文档的第 1 阶段（可用的代理）已经完成并提交。
 
+## 代理页节点多时严重卡顿（2026-11-27，Claude）
+
+来自 `DevMD/ForAgent.md` 的第 1 项，按 Codex 只读审查的五阶段计划。状态：Implemented，Pending User Acceptance。证据：`.codex/local/proxies-perf-20261127/`（README 有方法与前后对照）。
+
+| 阶段 | 内容 | 状态与证据 |
+| --- | --- | --- |
+| 0 | 基线：隔离探针（样例 12 组 × 200 成员，654 个不同名称，无内核），微基准、打开、测速流、滚动、折叠、切换节点 | Done。地图测速时约 8 fps、主线程 95%，55% 在 `isInfoNode`；网格每 150 ms 重写 `groups`，每轮约 30 次卡顿 |
+| 1 | VeerCore：`locate` 合并为每类一个正则加词表（与旧实现 20,035 个名称逐一一致），`Place.flag`/`name` 缓存，`sortedPlaces`，`hasFlag` 不分配数组，`isInfoNode` 预编译加缓存 | Implemented。冷 `locate` 15.5 → 1.8 ms，`isInfoNode` 650×10 180.7 → 14.5 ms |
+| 2 | 测速结果写入每个节点的 `NodeDelayCell`，`delays` 不再被观察，`delayRevision` 供地图汇总；`groups` 只在一轮结束时同步；刷新后在后台预热查找 | Implemented。网格测速流 28–31 → 0–4 次卡顿，CPU 1.4 → 0.2–0.4 s |
+| 3 | 网格：`LazyPullDown`（AppKit `NSPopUpButton`，打开时才生成）替代各组和概览的 SwiftUI 菜单；外层 `LazyVStack`；组只读自己的折叠、测速状态；节点卡只观察自己的延迟 | Implemented。打开 167–209 → 87–148 ms；单组折叠 50–83 → 34–88 ms；全部收起改为即时并回到第一组。**回归：全部展开 119–151 → 431–559 ms**（`LazyVGrid` 量全部成员），可改为按行拆分的单层惰性列表 |
+| 4 | 地图：地区分组不读延迟，地图只拿数量，地区节点改用惰性 `SteadyGrid`，卡片和汇总跟随 `delayRevision` | Implemented。测速流 ~8 fps → 60 fps、CPU 95% → 8–14%；切换节点 157–160 → 83–95 ms |
+| 5 | 测试、复测、审查、交付 | `verify.sh` 通过（见交接记录）；截图 04/05/18/24 中英深浅色 256 张已看；独立设计审查 Major（VoiceOver 读不到菜单标签）已修 |
+
+NOT VERIFIED：真实 VoiceOver、全键盘控制（Tab 进入尚未建出的组、空格打开菜单）、macOS 14 VM、真实大订阅的手感、打开后的菜单外观。
+
 ## 订阅节点连不上、测速无效、速度极慢；内核升级（2026-11-26，Claude）
 
 来自 `DevMD/ForAgent.md` 的 CRITICAL 项和用户的分阶段计划。状态：Implemented，Pending Network Acceptance。未提交。

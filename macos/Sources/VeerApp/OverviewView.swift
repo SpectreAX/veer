@@ -617,14 +617,8 @@ private struct GroupsCard: View {
                     HStack(spacing: Spacing.sm) {
                         Text(group.name).lineLimit(1).truncationMode(.middle)
                         Spacer(minLength: Spacing.sm)
-                        Menu {
-                            NodeMenuItems(group: group)
-                        } label: {
-                            Text(group.now ?? "—").lineLimit(1).truncationMode(.middle)
-                        }
-                        .menuStyle(.borderlessButton).fixedSize(horizontal: false, vertical: true).neutralControl()
-                        .frame(maxWidth: 160, alignment: .trailing)
-                        .help("切换节点")
+                        GroupQuickSwitchMenu(group: group, title: group.now ?? "—", font: .body, truncation: .byTruncatingMiddle)
+                            .frame(maxWidth: 160, alignment: .trailing)
                     }
                     .padding(.horizontal, Spacing.md)
                     .padding(.vertical, Spacing.sm)

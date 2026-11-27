@@ -86,18 +86,33 @@ struct ProxiesView: View {
         } else {
             // The same scroll view whatever the search finds: taking it away for an empty state
             // would take the keyboard focus out of the search field, in the middle of typing.
-            ScrollView {
-                if shownGroups.isEmpty {
-                    StateView(symbol: "magnifyingglass", title: String(localized: "没有匹配“\(query)”的节点或策略组"),
-                              actionTitle: String(localized: "清除搜索"), action: clearSearch)
-                        .frame(minHeight: 320)
+            ScrollViewReader { reader in
+                ScrollView {
+                    if shownGroups.isEmpty {
+                        StateView(symbol: "magnifyingglass", title: String(localized: "没有匹配“\(query)”的节点或策略组"),
+                                  actionTitle: String(localized: "清除搜索"), action: clearSearch)
+                            .frame(minHeight: 320)
+                    }
+                    // Lazy, as each section's nodes are: with a few thousand members every section kept
+                    // its views, its menu and its tiles alive off screen, and was compared on each change.
+                    LazyVStack(alignment: .leading, spacing: Spacing.lg) {
+                        ForEach(shownGroups) { group in
+                            let scope = LatencyScope.group(group.name)
+                            // Read here, so a change to one group's state reaches that section alone.
+                            GroupSection(group: group, collapsed: store.collapsedGroups.contains(group.name),
+                                         testing: store.testingScopes.contains(scope), canTest: store.canStartLatencyTest(scope))
+                        }
+                    }
+                    .padding(Spacing.xl)
                 }
-                // Not lazy: as sections collapse, those arriving from below the window would have no
-                // earlier place to move from, and slid over the rest. Each one's nodes are still lazy.
-                VStack(alignment: .leading, spacing: Spacing.lg) {
-                    ForEach(shownGroups) { GroupSection(group: $0) }
+                // Sections above the window shrink out of sight as all of them collapse, which a lazy
+                // stack learns only once they are back in view: the page was left past its end,
+                // blank. Every header then fits in about a window, so the page starts at the first.
+                // One section's own chevron is in view, and the stack follows it; expanding adds below.
+                .onChange(of: store.collapsedGroups) { old, new in
+                    guard new.subtracting(old).count > 1, let first = shownGroups.first?.name else { return }
+                    reader.scrollTo(first, anchor: .top)
                 }
-                .padding(Spacing.xl)
             }
         }
     }
@@ -114,8 +129,12 @@ extension ProxyStore {
         }
     }
 
+    /// At once, not animated: most of the sections that change are out of sight, and a lazy stack
+    /// moving them into place slid them over one another and left the page blank part way.
     func setAllCollapsed(_ collapsed: Bool) {
-        withCollapseAnimation { collapsedGroups = collapsed ? Set(groups.map(\.name)) : [] }
+        var instant = Transaction()
+        instant.disablesAnimations = true
+        withTransaction(instant) { collapsedGroups = collapsed ? Set(groups.map(\.name)) : [] }
     }
 
     /// Around the change, so the sections below move with the one that changes. An animation on each
@@ -130,9 +149,11 @@ struct GroupSection: View {
     @Environment(ProxyStore.self) private var store
     @Environment(AgentStore.self) private var agent
     let group: ProxyStore.Group
+    let collapsed: Bool
+    /// Its own test under way, and whether one could start now.
+    let testing: Bool
+    let canTest: Bool
     static let tileWidth: CGFloat = 180
-
-    private var collapsed: Bool { store.collapsedGroups.contains(group.name) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.md) {
@@ -154,7 +175,8 @@ struct GroupSection: View {
             if !collapsed {
             SteadyGrid(minimum: GroupSection.tileWidth, spacing: Spacing.sm, alignment: .leading) {
                 ForEach(group.members) { member in
-                    NodeTile(member: member, flag: flag(for: member), selected: member.name == group.now, selectable: group.isSelectable) {
+                    NodeTile(member: member, delay: store.delayCell(for: member.name), flag: flag(for: member), selected: member.name == group.now,
+                             selectable: group.isSelectable) {
                         store.select(member.name, in: group.name)
                     }
                     .contextMenu {
@@ -209,15 +231,13 @@ struct GroupSection: View {
             .help("让 Agent 处理这个策略组")
             // As the map's region test: the spinner takes the button's place, so the row does not move
             // as a test starts, and the button is unavailable when a test could not start.
-            let scope = LatencyScope.group(group.name)
-            let testing = store.testingScopes.contains(scope)
             ZStack(alignment: .trailing) {
                 Button("测速") { store.testDelay(group.name) }
                     .secondaryAction()
                     .fixedSize()
                     .opacity(testing ? 0 : 1)
                     // Also when nothing in it can be tested (only REJECT, PASS and the like).
-                    .disabled(!store.canStartLatencyTest(scope) || store.testableMembers(of: group).isEmpty)
+                    .disabled(!canTest || store.testableMembers(of: group).isEmpty)
                     .accessibilityLabel(String(localized: "为“\(group.name)”测速"))
                     .accessibilityHidden(testing)
                     .help("测试这个策略组里每个成员的延迟")
@@ -231,17 +251,7 @@ struct GroupSection: View {
     @ViewBuilder private var quickSwitch: some View {
         if let now = group.now {
             if group.isSelectable {
-                Menu {
-                    NodeMenuItems(group: group)
-                } label: {
-                    Text(verbatim: "→ \(now)").lineLimit(1)
-                }
-                .menuStyle(.borderlessButton).fixedSize(horizontal: false, vertical: true).neutralControl()
-                .font(.callout)
-                .help("切换节点")
-                // Which group's node it is, without the arrow, which VoiceOver would read out.
-                .accessibilityLabel(String(localized: "“\(group.name)”使用的节点"))
-                .accessibilityValue(now)
+                GroupQuickSwitchMenu(group: group, title: "→ \(now)")
             } else {
                 Text(verbatim: "→ \(now)").font(.callout).foregroundStyle(.secondary).lineLimit(1)
                     .accessibilityLabel(String(localized: "“\(group.name)”使用的节点"))
@@ -275,11 +285,15 @@ struct GroupSection: View {
 /// select group it is a button; in an automatic group it is plain content, since clicks do nothing.
 private struct NodeTile: View {
     let member: ProxyStore.Group.Member
+    /// The node's latest result, observed here alone: a result redraws this tile and no other.
+    let delay: NodeDelayCell
     let flag: String?
     let selected: Bool
     let selectable: Bool
     let select: () -> Void
     @State private var hovering = false
+
+    private var state: NodeDelay { delay.result ?? member.state }
 
     var body: some View {
         if selectable {
@@ -287,20 +301,20 @@ private struct NodeTile: View {
                 .buttonStyle(.plain)
                 .onHover { hovering = $0 }
                 .help(member.name)
-                .accessibilityLabel(String(localized: "\(member.name)，延迟 \(Format.delay(member.state))"))
+                .accessibilityLabel(String(localized: "\(member.name)，延迟 \(Format.delay(state))"))
                 .accessibilityAddTraits(selected ? .isSelected : [])
         } else {
             tile
                 .help(String(localized: "\(member.name)（这个策略组按延迟自动选择）"))
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel(selected ? String(localized: "\(member.name)，延迟 \(Format.delay(member.state))，正在使用")
-                                    : String(localized: "\(member.name)，延迟 \(Format.delay(member.state))"))
+                .accessibilityLabel(selected ? String(localized: "\(member.name)，延迟 \(Format.delay(state))，正在使用")
+                                    : String(localized: "\(member.name)，延迟 \(Format.delay(state))"))
         }
     }
 
     /// The core's own words when a test failed, for the tooltip.
     private var failureReason: String? {
-        if case .failed(let reason) = member.state, !reason.isEmpty { return reason }
+        if case .failed(let reason) = state, !reason.isEmpty { return reason }
         return nil
     }
 
@@ -311,7 +325,7 @@ private struct NodeTile: View {
                 .opacity(selectable || selected || member.isGroup ? 1 : 0)
             VStack(alignment: .leading, spacing: Spacing.xxs) {
                 Text(verbatim: flag.map { "\($0) \(member.name)" } ?? member.name).lineLimit(1).truncationMode(.middle)
-                Text(Format.delay(member.state)).font(.caption.monospacedDigit()).foregroundStyle(Format.delayKind(member.state).color)
+                Text(Format.delay(state)).font(.caption.monospacedDigit()).foregroundStyle(Format.delayKind(state).color)
                     .help(failureReason ?? "")
             }
             Spacer(minLength: 0)
@@ -346,7 +360,7 @@ struct RegionMarkItems: View {
             if marked == nil { Label("按名称识别", systemImage: "checkmark") } else { Text("按名称识别") }
         }
         Divider()
-        ForEach(NodeLocator.places.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) { place in
+        ForEach(NodeLocator.sortedPlaces) { place in
             Button { store.markRegion(node, code: place.code) } label: {
                 if marked == place.code {
                     Label("\(place.flag) \(place.name)", systemImage: "checkmark")
