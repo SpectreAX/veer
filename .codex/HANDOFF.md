@@ -15,6 +15,8 @@ Measured (same probe and sample as PR #43): expand-all 119–151 (base) → 431�
 
 Checks run this session: `verify.sh` passed, 705 tests (42/155/382/126), `verify-rows3.log`; snapshots 04/05/18/24 zh-Hans and en, light and dark (256, `snapshots/`), compared with the LazyVGrid run (`snapshots-run2/`) and 1.1.0: same apart from window activity; independent `/apple-design-review`: no Critical/Major, four Minors fixed (above). The last review fixes change no snapshot scene, so snapshots were not re-rendered after them.
 
+Merged as PR #44 (`5ba3ed1`). Delivery: built in an isolated copy (sources equal), Apple Development, 1.1.0 build 10; `macos/dist/Veer.app` replaced (was not running; backup `.codex/local/proxies-perf-20261127/pre-replace.l0Tl8W/Veer.app`, the PR #43 build; the pre-perf build stays in `pre-replace.vymFUf/`); deep strict verification passed on new, backup and `dist/builds/2026-11-27-proxies-grid-rows/`. Not launched. FlClash's system proxy (7890) only read. Probe copies in `~/Library/Caches` and the probe apps and raw frames were deleted; scripts and results stay in `macos/.build/probe/proxiesperf/` and the evidence folder.
+
 NOT VERIFIED: spoken VoiceOver (headings rotor, tiles), Full Keyboard Access through the lazy list, Increase Contrast and 1x displays for the panel parts, macOS 14 VM, a real large subscription.
 
 ## Proxies page with many nodes: grid and map slowdown (2026-11-27, Claude)
