@@ -1,5 +1,22 @@
 # Veer macOS handoff
 
+## Proxies grid as one lazy list of rows: expand-all fixed (2026-11-27, Claude)
+
+Follow-up to PR #43 on the user's "Yes, fix expand-all". Evidence: `.codex/local/proxies-perf-20261127/README.md` (Follow-up section), `rows/`, `collapse-frames/flat*.png`, `chevron.png`.
+
+Changes:
+- The grid is one `LazyVStack` of group headers and rows of tiles (`GridLine.lines`), each item drawing its part of the group's panel (`panelSlice` in VeerUI: top / middle / bottom / whole; the edge is stroked past the open sides and clipped, so the parts meet without a seam). `SteadyColumns` (VeerUI) reads one column count from the list's width in its width handler and holds it through a panel motion; `EqualColumnsRow` lays out a row in equal columns. `GroupSection` is the header; `GroupRow` a row of `NodeTile`s.
+- Rejected on measurement: a `LazyVStack` of rows inside each section (435–484 ms; only the scroll view's own lazy stack estimates). Rejected on frames: animated collapse in the flat list (rows crossed, the next section came in over the closing one).
+- Collapse and expand change the layout at once, the chevron alone turns (nil under Reduce Motion). Collapsing several, or the last open group, scrolls to the first group.
+- Review fixes: chevron animation kept (no `disablesAnimations`), empty expanded group draws a whole panel, group titles are VoiceOver headings, collapse-all scroll also when only one group was still open. Snapshot 05b had shown two columns where three fit: a second `onGeometryChange` for the count missed the last of 712 → 512 → 612 pt; fixed and tested (`SteadyColumnsTests`).
+- Docs: SPEC 5.3 (展开和收起), COMPONENTS (`SteadyColumns`, `EqualColumnsRow`, `panelSlice`), DESIGN_SPEC, PLAN.
+
+Measured (same probe and sample as PR #43): expand-all 119–151 (base) → 431–559 (PR #43) → 84–101 ms; collapse-all 59–130 ms; one group 21–69 ms; open 99–114 ms; streaming 0–3 hitches; Agent panel toggle hitch time 317–392 → 106–301 ms.
+
+Checks run this session: `verify.sh` passed, 705 tests (42/155/382/126), `verify-rows3.log`; snapshots 04/05/18/24 zh-Hans and en, light and dark (256, `snapshots/`), compared with the LazyVGrid run (`snapshots-run2/`) and 1.1.0: same apart from window activity; independent `/apple-design-review`: no Critical/Major, four Minors fixed (above). The last review fixes change no snapshot scene, so snapshots were not re-rendered after them.
+
+NOT VERIFIED: spoken VoiceOver (headings rotor, tiles), Full Keyboard Access through the lazy list, Increase Contrast and 1x displays for the panel parts, macOS 14 VM, a real large subscription.
+
 ## Proxies page with many nodes: grid and map slowdown (2026-11-27, Claude)
 
 Item 1 of `DevMD/ForAgent.md`, following Codex's five-stage plan. Evidence and method: `.codex/local/proxies-perf-20261127/README.md`.

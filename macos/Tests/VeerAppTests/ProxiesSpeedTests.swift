@@ -92,6 +92,33 @@ import VeerCore
         #expect(ProxyStore.everythingToTest(in: groups) == ["n1", "n2", "B"])
     }
 
+    // MARK: Grid lines
+
+    @Test func theGridIsOneListOfHeadersAndRows() {
+        let store = SnapshotRunner.running(page: .proxies)
+        defer { try? FileManager.default.removeItem(at: store.paths.root) }
+        // 7, 3 and 2 members in 3 columns; the second group collapsed.
+        let lines = GridLine.lines(store.groups, collapsed: ["自动选择"], columns: 3)
+        func describe(_ line: GridLine) -> String {
+            switch line.kind {
+            case .header(let first): "\(line.group.name) header\(first ? " first" : "")"
+            case .nodes(let members, let last): "\(line.group.name) \(members.count)\(last ? " last" : "")"
+            }
+        }
+        #expect(lines.map(describe) == ["节点选择 header first", "节点选择 3", "节点选择 3", "节点选择 1 last", "自动选择 header", "Netflix header", "Netflix 2 last"])
+        #expect(Set(lines.map(\.id)).count == lines.count)
+        #expect(lines.first?.id == "节点选择", "a header is its group's name, which the page scrolls to")
+        // The rows hold every member once, in order.
+        let members = lines.compactMap { line -> [String]? in
+            if case .nodes(let members, _) = line.kind, line.group.name == "节点选择" { return members.map(\.name) }
+            return nil
+        }.flatMap { $0 }
+        #expect(members == store.groups[0].members.map(\.name))
+        // A group with no members is its header alone, expanded or not.
+        let empty = ProxyStore.Group(name: "空", type: "Selector", now: nil, members: [])
+        #expect(GridLine.lines([empty], collapsed: [], columns: 3).count == 1)
+    }
+
     // MARK: Node menus
 
     @Test func aSmallGroupIsListedFlat() throws {

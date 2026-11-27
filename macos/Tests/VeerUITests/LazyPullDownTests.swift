@@ -74,3 +74,55 @@ import Testing
         #expect(button.menu?.delegate != nil)
     }
 }
+
+/// Rows of equal columns for the lazy grid: chunks, widths and the short last row.
+@MainActor struct SteadyRowsTests {
+    @Test func itemsChunkIntoRowsWithAShortLastOne() {
+        let rows = SteadyColumns<EmptyView>.rows(Array(1...10), columns: 4)
+        #expect(rows.map(Array.init) == [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10]])
+        #expect(SteadyColumns<EmptyView>.rows([Int](), columns: 4).isEmpty)
+        #expect(SteadyColumns<EmptyView>.rows([1, 2], columns: 0).map(Array.init) == [[1], [2]])
+    }
+
+    @Test func aRowGivesEveryColumnTheSameWidthEvenWhenShort() throws {
+        #expect(EqualColumnsRow.columnWidth(400, columns: 4, spacing: 8) == 94)
+        let view = NSHostingView(rootView: EqualColumnsRow(columns: 4, spacing: 8) {
+            Color.red.frame(minHeight: 20)
+            Color.green.frame(minHeight: 30)
+        }.frame(width: 400))
+        view.frame = CGRect(x: 0, y: 0, width: 400, height: 60)
+        view.layoutSubtreeIfNeeded()
+        let size = view.fittingSize
+        #expect(size.height == 30, "as tall as the tallest")
+    }
+}
+
+/// The count follows the width it is given, also back up again after a narrower layout.
+@MainActor struct SteadyColumnsTests {
+    @Observable final class Seen { var count = 0 }
+    @Observable final class Width { var value: CGFloat = 712 }
+
+    @Test func theCountFollowsTheWidthDownAndBackUp() async throws {
+        let seen = Seen(), width = Width()
+        struct Host: View {
+            let seen: Seen
+            let width: Width
+            var body: some View {
+                SteadyColumns(minimum: 180, spacing: 8, inset: 16) { count in
+                    Color.clear.frame(height: 10).onChange(of: count, initial: true) { seen.count = count }
+                }
+                .frame(width: width.value)
+            }
+        }
+        let view = NSHostingView(rootView: Host(seen: seen, width: width))
+        view.frame = CGRect(x: 0, y: 0, width: 800, height: 100)
+        func settle() async throws {
+            for _ in 0..<10 { view.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(10)) }
+        }
+        for (value, expected) in [(712.0, 3), (512.0, 2), (612.0, 3), (587.0, 2), (588.0, 3)] {
+            width.value = value
+            try await settle()
+            #expect(seen.count == expected, "\(value) pt")
+        }
+    }
+}

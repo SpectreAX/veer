@@ -93,14 +93,24 @@ struct ProxiesView: View {
                                   actionTitle: String(localized: "清除搜索"), action: clearSearch)
                             .frame(minHeight: 320)
                     }
-                    // Lazy, as each section's nodes are: with a few thousand members every section kept
-                    // its views, its menu and its tiles alive off screen, and was compared on each change.
-                    LazyVStack(alignment: .leading, spacing: Spacing.lg) {
-                        ForEach(shownGroups) { group in
-                            let scope = LatencyScope.group(group.name)
-                            // Read here, so a change to one group's state reaches that section alone.
-                            GroupSection(group: group, collapsed: store.collapsedGroups.contains(group.name),
-                                         testing: store.testingScopes.contains(scope), canTest: store.canStartLatencyTest(scope))
+                    // One lazy list of every group's header and rows of nodes, each a part of its group's
+                    // panel: only what is in view is made. With a few thousand members, sections kept
+                    // their tiles alive off screen, and a lazy grid in each measured all of its tiles,
+                    // every section at once when they all expanded. One column count for every section,
+                    // read from the list's width (`SteadyColumns`).
+                    SteadyColumns(minimum: GroupSection.tileWidth, spacing: Spacing.sm, inset: Spacing.lg) { columns in
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(GridLine.lines(shownGroups, collapsed: store.collapsedGroups, columns: columns)) { line in
+                                switch line.kind {
+                                case .header(let first):
+                                    let scope = LatencyScope.group(line.group.name)
+                                    // Read here, so a change to one group's state reaches that header alone.
+                                    GroupSection(group: line.group, first: first, collapsed: store.collapsedGroups.contains(line.group.name),
+                                                 testing: store.testingScopes.contains(scope), canTest: store.canStartLatencyTest(scope))
+                                case .nodes(let members, let last):
+                                    GroupRow(group: line.group, members: members, columns: columns, last: last)
+                                }
+                            }
                         }
                     }
                     .padding(Spacing.xl)
@@ -110,7 +120,11 @@ struct ProxiesView: View {
                 // blank. Every header then fits in about a window, so the page starts at the first.
                 // One section's own chevron is in view, and the stack follows it; expanding adds below.
                 .onChange(of: store.collapsedGroups) { old, new in
-                    guard new.subtracting(old).count > 1, let first = shownGroups.first?.name else { return }
+                    let closed = new.subtracting(old)
+                    // Several at once, or the last one open while the rest already were: every header
+                    // then fits in about a window.
+                    let all = !closed.isEmpty && shownGroups.allSatisfy { new.contains($0.name) }
+                    guard closed.count > 1 || all, let first = shownGroups.first?.name else { return }
                     reader.scrollTo(first, anchor: .top)
                 }
             }
@@ -124,75 +138,89 @@ struct ProxiesView: View {
 
 extension ProxyStore {
     func toggleCollapsed(_ group: String) {
-        withCollapseAnimation {
+        withoutCollapseAnimation {
             if collapsedGroups.contains(group) { collapsedGroups.remove(group) } else { collapsedGroups.insert(group) }
         }
     }
 
-    /// At once, not animated: most of the sections that change are out of sight, and a lazy stack
-    /// moving them into place slid them over one another and left the page blank part way.
     func setAllCollapsed(_ collapsed: Bool) {
-        var instant = Transaction()
-        instant.disablesAnimations = true
-        withTransaction(instant) { collapsedGroups = collapsed ? Set(groups.map(\.name)) : [] }
+        withoutCollapseAnimation { collapsedGroups = collapsed ? Set(groups.map(\.name)) : [] }
     }
 
-    /// Around the change, so the sections below move with the one that changes. An animation on each
-    /// section would animate its own height while its neighbours jumped. The menu bar's commands come
-    /// through here too, where there is no view to read Reduce Motion from.
-    private func withCollapseAnimation(_ change: () -> Void) {
-        withAnimation(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : Motion.standard, change)
+    /// The page takes its new layout at once; only a header's chevron turns. The grid is one lazy
+    /// list of headers and rows, and moved into place its rows crossed one another and the sections
+    /// below came in from nowhere over the ones closing, which the eager stack it replaced avoided
+    /// by making every tile of every group up front. The menu bar's commands come through here too.
+    private func withoutCollapseAnimation(_ change: () -> Void) {
+        // No animation for the change itself, without disabling the chevron's own.
+        withTransaction(Transaction(animation: nil), change)
     }
 }
 
+/// One item of the grid's lazy list: a group's header, or one row of its nodes.
+struct GridLine: Identifiable {
+    enum Kind {
+        /// `first`: the list's first group, with no gap above it.
+        case header(first: Bool)
+        /// `last`: the group's last row, which closes its panel.
+        case nodes(ArraySlice<ProxyStore.Group.Member>, last: Bool)
+    }
+
+    let group: ProxyStore.Group
+    let kind: Kind
+    /// A header is its group's name, which `ScrollViewReader` scrolls to.
+    let id: String
+
+    static func lines(_ groups: [ProxyStore.Group], collapsed: Set<String>, columns: Int) -> [GridLine] {
+        var lines: [GridLine] = []
+        for (index, group) in groups.enumerated() {
+            lines.append(GridLine(group: group, kind: .header(first: index == 0), id: group.name))
+            guard !collapsed.contains(group.name) else { continue }
+            let rows = SteadyColumns<EmptyView>.rows(group.members, columns: columns)
+            for (row, members) in rows.enumerated() {
+                lines.append(GridLine(group: group, kind: .nodes(members, last: row == rows.count - 1), id: "\(group.name)\u{1F}\(row)"))
+            }
+        }
+        return lines
+    }
+}
+
+/// A group's header: the top of its panel, or all of it while collapsed.
 struct GroupSection: View {
     @Environment(ProxyStore.self) private var store
     @Environment(AgentStore.self) private var agent
     let group: ProxyStore.Group
+    let first: Bool
     let collapsed: Bool
     /// Its own test under way, and whether one could start now.
     let testing: Bool
     let canTest: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     static let tileWidth: CGFloat = 180
 
+    /// The whole panel: collapsed, or a group with no members, which has no rows below it.
+    private var closed: Bool { collapsed || group.members.isEmpty }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: Spacing.md) {
-            // The type and node on a line of their own when the row runs short, as squeezed into it the
-            // group's name goes first. The node stays in reach: a collapsed group has no other way to show it.
-            // The same four views in either form: while the Agent panel moves they go from one to
-            // the other with the width, and the sections below follow.
-            BlendedHeader(spacing: Spacing.sm, rowSpacing: Spacing.xs) {
-                title
-                typeTag
-                // Always one view, whether or not there is a node to show.
-                ZStack { quickSwitch }
-                // Its symbol alone where the title would otherwise have no room.
-                ViewThatFits(in: .horizontal) {
-                    actions(compact: false)
-                    actions(compact: true)
-                }
-            }
-            if !collapsed {
-            SteadyGrid(minimum: GroupSection.tileWidth, spacing: Spacing.sm, alignment: .leading) {
-                ForEach(group.members) { member in
-                    NodeTile(member: member, delay: store.delayCell(for: member.name), flag: flag(for: member), selected: member.name == group.now,
-                             selectable: group.isSelectable) {
-                        store.select(member.name, in: group.name)
-                    }
-                    .contextMenu {
-                        Button("问 Agent…") { ask(String(localized: "关于节点“\(member.name)”（在“\(group.name)”里）：")) }
-                        if !member.isGroup, !NodeMapView.builtins.contains(member.name), !NodeCleanup.isInfoNode(member.name) {
-                            RegionMarkMenu(node: member.name)
-                        }
-                    }
-                }
-            }
-            .transition(.opacity)
+        // The type and node on a line of their own when the row runs short, as squeezed into it the
+        // group's name goes first. The node stays in reach: a collapsed group has no other way to show it.
+        // The same four views in either form: while the Agent panel moves they go from one to
+        // the other with the width, and the sections below follow.
+        BlendedHeader(spacing: Spacing.sm, rowSpacing: Spacing.xs) {
+            title
+            typeTag
+            // Always one view, whether or not there is a node to show.
+            ZStack { quickSwitch }
+            // Its symbol alone where the title would otherwise have no room.
+            ViewThatFits(in: .horizontal) {
+                actions(compact: false)
+                actions(compact: true)
             }
         }
-        .panel()
-        // Nodes fading out as a section closes would show past its edge.
-        .clipShape(RoundedRectangle(cornerRadius: Radius.large, style: .continuous))
+        .padding([.horizontal, .top], Spacing.lg)
+        .padding(.bottom, closed ? Spacing.lg : Spacing.md)
+        .panelSlice(closed ? .whole : .top)
+        .padding(.top, first ? 0 : Spacing.lg)
     }
 
     private var title: some View {
@@ -202,6 +230,7 @@ struct GroupSection: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .rotationEffect(.degrees(collapsed ? 0 : 90))
+                    .animation(reduceMotion ? nil : Motion.standard, value: collapsed)
                 Text(group.name).font(.headline).lineLimit(1)
             }
             .contentShape(Rectangle())
@@ -209,6 +238,8 @@ struct GroupSection: View {
         .buttonStyle(.plain)
         .help(collapsed ? String(localized: "展开“\(group.name)”") : String(localized: "收起“\(group.name)”"))
         .accessibilityLabel(collapsed ? String(localized: "展开“\(group.name)”") : String(localized: "收起“\(group.name)”"))
+        // A heading, so VoiceOver can go from group to group past their tiles.
+        .accessibilityAddTraits(.isHeader)
     }
 
     private var typeTag: some View { Tag(text: Self.typeLabel(group.type)) }
@@ -260,12 +291,6 @@ struct GroupSection: View {
         }
     }
 
-    /// A flag for a node whose name has none, from a hand-set mark or a code or city in the name.
-    private func flag(for member: ProxyStore.Group.Member) -> String? {
-        guard !member.isGroup, !NodeLocator.hasFlag(member.name) else { return nil }
-        return store.region(of: member.name).flatMap(NodeLocator.place)?.flag
-    }
-
     /// Opens the Agent beside this page with `text` in the composer, in a conversation about this profile.
     private func ask(_ text: String) { agent.open(asking: text) }
 
@@ -278,6 +303,44 @@ struct GroupSection: View {
         case "Relay": String(localized: "链式")
         default: type
         }
+    }
+}
+
+/// One row of a group's nodes: the middle of its panel, or its bottom for the last row.
+struct GroupRow: View {
+    @Environment(ProxyStore.self) private var store
+    @Environment(AgentStore.self) private var agent
+    let group: ProxyStore.Group
+    let members: ArraySlice<ProxyStore.Group.Member>
+    let columns: Int
+    let last: Bool
+
+    var body: some View {
+        EqualColumnsRow(columns: columns, spacing: Spacing.sm) {
+            ForEach(members) { tile($0) }
+        }
+        .padding(.horizontal, Spacing.lg)
+        .padding(.bottom, last ? Spacing.lg : Spacing.sm)
+        .panelSlice(last ? .bottom : .middle)
+    }
+
+    private func tile(_ member: ProxyStore.Group.Member) -> some View {
+        NodeTile(member: member, delay: store.delayCell(for: member.name), flag: flag(for: member), selected: member.name == group.now,
+                 selectable: group.isSelectable) {
+            store.select(member.name, in: group.name)
+        }
+        .contextMenu {
+            Button("问 Agent…") { agent.open(asking: String(localized: "关于节点“\(member.name)”（在“\(group.name)”里）：")) }
+            if !member.isGroup, !NodeMapView.builtins.contains(member.name), !NodeCleanup.isInfoNode(member.name) {
+                RegionMarkMenu(node: member.name)
+            }
+        }
+    }
+
+    /// A flag for a node whose name has none, from a hand-set mark or a code or city in the name.
+    private func flag(for member: ProxyStore.Group.Member) -> String? {
+        guard !member.isGroup, !NodeLocator.hasFlag(member.name) else { return nil }
+        return store.region(of: member.name).flatMap(NodeLocator.place)?.flag
     }
 }
 
