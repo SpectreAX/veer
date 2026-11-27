@@ -106,10 +106,23 @@ public enum NodeCleanup {
         #"\b(19|20)\d{2}[-/.年]\d{1,2}[-/.月]\d{1,2}"#,
     ]
 
+    private static let infoExpressions = infoPatterns.map { NodeLocator.expression($0, options: .caseInsensitive) }
+
+    /// Memoized: the map and the menus ask for every member of every group on each draw.
     public static func isInfoNode(_ name: String) -> Bool {
+        if let known = infoCache.get(name) { return known }
+        let found = readsAsInfo(name)
+        infoCache.set(name, found)
+        return found
+    }
+
+    private static let infoCache = BoundedCache<Bool>()
+
+    static func readsAsInfo(_ name: String) -> Bool {
         let lowered = name.lowercased()
         if infoPhrases.contains(where: { lowered.contains($0) }) { return true }
-        return infoPatterns.contains { name.range(of: $0, options: [.regularExpression, .caseInsensitive]) != nil }
+        let range = NSRange(name.startIndex..., in: name)
+        return infoExpressions.contains { $0.firstMatch(in: name, range: range) != nil }
     }
 
     /// Settings of a node apart from its name, with map keys sorted and scalars compared as text,

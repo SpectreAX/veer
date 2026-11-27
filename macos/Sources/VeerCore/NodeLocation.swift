@@ -10,24 +10,34 @@ public enum NodeLocator {
         /// A representative point (where nodes usually are), for the map.
         public let latitude: Double
         public let longitude: Double
+        /// The regional-indicator pair for `code`, made once.
+        public let flag: String
         public var id: String { code }
 
-        /// The region's name in the interface language, from the system's own list.
-        public var name: String {
-            let language = Bundle.main.preferredLocalizations.first ?? "zh-Hans"
-            return Locale(identifier: language).localizedString(forRegionCode: code) ?? code
+        init(code: String, latitude: Double, longitude: Double) {
+            self.code = code
+            self.latitude = latitude
+            self.longitude = longitude
+            flag = String(String.UnicodeScalarView(code.unicodeScalars.compactMap { Unicode.Scalar(0x1F1E6 - 0x41 + $0.value) }))
         }
 
-        public var flag: String {
-            String(String.UnicodeScalarView(code.unicodeScalars.compactMap { Unicode.Scalar(0x1F1E6 - 0x41 + $0.value) }))
-        }
+        /// The region's name in the interface language, from the system's own list. The language
+        /// is fixed for the life of the process (a change applies at the next launch), so each name
+        /// is looked up once.
+        public var name: String { NodeLocator.names[code] ?? code }
     }
+
+    /// Every place's name in the interface language, read once.
+    static let names: [String: String] = {
+        let locale = Locale(identifier: Bundle.main.preferredLocalizations.first ?? "zh-Hans")
+        return Dictionary(uniqueKeysWithValues: table.map { ($0.place.code, locale.localizedString(forRegionCode: $0.place.code) ?? $0.place.code) })
+    }()
 
     /// The ISO code of the place `name` points at, or nil when it says nothing recognisable.
     /// Memoized: big subscriptions ask for hundreds of names on every draw.
     public static func locate(_ name: String) -> String? {
         if let cached = cache.get(name) { return cached.value }
-        let code = flag(in: name) ?? earliest(in: name, entries: chinese) ?? earliest(in: name, entries: english) ?? earliest(in: name, entries: codes)
+        let code = flag(in: name) ?? chinese.earliest(in: name) ?? english.earliest(in: name) ?? codes.earliest(in: name)
         cache.set(name, Cached(value: code))
         return code
     }
@@ -37,25 +47,72 @@ public enum NodeLocator {
     /// Whether the name already carries a flag Veer knows, so none needs adding.
     public static func hasFlag(_ name: String) -> Bool { flag(in: name) != nil }
 
-    public static var places: [Place] { table.map(\.place) }
+    public static let places: [Place] = table.map(\.place)
+
+    /// `places` in the interface language's order, for menus that list them all.
+    public static let sortedPlaces: [Place] = places.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
 
     // MARK: Matching
 
-    /// The first pair of regional indicators, if it names a place Veer knows.
+    /// The first pair of regional indicators, if it names a place Veer knows. Every adjacent pair
+    /// is tried, as a name can carry another symbol's indicators before the flag.
     static func flag(in name: String) -> String? {
-        let scalars = Array(name.unicodeScalars)
-        for index in scalars.indices.dropLast() {
-            let first = scalars[index].value, second = scalars[index + 1].value
-            guard (0x1F1E6...0x1F1FF).contains(first), (0x1F1E6...0x1F1FF).contains(second) else { continue }
-            let code = String(UnicodeScalar(first - 0x1F1E6 + 0x41)!) + String(UnicodeScalar(second - 0x1F1E6 + 0x41)!)
+        var previous: UInt32 = 0
+        for scalar in name.unicodeScalars {
+            let value = scalar.value
+            defer { previous = value }
+            guard isIndicator(value), isIndicator(previous) else { continue }
+            var code = ""
+            code.unicodeScalars.append(Unicode.Scalar(previous - 0x1F1E6 + 0x41)!)
+            code.unicodeScalars.append(Unicode.Scalar(value - 0x1F1E6 + 0x41)!)
             if placesByCode[code] != nil { return code }
         }
         return nil
     }
 
-    /// The match that starts earliest in the name; a relay like "香港-日本" exits where it says
-    /// first, which is how subscriptions name them. Ties go to the longer match.
-    private static func earliest(in name: String, entries: [(NSRegularExpression, String)]) -> String? {
+    private static func isIndicator(_ value: UInt32) -> Bool { (0x1F1E6...0x1F1FF).contains(value) }
+
+    /// One kind of word (Chinese, English or codes) for every place in one expression, and which
+    /// place each word belongs to. The match that starts earliest in the name wins, the longest at
+    /// that position: a relay like "香港-日本" exits where it says first, which is how subscriptions
+    /// name them. The alternatives are longest first, so the expression's own match is that one.
+    enum MatchKind { case chinese, english, codes }
+
+    struct Matcher: Sendable {
+        let kind: MatchKind
+        let regex: NSRegularExpression
+        /// Word (folded to lower case when matching ignores case) → place code, the first place
+        /// that lists it.
+        let codes: [String: String]
+        let ignoresCase: Bool
+
+        init(_ kind: MatchKind, words: [(String, [String])], wrap: (String) -> String, ignoresCase: Bool) {
+            var codes: [String: String] = [:]
+            var all: [String] = []
+            for (code, list) in words {
+                for word in list {
+                    let key = ignoresCase ? word.lowercased() : word
+                    if codes[key] == nil { codes[key] = code; all.append(word) }
+                }
+            }
+            self.kind = kind
+            regex = NodeLocator.expression(wrap(NodeLocator.alternatives(all)), options: ignoresCase ? .caseInsensitive : [])
+            self.codes = codes
+            self.ignoresCase = ignoresCase
+        }
+
+        func earliest(in name: String) -> String? {
+            let range = NSRange(name.startIndex..., in: name)
+            guard let match = regex.firstMatch(in: name, range: range), let found = Range(match.range, in: name) else { return nil }
+            let text = String(name[found])
+            if let code = codes[ignoresCase ? text.lowercased() : text] { return code }
+            // A case folding the table did not foresee: the expressions one place at a time.
+            return NodeLocator.earliest(in: name, entries: NodeLocator.oneByOne(kind))
+        }
+    }
+
+    /// The match that starts earliest in the name over separate expressions, ties to the longer.
+    static func earliest(in name: String, entries: [(NSRegularExpression, String)]) -> String? {
         let range = NSRange(name.startIndex..., in: name)
         var best: (location: Int, length: Int, code: String)?
         for (regex, code) in entries {
@@ -68,42 +125,51 @@ public enum NodeLocator {
         return best?.code
     }
 
-    private static func alternatives(_ words: [String]) -> String {
+    static func alternatives(_ words: [String]) -> String {
         words.sorted { $0.count > $1.count }.map(NSRegularExpression.escapedPattern(for:)).joined(separator: "|")
     }
 
-    private static let chinese: [(NSRegularExpression, String)] = table.compactMap { entry in
-        guard !entry.chinese.isEmpty else { return nil }
-        return (try! NSRegularExpression(pattern: alternatives(entry.chinese)), entry.place.code)
+    private static func words(_ list: KeyPath<Entry, [String]>) -> [(String, [String])] {
+        table.compactMap { entry in entry[keyPath: list].isEmpty ? nil : (entry.place.code, entry[keyPath: list]) }
     }
+
+    private static func wholeWord(_ alternatives: String) -> String { #"(?<![A-Za-z])(?:"# + alternatives + #")(?![A-Za-z])"# }
+
+    static let chinese = Matcher(.chinese, words: words(\.chinese), wrap: { $0 }, ignoresCase: false)
 
     /// Whole words only: "us" must not match "russia" or "status".
-    private static let english: [(NSRegularExpression, String)] = table.compactMap { entry in
-        guard !entry.english.isEmpty else { return nil }
-        return (try! NSRegularExpression(pattern: #"(?<![A-Za-z])(?:"# + alternatives(entry.english) + #")(?![A-Za-z])"#, options: .caseInsensitive), entry.place.code)
-    }
+    static let english = Matcher(.english, words: words(\.english), wrap: wholeWord, ignoresCase: true)
 
     /// Upper case and standing alone ("[A]HK 01", "JP-02"); lower-case "us" or "in" are words.
-    private static let codes: [(NSRegularExpression, String)] = table.compactMap { entry in
-        guard !entry.codes.isEmpty else { return nil }
-        return (try! NSRegularExpression(pattern: #"(?<![A-Za-z])(?:"# + alternatives(entry.codes) + #")(?![A-Za-z])"#), entry.place.code)
+    static let codes = Matcher(.codes, words: words(\.codes), wrap: wholeWord, ignoresCase: false)
+
+    /// One expression per place, as the matching used to run; made only when first needed.
+    private static let chineseOneByOne = words(\.chinese).map { (expression(alternatives($0.1)), $0.0) }
+    private static let englishOneByOne = words(\.english).map { (expression(wholeWord(alternatives($0.1)), options: .caseInsensitive), $0.0) }
+    private static let codesOneByOne = words(\.codes).map { (expression(wholeWord(alternatives($0.1))), $0.0) }
+
+    /// One of Veer's own patterns, which always compiles: the words in it are escaped.
+    static func expression(_ pattern: String, options: NSRegularExpression.Options = []) -> NSRegularExpression {
+        do { return try NSRegularExpression(pattern: pattern, options: options) } catch { preconditionFailure("\(pattern): \(error)") }
+    }
+
+    static func oneByOne(_ kind: MatchKind) -> [(NSRegularExpression, String)] {
+        switch kind {
+        case .chinese: chineseOneByOne
+        case .english: englishOneByOne
+        case .codes: codesOneByOne
+        }
+    }
+
+    /// The matching as it was, one expression per place and kind: what `locate` must agree with.
+    static func locateOneByOne(_ name: String) -> String? {
+        flag(in: name) ?? earliest(in: name, entries: chineseOneByOne) ?? earliest(in: name, entries: englishOneByOne)
+            ?? earliest(in: name, entries: codesOneByOne)
     }
 
     private struct Cached { let value: String? }
 
-    private final class Cache: @unchecked Sendable {
-        private var values: [String: Cached] = [:]
-        private let lock = NSLock()
-        func get(_ name: String) -> Cached? { lock.withLock { values[name] } }
-        func set(_ name: String, _ value: Cached) {
-            lock.withLock {
-                if values.count > 20_000 { values.removeAll() }
-                values[name] = value
-            }
-        }
-    }
-
-    private static let cache = Cache()
+    private static let cache = BoundedCache<Cached>()
 
     // MARK: Table
 
@@ -124,7 +190,7 @@ public enum NodeLocator {
     }
 
     /// Every region Veer can place.
-    public static var allPlaces: [Place] { table.map(\.place) }
+    public static var allPlaces: [Place] { places }
 
     private static let placesByCode = Dictionary(uniqueKeysWithValues: table.map { ($0.place.code, $0.place) })
 
@@ -216,4 +282,23 @@ public enum NodeLocator {
         Entry("AU", -33.87, 151.21, zh: ["澳大利亚", "澳大利亞", "澳洲", "悉尼", "雪梨", "墨尔本", "墨爾本"], en: ["australia", "sydney", "melbourne"], codes: ["AU", "AUS"]),
         Entry("NZ", -36.85, 174.76, zh: ["新西兰", "紐西蘭", "奥克兰"], en: ["new zealand", "auckland"], codes: ["NZ", "NZL"]),
     ]
+}
+
+/// A name → value memo shared across threads, emptied when it grows past `limit` (big
+/// subscriptions have a few thousand names; a profile switch brings new ones).
+final class BoundedCache<Value>: @unchecked Sendable {
+    private var values: [String: Value] = [:]
+    private let lock = NSLock()
+    private let limit: Int
+
+    init(limit: Int = 20_000) { self.limit = limit }
+
+    func get(_ key: String) -> Value? { lock.withLock { values[key] } }
+
+    func set(_ key: String, _ value: Value) {
+        lock.withLock {
+            if values.count > limit { values.removeAll() }
+            values[key] = value
+        }
+    }
 }

@@ -18,18 +18,19 @@ struct NodeMapView: View {
 
     static let unknownRegion = "unknown"
 
-    /// Every real node in the running config with its best known delay, by region code; nodes
-    /// whose region is unknown are under nil.
+    /// Every real node in the running config with the delay its groups last gave, by region code;
+    /// nodes whose region is unknown are under nil. Not the results streaming in: the regions
+    /// stand still while a test runs, and the views showing delays read them (`NodeDelayCell`,
+    /// `ProxyStore.delayRevision`).
     static func regions(in store: ProxyStore, matching query: String) -> [String?: [MapNode]] {
         var best: [String: Int?] = [:], states: [String: NodeDelay] = [:]
         for group in store.groups {
             // Subscriptions list their traffic and expiry as fake nodes; they exit nowhere.
             for member in group.members where !member.isGroup && !Self.builtins.contains(member.name) && !NodeCleanup.isInfoNode(member.name) {
-                let latest = store.delays[member.name]
                 let known = best[member.name] ?? nil
-                best[member.name] = Self.better(known, latest?.legacyDelay ?? member.delay)
+                best[member.name] = Self.better(known, member.delay)
                 // The same node in every group has one state: Veer tests nodes, not group members.
-                states[member.name] = latest ?? member.state
+                states[member.name] = member.state
             }
         }
         let text = query.trimmingCharacters(in: .whitespaces).lowercased()
@@ -107,9 +108,9 @@ struct NodeMapView: View {
 
     /// A region as VoiceOver reads it, on the map and on its card: its name, its node count and its best
     /// delay. No flag: VoiceOver reads a flag as the country's name a second time.
-    static func regionSummary(_ code: String, nodes: [MapNode]) -> String {
+    static func regionSummary(_ code: String, nodes: [MapNode], latest: [String: NodeDelay] = [:]) -> String {
         // A word where the page shows a dash, which VoiceOver reads as nothing or as "dash".
-        let best = MapNode.bestDelay(in: nodes).map { Format.delay($0) } ?? String(localized: "未测速")
+        let best = MapNode.bestDelay(in: nodes, latest: latest).map { Format.delay($0) } ?? String(localized: "未测速")
         let name = NodeLocator.place(code)?.name ?? String(localized: "未识别")
         return String(localized: "\(name)，\(String(nodes.count)) 个节点，最低延迟 \(best)")
     }
@@ -137,8 +138,9 @@ struct MapNode: Identifiable, Hashable {
     var state: NodeDelay = .untested
     var id: String { name }
 
-    static func bestDelay(in nodes: [Self]) -> Int? {
-        nodes.compactMap(\.delay).filter { $0 > 0 }.min()
+    /// The lowest working delay; `latest` holds results newer than the nodes' own.
+    static func bestDelay(in nodes: [Self], latest: [String: NodeDelay] = [:]) -> Int? {
+        nodes.compactMap { latest[$0.name]?.legacyDelay ?? $0.delay }.filter { $0 > 0 }.min()
     }
 }
 
@@ -150,6 +152,12 @@ private struct MapCard: View {
     let focus: String?
     /// A region, or nil to go back to the whole map.
     let choose: (String?) -> Void
+
+    private var counts: [String: Int] {
+        var counts: [String: Int] = [:]
+        for (code, nodes) in regions { if let code { counts[code] = nodes.count } }
+        return counts
+    }
 
     private var summary: String {
         let places = regions.keys.compactMap { $0 }.count
@@ -164,7 +172,11 @@ private struct MapCard: View {
                 Text("节点分布").font(.headline)
                 Text(verbatim: summary).font(.callout)
             }
-            WorldMap(regions: regions, selected: selected, focus: focus, choose: choose)
+            // The map draws counts alone, so results coming in never redraw it; only what VoiceOver
+            // says of the chosen region follows them.
+            MapSelectionValue(selected: selected, nodes: selected.flatMap { regions[$0 == NodeMapView.unknownRegion ? nil : $0] }) {
+                WorldMap(counts: counts, selected: selected, focus: focus, choose: choose)
+            }
             legend.font(.caption)
         }
         .panel()
@@ -190,13 +202,28 @@ private struct MapCard: View {
     }
 }
 
+/// The map's accessibility value: the chosen region with its count and lowest delay, kept up with
+/// results as they come in. The map it wraps is made by the card, so it is not drawn again then.
+private struct MapSelectionValue<Content: View>: View {
+    @Environment(ProxyStore.self) private var store
+    let selected: String?
+    let nodes: [MapNode]?
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        content.accessibilityValue(selected.flatMap { code in nodes.map { NodeMapView.regionSummary(code, nodes: $0, latest: store.latestDelays) } }
+            ?? String(localized: "没有选中地区；地区在下面的列表里"))
+    }
+}
+
 /// Countries from Natural Earth (public domain) in an equirectangular projection, each filled by
 /// how many nodes it has: a choropleth, with no badge on any region. Regions too small to have a
 /// shape at this scale (Singapore, Hong Kong) are a small mark of the same green. Choosing a region
 /// brings the map in on it and names it with its nodes and best delay; the map can also be pinched
 /// and dragged, and put back.
 private struct WorldMap: View {
-    let regions: [String?: [MapNode]]
+    /// Nodes by region code.
+    let counts: [String: Int]
     let selected: String?
     let focus: String?
     let choose: (String?) -> Void
@@ -252,7 +279,6 @@ private struct WorldMap: View {
         .clipShape(RoundedRectangle(cornerRadius: Radius.medium, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(String(localized: "节点分布地图"))
-        .accessibilityValue(selectionDescription ?? String(localized: "没有选中地区；地区在下面的列表里"))
         // In on the region chosen, or back out.
         .onChange(of: focus, initial: true) { _, focus in show(focus.flatMap(Self.viewport(for:)) ?? .world) }
     }
@@ -261,21 +287,10 @@ private struct WorldMap: View {
         withAnimation(reduceMotion ? nil : Motion.panel) { viewport = target }
     }
 
-    private var counts: [String: Int] {
-        var counts: [String: Int] = [:]
-        for (code, nodes) in regions { if let code { counts[code] = nodes.count } }
-        return counts
-    }
-
     /// A short label on the map. The region's details sit in the card directly below.
     private var callout: MapSurface.Callout? {
         guard let selected, let place = NodeLocator.place(selected) else { return nil }
         return MapSurface.Callout(text: "\(place.flag) \(place.name)", anchor: Self.anchor(of: selected))
-    }
-
-    private var selectionDescription: String? {
-        guard let selected, let nodes = regions[selected == NodeMapView.unknownRegion ? nil : selected] else { return nil }
-        return NodeMapView.regionSummary(selected, nodes: nodes)
     }
 
     /// The listed region at a point of the view: a small region's mark when the point is near one,
@@ -517,9 +532,22 @@ private struct RegionGrid: View {
     }
 
     private func card(code: String, title: String, nodes: [MapNode]) -> some View {
-        let best = MapNode.bestDelay(in: nodes)
-        let isSelected = selected == code
-        return Button { choose(code) } label: {
+        RegionCard(code: code, title: title, nodes: nodes, isSelected: selected == code) { choose(code) }
+    }
+}
+
+/// A region's card: its name, node count and lowest delay, which follows results as they come in.
+private struct RegionCard: View {
+    @Environment(ProxyStore.self) private var store
+    let code: String
+    let title: String
+    let nodes: [MapNode]
+    let isSelected: Bool
+    let choose: () -> Void
+
+    var body: some View {
+        let best = MapNode.bestDelay(in: nodes, latest: store.latestDelays)
+        Button(action: choose) {
             HStack(spacing: Spacing.sm) {
                 Text(verbatim: title).lineLimit(1).truncationMode(.tail)
                 Spacer(minLength: Spacing.xs)
@@ -536,7 +564,7 @@ private struct RegionGrid: View {
         }
         .buttonStyle(.plain)
         // Read as one name rather than its parts ("Japan, 2, 92 ms" left the 2 and the delay unexplained).
-        .accessibilityLabel(NodeMapView.regionSummary(code, nodes: nodes))
+        .accessibilityLabel(NodeMapView.regionSummary(code, nodes: nodes, latest: store.latestDelays))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
@@ -557,8 +585,7 @@ private struct RegionNodes: View {
             BlendedHeader(spacing: Spacing.sm, rowSpacing: Spacing.xs) {
                 Text(verbatim: place.map { "\($0.flag) \($0.name)" } ?? name).font(.headline).lineLimit(1)
                 Text("\(String(nodes.count)) 个节点").font(.callout).lineLimit(1)
-                let best = MapNode.bestDelay(in: nodes)
-                Text(String(localized: "最低延迟 \(Format.delay(best))")).font(.callout).lineLimit(1)
+                RegionBestDelay(nodes: nodes)
                 // Spinner and button share one place, so the header does not move.
                 ZStack(alignment: .trailing) {
                     Button("测速") { store.testNodes(nodes.map(\.name), scope: scope) }
@@ -575,33 +602,60 @@ private struct RegionNodes: View {
             if code == NodeMapView.unknownRegion {
                 Text("在代理页的节点上右键，可以手动标记地区。").font(.caption).foregroundStyle(.secondary)
             }
-            BlendedGrid(minimum: 240, spacing: Spacing.sm, rowSpacing: Spacing.sm) {
-                ForEach(nodes) { card($0) }
+            // Lazy: a region can have a few hundred nodes, each measured at every frame of a
+            // panel's motion in a grid that is not.
+            let main = store.mainGroup
+            let usable = main.map { $0.isSelectable ? Set($0.members.map(\.name)) : [] } ?? []
+            SteadyGrid(minimum: 240, spacing: Spacing.sm, rowSpacing: Spacing.sm, alignment: .leading) {
+                ForEach(nodes) { node in
+                    MapNodeCard(node: node, delay: store.delayCell(for: node.name), mainGroup: main?.name,
+                                usable: usable.contains(node.name), inUse: main?.now == node.name, fromIP: store.regionIsFromIP(node.name))
+                }
             }
         }
         .panel()
     }
 
     private var testing: Bool { store.testingScopes.contains(scope) }
+}
 
-    private func card(_ node: MapNode) -> some View {
-        let main = store.mainGroup
-        let usable = main.map { $0.isSelectable && $0.members.contains { $0.name == node.name } } ?? false
-        let inUse = main?.now == node.name
-        return Button { if let main, usable { store.select(node.name, in: main.name) } } label: {
+/// The lowest delay among a region's nodes, as results come in.
+private struct RegionBestDelay: View {
+    @Environment(ProxyStore.self) private var store
+    let nodes: [MapNode]
+
+    var body: some View {
+        Text(String(localized: "最低延迟 \(Format.delay(MapNode.bestDelay(in: nodes, latest: store.latestDelays)))")).font(.callout).lineLimit(1)
+    }
+}
+
+/// One of a region's nodes; choosing it uses it in the main group when that group has it.
+private struct MapNodeCard: View {
+    @Environment(ProxyStore.self) private var store
+    let node: MapNode
+    /// The node's latest result, observed here alone.
+    let delay: NodeDelayCell
+    let mainGroup: String?
+    let usable: Bool
+    let inUse: Bool
+    let fromIP: Bool
+
+    var body: some View {
+        let state = delay.result ?? node.state
+        Button { if let mainGroup, usable { store.select(node.name, in: mainGroup) } } label: {
             HStack(spacing: Spacing.sm) {
                 Image(systemName: inUse ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(inUse ? Color.veerAccent : Color.secondary)
                     .opacity(usable ? 1 : 0)
                 Text(node.name).lineLimit(1).truncationMode(.middle)
-                if store.regionIsFromIP(node.name) {
+                if fromIP {
                     Text(verbatim: "IP").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
                         .padding(.horizontal, Spacing.xs).background(Color.subtleFill, in: Capsule())
                         .help(String(localized: "按服务器 IP 推断的地区；中转节点的入口和出口可能不在同一个地方，可以右键手动标记。"))
                 }
                 Spacer(minLength: Spacing.xs)
-                let color = node.state == .testing || node.state == .coreNotReady ? Color.primary : Format.delayKind(node.state).color
-                Text(Format.delay(node.state)).font(.caption.monospacedDigit()).foregroundStyle(color)
+                let color = state == .testing || state == .coreNotReady ? Color.primary : Format.delayKind(state).color
+                Text(Format.delay(state)).font(.caption.monospacedDigit()).foregroundStyle(color)
                     .lineLimit(1).fixedSize()
             }
             .padding(.horizontal, Spacing.md)
@@ -612,7 +666,7 @@ private struct RegionNodes: View {
         .buttonStyle(.plain)
         .disabled(!usable)
         .accessibilityAddTraits(inUse ? .isSelected : [])
-        .help(usable ? String(localized: "在“\(main?.name ?? "")”中使用这个节点") : node.name)
+        .help(usable ? String(localized: "在“\(mainGroup ?? "")”中使用这个节点") : node.name)
         .contextMenu { Menu("标记地区") { RegionMarkItems(node: node.name) } }
     }
 }
