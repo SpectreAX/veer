@@ -272,6 +272,30 @@ public extension View {
             .background(Color.surfaceRaised, in: RoundedRectangle(cornerRadius: Radius.large, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: Radius.large, style: .continuous).strokeBorder(Color.separatorLine.opacity(0.6)))
     }
+
+    /// One part of a `panel()` that a lazy list draws as several of its items, top to bottom, so
+    /// that only the items in view are made: the same fill, corners and edge, without padding (each
+    /// part pads its own content). Where two parts meet there is no edge.
+    func panelSlice(_ slice: PanelSlice) -> some View {
+        let top = slice == .whole || slice == .top, bottom = slice == .whole || slice == .bottom
+        let shape = UnevenRoundedRectangle(topLeadingRadius: top ? Radius.large : 0, bottomLeadingRadius: bottom ? Radius.large : 0,
+                                           bottomTrailingRadius: bottom ? Radius.large : 0, topTrailingRadius: top ? Radius.large : 0,
+                                           style: .continuous)
+        return background(Color.surfaceRaised, in: shape)
+            .overlay {
+                // The edge drawn past the open sides and cut there, so only the outer edges show.
+                shape.strokeBorder(Color.separatorLine.opacity(0.6))
+                    .padding(.top, top ? 0 : -2)
+                    .padding(.bottom, bottom ? 0 : -2)
+                    .clipped()
+                    .allowsHitTesting(false)
+            }
+    }
+}
+
+/// Where a `panelSlice` sits in its panel.
+public enum PanelSlice: Sendable {
+    case whole, top, middle, bottom
 }
 
 /// Neighbouring glass shapes: `GlassEffectContainer` on macOS 26, its content before it. Shapes
